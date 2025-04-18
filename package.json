@@ -1,0 +1,29 @@
+{
+  "name": "printingpresserp",
+  "version": "1.0.0",
+  "description": "Printing Press ERP System",
+  "main": "start.js",
+  "scripts": {
+    "start": "node start.js",
+    "server": "cd server && npm run dev",
+    "client": "cd client && npm start",
+    "install:all": "npm install && cd client && npm install && cd ../server && npm install",
+    "build": "cd client && npm run build && cd ../server && npm run build",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "erp",
+    "printing",
+    "react",
+    "express",
+    "supabase"
+  ],
+  "author": "Ferdinand John F. Dobli, Eriel John Q. Espinosa, Raphael Miguel D. Operario",
+  "license": "ISC",
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.1"
+  }
+}

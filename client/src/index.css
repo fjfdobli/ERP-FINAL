@@ -1,0 +1,446 @@
+:root {
+  /* Theme CSS variables */
+  --background-color: #f5f5f5;
+  --text-color: #333333;
+  --card-bg: #ffffff;
+  --card-hover: #f9f9f9;
+  --primary-color: #1976d2;
+  --secondary-color: #115293;
+  --spacing-unit: 1.5rem;
+  --card-padding: 1.5rem;
+  --border-color: rgba(0, 0, 0, 0.12);
+  --hover-bg: rgba(0, 0, 0, 0.04);
+  --content-width: 1200px;
+  --header-height: 64px;
+  --drawer-width: 280px;
+  --drawer-bg: #ffffff;
+  --appbar-bg: #ffffff;
+  --menu-bg: #ffffff;
+  --paper-bg: #ffffff;
+  --divider-color: rgba(0, 0, 0, 0.12);
+  --icon-color: rgba(0, 0, 0, 0.54);
+  --secondary-text: rgba(0, 0, 0, 0.7);
+  --disabled-text: rgba(0, 0, 0, 0.38);
+  --secondary-button-bg: rgba(0, 0, 0, 0.04);
+  --secondary-button-hover: rgba(0, 0, 0, 0.08);
+  --spacing-xs: 0.5rem;
+  --spacing-sm: 0.75rem;
+  --spacing-md: 1rem;
+  --spacing-lg: 1.5rem;
+  --spacing-xl: 2rem;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.1);
+  --shadow-md: 0 4px 6px rgba(0,0,0,0.1);
+  --shadow-lg: 0 10px 15px rgba(0,0,0,0.1);
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --font-size-xs: 0.75rem;
+  --font-size-sm: 0.875rem;
+  --font-size-md: 1rem;
+  --font-size-lg: 1.25rem;
+  --font-size-xl: 1.5rem;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--background-color);
+  color: var(--text-color);
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Dashboard card styles */
+.dashboard-card {
+  overflow: hidden;
+  position: relative;
+  transition: all 0.3s ease;
+  border-radius: 12px;
+  background-image: linear-gradient(135deg, var(--card-gradient-start), var(--card-gradient-end));
+  color: white;
+  border: none !important;
+}
+
+.dashboard-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 8px 25px 0 rgba(0, 0, 0, 0.15);
+}
+
+.dashboard-card .icon-bg {
+  position: absolute;
+  right: -20px;
+  bottom: -20px;
+  font-size: 150px;
+  opacity: 0.15;
+  color: rgba(255, 255, 255, 0.5) !important;
+}
+
+.dashboard-card .MuiAvatar-root {
+  background-color: rgba(255, 255, 255, 0.2);
+  color: white !important;
+}
+
+.dashboard-card .MuiTypography-root {
+  color: white !important;
+}
+
+.dashboard-card .MuiButton-root {
+  background-color: rgba(255, 255, 255, 0.15);
+  color: white !important;
+  border-radius: 8px;
+  box-shadow: none;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.dashboard-card .MuiButton-root:hover {
+  background-color: rgba(255, 255, 255, 0.25);
+}
+
+.dashboard-card-primary {
+  --card-gradient-start: #1976d2;
+  --card-gradient-end: #1565c0;
+}
+
+.dashboard-card-info {
+  --card-gradient-start: #0288d1;
+  --card-gradient-end: #0277bd;
+}
+
+.dashboard-card-success {
+  --card-gradient-start: #2e7d32;
+  --card-gradient-end: #2d6a4f;
+}
+
+.dashboard-card-warning {
+  --card-gradient-start: #ed6c02;
+  --card-gradient-end: #e65100;
+}
+
+.dashboard-card-purple {
+  --card-gradient-start: #7e57c2;
+  --card-gradient-end: #5e35b1;
+}
+
+.dashboard-card-teal {
+  --card-gradient-start: #26a69a;
+  --card-gradient-end: #00897b;
+}
+
+.dashboard-card-orange {
+  --card-gradient-start: #f57c00;
+  --card-gradient-end: #e65100;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+/* Dark mode styling */
+body.dark-mode {
+  --background-color: #121212;
+  --text-color: #ffffff;
+  --card-bg: #1e1e1e;
+  --card-hover: #2c2c2c;
+  --border-color: rgba(255, 255, 255, 0.12);
+  --hover-bg: rgba(255, 255, 255, 0.08);
+  --drawer-bg: #1a1a1a;
+  --appbar-bg: #1a1a1a;
+  --menu-bg: #232323;
+  --paper-bg: #1e1e1e;
+  --divider-color: rgba(255, 255, 255, 0.15);
+  --icon-color: rgba(255, 255, 255, 0.7);
+  --secondary-text: rgba(255, 255, 255, 0.7);
+  --disabled-text: rgba(255, 255, 255, 0.5);
+  --secondary-button-bg: rgba(255, 255, 255, 0.1);
+  --secondary-button-hover: rgba(255, 255, 255, 0.15);
+}
+
+/* Compact view styling */
+body.compact-view .MuiCard-root,
+body.compact-view .MuiPaper-root,
+body.compact-view .MuiTableContainer-root {
+  padding: var(--spacing-sm) !important;
+}
+
+body.compact-view .MuiInputBase-root,
+body.compact-view .MuiInputLabel-root {
+  font-size: var(--font-size-sm) !important;
+}
+
+body.compact-view .MuiTableCell-root {
+  padding: var(--spacing-xs) var(--spacing-sm) !important;
+  font-size: var(--font-size-sm) !important;
+}
+
+body.compact-view .MuiTypography-body1 {
+  font-size: var(--font-size-sm) !important;
+}
+
+body.compact-view .MuiTypography-body2 {
+  font-size: var(--font-size-xs) !important;
+}
+
+body.compact-view .MuiButton-root {
+  padding: var(--spacing-xs) var(--spacing-sm) !important;
+  font-size: var(--font-size-sm) !important;
+}
+
+body.compact-view .MuiListItem-root {
+  padding-top: var(--spacing-xs) !important;
+  padding-bottom: var(--spacing-xs) !important;
+}
+
+body.compact-view .MuiToolbar-regular {
+  min-height: 56px !important;
+}
+
+/* Apply spacing to all components */
+body.compact-view .MuiBox-root {
+  gap: var(--spacing-xs) !important;
+}
+
+/* Theme-specific styling for all components */
+/* Primary color styling */
+.MuiButton-containedPrimary {
+  background-color: var(--primary-color) !important;
+}
+
+.MuiSwitch-colorPrimary.Mui-checked {
+  color: var(--primary-color) !important;
+}
+
+.MuiSwitch-colorPrimary.Mui-checked + .MuiSwitch-track {
+  background-color: var(--primary-color) !important;
+  opacity: 0.5;
+}
+
+.MuiCheckbox-colorPrimary.Mui-checked {
+  color: var(--primary-color) !important;
+}
+
+.MuiTabs-indicator {
+  background-color: var(--primary-color) !important;
+}
+
+.MuiTab-textColorPrimary.Mui-selected {
+  color: var(--primary-color) !important;
+}
+
+.MuiTableSortLabel-active {
+  color: var(--primary-color) !important;
+}
+
+.MuiRadio-colorPrimary.Mui-checked {
+  color: var(--primary-color) !important;
+}
+
+.MuiLinearProgress-barColorPrimary {
+  background-color: var(--primary-color) !important;
+}
+
+.MuiCircularProgress-colorPrimary {
+  color: var(--primary-color) !important;
+}
+
+.MuiAppBar-colorPrimary {
+  background-color: var(--primary-color) !important;
+}
+
+/* Custom color classes */
+.theme-color {
+  color: var(--primary-color) !important;
+}
+
+.theme-bg {
+  background-color: var(--primary-color) !important;
+}
+
+.theme-border {
+  border-color: var(--primary-color) !important;
+}
+
+/* Custom typography for dark mode */
+body.dark-mode .MuiTypography-root {
+  color: var(--text-color);
+}
+
+body.dark-mode .MuiInputBase-input {
+  color: var(--text-color);
+}
+
+body.dark-mode .MuiFormLabel-root {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* Main layout components styling */
+/* Drawer styling */
+.MuiDrawer-paper {
+  background-color: var(--drawer-bg) !important;
+  color: var(--text-color) !important;
+  border-right: 1px solid var(--border-color) !important;
+}
+
+/* AppBar styling */
+.MuiAppBar-root {
+  background-color: var(--appbar-bg) !important;
+  color: var(--text-color) !important;
+  border-bottom: 1px solid var(--border-color) !important;
+}
+
+/* Menu styling */
+.MuiMenu-paper {
+  background-color: var(--menu-bg) !important;
+  color: var(--text-color) !important;
+  border: 1px solid var(--border-color) !important;
+}
+
+/* Card and Paper styling */
+.MuiCard-root,
+.MuiPaper-root {
+  background-color: var(--card-bg) !important;
+  color: var(--text-color) !important;
+  border: 1px solid var(--border-color);
+}
+
+/* Background for the main content area */
+body {
+  background-color: var(--background-color) !important;
+}
+
+/* Table styling */
+.MuiTableCell-root {
+  border-bottom-color: var(--border-color) !important;
+  color: var(--text-color) !important;
+}
+
+.MuiTableHead-root .MuiTableCell-root {
+  background-color: var(--card-hover) !important;
+}
+
+/* Dialog and modal styling */
+.MuiDialog-paper {
+  background-color: var(--card-bg) !important;
+  color: var(--text-color) !important;
+}
+
+/* Icons styling */
+.MuiSvgIcon-root {
+  color: var(--icon-color) !important;
+}
+
+.MuiIconButton-root {
+  color: var(--icon-color) !important;
+}
+
+/* Button overrides */
+.MuiButton-textPrimary {
+  color: var(--primary-color) !important;
+}
+
+.MuiButton-outlined {
+  border-color: var(--border-color) !important;
+  color: var(--text-color) !important;
+}
+
+.MuiButton-outlinedPrimary {
+  border-color: var(--primary-color) !important;
+  color: var(--primary-color) !important;
+}
+
+/* Input field styling */
+.MuiOutlinedInput-notchedOutline {
+  border-color: var(--border-color) !important;
+}
+
+.MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline {
+  border-color: var(--primary-color) !important;
+}
+
+body.dark-mode .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline {
+  border-color: rgba(255, 255, 255, 0.3) !important;
+}
+
+.MuiInputLabel-root {
+  color: var(--secondary-text) !important;
+}
+
+/* List items */
+.MuiListItem-root {
+  color: var(--text-color) !important;
+}
+
+.MuiListItemIcon-root .MuiSvgIcon-root {
+  color: var(--icon-color) !important;
+}
+
+.MuiListItemButton-root:hover {
+  background-color: var(--hover-bg) !important;
+}
+
+.MuiListItemButton-root.Mui-selected {
+  background-color: rgba(25, 118, 210, 0.1) !important; /* Fallback */
+}
+
+body.dark-mode .MuiListItemButton-root.Mui-selected {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Divider styling */
+.MuiDivider-root {
+  background-color: var(--divider-color) !important;
+}
+
+/* Typography */
+.MuiTypography-root {
+  color: var(--text-color) !important;
+}
+
+.MuiTypography-colorTextSecondary {
+  color: var(--secondary-text) !important;
+}
+
+/* Backdrop for dialogs and drawers */
+.MuiBackdrop-root {
+  background-color: rgba(0, 0, 0, 0.5) !important;
+}
+
+body.dark-mode .MuiBackdrop-root {
+  background-color: rgba(0, 0, 0, 0.7) !important;
+}
+
+/* Exception styling for primary colored components */
+.MuiSwitch-colorPrimary.Mui-checked .MuiSwitch-thumb,
+.MuiCheckbox-colorPrimary.Mui-checked,
+.MuiRadio-colorPrimary.Mui-checked,
+.MuiButton-containedPrimary {
+  color: white !important;
+}
+
+/* In-app notification styles */
+.notification {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  padding: 12px 24px;
+  background-color: #e3f2fd;
+  border-left: 4px solid var(--primary-color);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  z-index: 9999;
+  animation: slideIn 0.3s ease-out forwards;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}

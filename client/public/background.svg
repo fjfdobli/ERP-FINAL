@@ -1,0 +1,321 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800">
+  <defs>
+    <!-- Enhanced background pattern -->
+    <pattern id="subtlePattern" patternUnits="userSpaceOnUse" width="100" height="100">
+      <rect width="100" height="100" fill="#f8f9fa"/>
+      <rect width="100" height="100" fill="#f0f2f5" opacity="0.4"/>
+      <path d="M0 50 L100 50 M50 0 L50 100" stroke="#e9ecef" stroke-width="0.5" opacity="0.5"/>
+    </pattern>
+    
+    <!-- Filter for subtle shadow -->
+    <filter id="subtleShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="1" dy="1" stdDeviation="1" flood-color="#000000" flood-opacity="0.1"/>
+    </filter>
+    
+    <!-- Soft glow filter -->
+    <filter id="softGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+    
+    <!-- Gradient definitions -->
+    <linearGradient id="paperGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ffffff"/>
+      <stop offset="100%" style="stop-color:#f0f0f0"/>
+    </linearGradient>
+    
+    <linearGradient id="metalGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#e8e8e8"/>
+      <stop offset="50%" style="stop-color:#d0d0d0"/>
+      <stop offset="100%" style="stop-color:#e0e0e0"/>
+    </linearGradient>
+    
+    <!-- Ink color gradients -->
+    <linearGradient id="cyanGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#e6f7ff"/>
+      <stop offset="100%" style="stop-color:#bae7ff"/>
+    </linearGradient>
+    
+    <linearGradient id="magentaGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#fff0f6"/>
+      <stop offset="100%" style="stop-color:#ffadd2"/>
+    </linearGradient>
+    
+    <linearGradient id="yellowGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#fffbe6"/>
+      <stop offset="100%" style="stop-color:#fff1b8"/>
+    </linearGradient>
+    
+    <linearGradient id="blackGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#f0f0f0"/>
+      <stop offset="100%" style="stop-color:#d9d9d9"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- Main background - very light to not compete with the cards -->
+  <rect width="1200" height="800" fill="url(#subtlePattern)"/>
+  
+  <!-- ANIMATED SCATTERED PRINTING ICONS -->
+  
+  <!-- Modern Printer Icon - Top Left -->
+  <g opacity="0.65" filter="url(#subtleShadow)">
+    <animateTransform attributeName="transform" type="translate" from="120,150" to="125,155" dur="5s" repeatCount="indefinite" additive="sum" begin="0s"/>
+    <rect x="0" y="0" width="60" height="45" rx="4" fill="url(#metalGradient)" stroke="#cccccc" stroke-width="1"/>
+    <rect x="5" y="5" width="50" height="20" rx="2" fill="#f5f5f5" stroke="#e0e0e0" stroke-width="0.5"/>
+    <rect x="15" y="30" width="30" height="5" rx="1" fill="#e0e0e0"/>
+    <rect x="20" y="38" width="20" height="2" rx="1" fill="#e0e0e0"/>
+    <path d="M10 10 L50 10 M10 15 L50 15" stroke="#e0e0e0" stroke-width="0.7" stroke-dasharray="2,1"/>
+    
+    <!-- Animated paper coming out of printer -->
+    <rect x="25" y="25" width="30" height="0" fill="#ffffff" stroke="#e0e0e0" stroke-width="0.5">
+      <animate attributeName="height" values="0;10;0" dur="4s" repeatCount="indefinite" begin="0s"/>
+      <animate attributeName="y" values="25;15;25" dur="4s" repeatCount="indefinite" begin="0s"/>
+    </rect>
+  </g>
+  
+  <!-- Paper Stack Icon - Bottom Left -->
+  <g opacity="0.65" filter="url(#subtleShadow)">
+    <animateTransform attributeName="transform" type="translate" from="80,580" to="85,585" dur="7s" repeatCount="indefinite" additive="sum" begin="1s"/>
+    <rect x="0" y="5" width="45" height="55" fill="url(#paperGradient)" stroke="#dddddd" stroke-width="1"/>
+    <rect x="3" y="2" width="45" height="55" fill="url(#paperGradient)" stroke="#dddddd" stroke-width="1"/>
+    <rect x="6" y="0" width="45" height="55" fill="url(#paperGradient)" stroke="#dddddd" stroke-width="1"/>
+    <line x1="15" y1="10" x2="45" y2="10" stroke="#e0e0e0" stroke-width="1"/>
+    <line x1="15" y1="15" x2="45" y2="15" stroke="#e0e0e0" stroke-width="1"/>
+    <line x1="15" y1="20" x2="45" y2="20" stroke="#e0e0e0" stroke-width="1"/>
+    <line x1="15" y1="25" x2="45" y2="25" stroke="#e0e0e0" stroke-width="1"/>
+    <line x1="15" y1="30" x2="45" y2="30" stroke="#e0e0e0" stroke-width="1"/>
+    <line x1="15" y1="35" x2="35" y2="35" stroke="#e0e0e0" stroke-width="1"/>
+
+    <!-- Animated top paper shifting slightly -->
+    <rect x="6" y="0" width="45" height="55" fill="url(#paperGradient)" stroke="#dddddd" stroke-width="1" opacity="0.9">
+      <animateTransform attributeName="transform" type="translate" values="0,0; 2,-2; 0,0" dur="6s" repeatCount="indefinite" begin="0s"/>
+    </rect>
+  </g>
+  
+  <!-- Ink Droplet Icon - Top Right -->
+  <g opacity="0.65" filter="url(#subtleShadow)">
+    <animateTransform attributeName="transform" type="translate" from="1030,120" to="1035,125" dur="6s" repeatCount="indefinite" additive="sum" begin="0.5s"/>
+    <path d="M30,0 C30,0 0,30 0,45 C0,60 15,70 30,70 C45,70 60,60 60,45 C60,30 30,0 30,0 Z" fill="#f0f0f0" stroke="#dddddd" stroke-width="1"/>
+    <path d="M30,10 C30,10 10,30 10,45 C10,55 20,60 30,60 C40,60 50,55 50,45 C50,30 30,10 30,10 Z" fill="#f8f8f8" stroke="#e6e6e6" stroke-width="0.5"/>
+    <circle cx="25" cy="35" r="5" fill="#fafafa"/>
+    
+    <!-- Animated small ink droplet falling -->
+    <circle cx="30" cy="0" r="3" fill="#f0f0f0" opacity="0.7">
+      <animate attributeName="cy" values="0;70;0" dur="8s" repeatCount="indefinite" begin="2s"/>
+      <animate attributeName="opacity" values="0.7;0;0.7" dur="8s" repeatCount="indefinite" begin="2s"/>
+    </circle>
+  </g>
+  
+  <!-- Color Palette Icon - Bottom Right with rotating colors -->
+  <g opacity="0.65" filter="url(#subtleShadow)">
+    <animateTransform attributeName="transform" type="translate" from="1000,600" to="1005,605" dur="5.5s" repeatCount="indefinite" additive="sum" begin="1.5s"/>
+    <circle cx="30" cy="30" r="30" fill="#f0f0f0" stroke="#dddddd" stroke-width="1"/>
+    
+    <!-- Rotating color wheel -->
+    <g>
+      <animateTransform attributeName="transform" type="rotate" from="0 30 30" to="360 30 30" dur="20s" repeatCount="indefinite" additive="sum" begin="0s"/>
+      <path d="M30,0 A30,30 0 0,1 60,30 L30,30 Z" fill="url(#cyanGradient)" opacity="0.7"/>
+      <path d="M60,30 A30,30 0 0,1 30,60 L30,30 Z" fill="url(#magentaGradient)" opacity="0.7"/>
+      <path d="M30,60 A30,30 0 0,1 0,30 L30,30 Z" fill="url(#yellowGradient)" opacity="0.7"/>
+      <path d="M0,30 A30,30 0 0,1 30,0 L30,30 Z" fill="url(#blackGradient)" opacity="0.7"/>
+    </g>
+    <circle cx="30" cy="30" r="8" fill="#ffffff" stroke="#dddddd" stroke-width="0.5"/>
+  </g>
+  
+  <!-- Printing Press Icon - Left Center with moving rollers -->
+  <g opacity="0.65" filter="url(#subtleShadow)">
+    <animateTransform attributeName="transform" type="translate" from="140,350" to="145,355" dur="6.5s" repeatCount="indefinite" additive="sum" begin="2s"/>
+    <rect x="0" y="20" width="90" height="50" rx="3" fill="url(#metalGradient)" stroke="#cccccc" stroke-width="1"/>
+    <rect x="10" y="10" width="70" height="10" rx="2" fill="#e0e0e0" stroke="#d0d0d0" stroke-width="1"/>
+    <rect x="15" y="0" width="60" height="10" rx="2" fill="#e0e0e0" stroke="#d0d0d0" stroke-width="1"/>
+    <rect x="15" y="30" width="60" height="25" rx="2" fill="#f5f5f5" stroke="#e0e0e0" stroke-width="1"/>
+    
+    <!-- Printing rollers with rotation animation -->
+    <g>
+      <circle cx="25" cy="42" r="6" fill="#d0d0d0" stroke="#c0c0c0" stroke-width="1">
+        <animateTransform attributeName="transform" type="rotate" from="0 25 42" to="360 25 42" dur="4s" repeatCount="indefinite"/>
+      </circle>
+      <line x1="25" y1="36" x2="25" y2="48" stroke="#c0c0c0" stroke-width="0.5" opacity="0.5">
+        <animateTransform attributeName="transform" type="rotate" from="0 25 42" to="360 25 42" dur="4s" repeatCount="indefinite"/>
+      </line>
+    </g>
+    
+    <g>
+      <circle cx="45" cy="42" r="6" fill="#d0d0d0" stroke="#c0c0c0" stroke-width="1">
+        <animateTransform attributeName="transform" type="rotate" from="0 45 42" to="360 45 42" dur="4s" repeatCount="indefinite"/>
+      </circle>
+      <line x1="45" y1="36" x2="45" y2="48" stroke="#c0c0c0" stroke-width="0.5" opacity="0.5">
+        <animateTransform attributeName="transform" type="rotate" from="0 45 42" to="360 45 42" dur="4s" repeatCount="indefinite"/>
+      </line>
+    </g>
+    
+    <g>
+      <circle cx="65" cy="42" r="6" fill="#d0d0d0" stroke="#c0c0c0" stroke-width="1">
+        <animateTransform attributeName="transform" type="rotate" from="0 65 42" to="360 65 42" dur="4s" repeatCount="indefinite"/>
+      </circle>
+      <line x1="65" y1="36" x2="65" y2="48" stroke="#c0c0c0" stroke-width="0.5" opacity="0.5">
+        <animateTransform attributeName="transform" type="rotate" from="0 65 42" to="360 65 42" dur="4s" repeatCount="indefinite"/>
+      </line>
+    </g>
+    
+    <!-- Machine legs -->
+    <rect x="15" y="70" width="10" height="10" fill="#d0d0d0" stroke="#c0c0c0" stroke-width="0.5"/>
+    <rect x="65" y="70" width="10" height="10" fill="#d0d0d0" stroke="#c0c0c0" stroke-width="0.5"/>
+    
+    <!-- Paper feed with animation -->
+    <path d="M10 30 C0 25, 0 15, 10 10" stroke="#d9d9d9" stroke-width="1" fill="none"/>
+    <path d="M80 30 C90 25, 90 15, 80 10" stroke="#d9d9d9" stroke-width="1" fill="none"/>
+    
+    <!-- Animated paper going through press -->
+    <rect x="15" y="42" width="60" height="1" fill="#ffffff" stroke="#e0e0e0" stroke-width="0.1">
+      <animate attributeName="opacity" values="0;1;0" dur="4s" repeatCount="indefinite" begin="0s"/>
+    </rect>
+  </g>
+  
+  <!-- CMYK Color Bars - Right Center with color pulsing -->
+  <g opacity="0.7" filter="url(#subtleShadow)">
+    <animateTransform attributeName="transform" type="translate" from="950,360" to="955,365" dur="7s" repeatCount="indefinite" additive="sum" begin="1s"/>
+    <rect x="0" y="0" width="80" height="20" rx="3" fill="#f5f5f5" stroke="#e0e0e0" stroke-width="1"/>
+    
+    <!-- Cyan with pulse animation -->
+    <rect x="5" y="5" width="15" height="10" rx="1" fill="url(#cyanGradient)" opacity="0.7">
+      <animate attributeName="opacity" values="0.7;1;0.7" dur="4s" repeatCount="indefinite" begin="0s"/>
+    </rect>
+    <text x="12" y="13" font-family="Arial" font-size="8" text-anchor="middle" fill="#888888">C</text>
+    
+    <!-- Magenta with pulse animation -->
+    <rect x="23" y="5" width="15" height="10" rx="1" fill="url(#magentaGradient)" opacity="0.7">
+      <animate attributeName="opacity" values="0.7;1;0.7" dur="4s" repeatCount="indefinite" begin="1s"/>
+    </rect>
+    <text x="30" y="13" font-family="Arial" font-size="8" text-anchor="middle" fill="#888888">M</text>
+    
+    <!-- Yellow with pulse animation -->
+    <rect x="41" y="5" width="15" height="10" rx="1" fill="url(#yellowGradient)" opacity="0.7">
+      <animate attributeName="opacity" values="0.7;1;0.7" dur="4s" repeatCount="indefinite" begin="2s"/>
+    </rect>
+    <text x="48" y="13" font-family="Arial" font-size="8" text-anchor="middle" fill="#888888">Y</text>
+    
+    <!-- Black with pulse animation -->
+    <rect x="59" y="5" width="15" height="10" rx="1" fill="url(#blackGradient)" opacity="0.7">
+      <animate attributeName="opacity" values="0.7;1;0.7" dur="4s" repeatCount="indefinite" begin="3s"/>
+    </rect>
+    <text x="66" y="13" font-family="Arial" font-size="8" text-anchor="middle" fill="#888888">K</text>
+  </g>
+  
+  <!-- Document Icon - Top Left Corner with page flip animation -->
+  <g opacity="0.65" filter="url(#subtleShadow)">
+    <animateTransform attributeName="transform" type="translate" from="50,50" to="55,55" dur="6s" repeatCount="indefinite" additive="sum" begin="0.7s"/>
+    <path d="M0,0 L40,0 L55,15 L55,70 L0,70 Z" fill="url(#paperGradient)" stroke="#dddddd" stroke-width="1"/>
+    <path d="M40,0 L40,15 L55,15" fill="none" stroke="#dddddd" stroke-width="1"/>
+    <line x1="10" y1="25" x2="45" y2="25" stroke="#e0e0e0" stroke-width="1"/>
+    <line x1="10" y1="32" x2="45" y2="32" stroke="#e0e0e0" stroke-width="1"/>
+    <line x1="10" y1="39" x2="45" y2="39" stroke="#e0e0e0" stroke-width="1"/>
+    <line x1="10" y1="46" x2="45" y2="46" stroke="#e0e0e0" stroke-width="1"/>
+    <line x1="10" y1="53" x2="35" y2="53" stroke="#e0e0e0" stroke-width="1"/>
+    
+    <!-- Page corner flip animation -->
+    <path d="M40,0 L40,15 L55,15" fill="none" stroke="#dddddd" stroke-width="1">
+      <animate attributeName="d" values="M40,0 L40,15 L55,15; M38,0 L38,17 L55,17; M40,0 L40,15 L55,15" dur="7s" repeatCount="indefinite" begin="1s"/>
+    </path>
+  </g>
+  
+  <!-- Business Card Icon - Bottom Left Corner -->
+  <g opacity="0.65" filter="url(#subtleShadow)">
+    <animateTransform attributeName="transform" type="translate" from="180,680" to="185,685" dur="5s" repeatCount="indefinite" additive="sum" begin="2.5s"/>
+    <rect x="0" y="0" width="75" height="45" rx="3" fill="url(#paperGradient)" stroke="#dddddd" stroke-width="1"/>
+    <rect x="5" y="5" width="20" height="5" rx="1" fill="#e0e0e0"/>
+    <line x1="5" y1="15" x2="65" y2="15" stroke="#e0e0e0" stroke-width="2"/>
+    <line x1="5" y1="25" x2="65" y2="25" stroke="#e0e0e0" stroke-width="1"/>
+    <line x1="5" y1="32" x2="65" y2="32" stroke="#e0e0e0" stroke-width="1"/>
+    <line x1="5" y1="39" x2="40" y2="39" stroke="#e0e0e0" stroke-width="1"/>
+    
+    <!-- Animated logo circle pulsing -->
+    <circle cx="60" cy="35" r="8" fill="#e0e0e0" opacity="0.7">
+      <animate attributeName="r" values="8;9;8" dur="4s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.7;0.9;0.7" dur="4s" repeatCount="indefinite"/>
+    </circle>
+  </g>
+  
+  <!-- Layout Grid Icon - Top Right Corner with highlight animation -->
+  <g opacity="0.65" filter="url(#subtleShadow)">
+    <animateTransform attributeName="transform" type="translate" from="1080,50" to="1085,55" dur="6.2s" repeatCount="indefinite" additive="sum" begin="1.2s"/>
+    <rect x="0" y="0" width="60" height="60" rx="3" fill="#f5f5f5" stroke="#e0e0e0" stroke-width="1"/>
+    <line x1="20" y1="0" x2="20" y2="60" stroke="#e0e0e0" stroke-width="1"/>
+    <line x1="40" y1="0" x2="40" y2="60" stroke="#e0e0e0" stroke-width="1"/>
+    <line x1="0" y1="20" x2="60" y2="20" stroke="#e0e0e0" stroke-width="1"/>
+    <line x1="0" y1="40" x2="60" y2="40" stroke="#e0e0e0" stroke-width="1"/>
+    
+    <!-- Cell highlights that move across the grid -->
+    <rect x="0" y="0" width="20" height="20" fill="#e0e0e0" opacity="0.3">
+      <animate attributeName="x" values="0;40;0" dur="8s" repeatCount="indefinite" begin="0s"/>
+      <animate attributeName="y" values="0;0;40;40;0" dur="8s" repeatCount="indefinite" begin="0s"/>
+    </rect>
+  </g>
+  
+  <!-- Brochure Icon - Bottom Right Corner with page turning -->
+  <g opacity="0.65" filter="url(#subtleShadow)">
+    <animateTransform attributeName="transform" type="translate" from="1050,700" to="1055,705" dur="5.8s" repeatCount="indefinite" additive="sum" begin="3s"/>
+    <path d="M0,0 L0,60 L30,50 L60,60 L60,0 Z" fill="url(#paperGradient)" stroke="#dddddd" stroke-width="1"/>
+    <line x1="30" y1="0" x2="30" y2="50" stroke="#e0e0e0" stroke-width="1"/>
+    <line x1="5" y1="10" x2="25" y2="10" stroke="#e0e0e0" stroke-width="1"/>
+    <line x1="5" y1="17" x2="25" y2="17" stroke="#e0e0e0" stroke-width="1"/>
+    <line x1="5" y1="24" x2="25" y2="24" stroke="#e0e0e0" stroke-width="1"/>
+    <line x1="5" y1="31" x2="25" y2="31" stroke="#e0e0e0" stroke-width="1"/>
+    <line x1="35" y1="10" x2="55" y2="10" stroke="#e0e0e0" stroke-width="1"/>
+    <line x1="35" y1="17" x2="55" y2="17" stroke="#e0e0e0" stroke-width="1"/>
+    <line x1="35" y1="24" x2="55" y2="24" stroke="#e0e0e0" stroke-width="1"/>
+    <line x1="35" y1="31" x2="55" y2="31" stroke="#e0e0e0" stroke-width="1"/>
+    
+    <!-- Page turning animation -->
+    <path d="M30 0 L30 50 L30 50" fill="none" stroke="#e0e0e0" stroke-width="1">
+      <animate attributeName="d" values="M30,0 L30,50; M30,0 C40,10 40,40 30,50; M30,0 L30,50" dur="10s" repeatCount="indefinite"/>
+    </path>
+    
+    <!-- Image placeholders with fade animation -->
+    <rect x="5" y="38" width="20" height="15" fill="#e0e0e0" opacity="0.5">
+      <animate attributeName="opacity" values="0.5;0.8;0.5" dur="6s" repeatCount="indefinite" begin="0s"/>
+    </rect>
+    <rect x="35" y="38" width="20" height="15" fill="#e0e0e0" opacity="0.5">
+      <animate attributeName="opacity" values="0.5;0.8;0.5" dur="6s" repeatCount="indefinite" begin="3s"/>
+    </rect>
+  </g>
+  
+  <!-- Print Settings Icon - Upper Left with rotating gear animation -->
+  <g opacity="0.65" filter="url(#subtleShadow)">
+    <animateTransform attributeName="transform" type="translate" from="100,220" to="105,225" dur="5.3s" repeatCount="indefinite" additive="sum" begin="1.8s"/>
+    <circle cx="30" cy="30" r="28" fill="#f5f5f5" stroke="#e0e0e0" stroke-width="1"/>
+    <circle cx="30" cy="30" r="22" fill="#f0f0f0" stroke="#e0e0e0" stroke-width="0.5"/>
+    <circle cx="30" cy="30" r="6" fill="#e0e0e0"/>
+    
+    <!-- Rotating gear animation -->
+    <g>
+      <animateTransform attributeName="transform" type="rotate" from="0 30 30" to="360 30 30" dur="15s" repeatCount="indefinite"/>
+      <path d="M30,2 L33,9 L40,10 L35,15 L37,22 L30,18 L23,22 L25,15 L20,10 L27,9 Z" fill="#e6e6e6" stroke="#d9d9d9" stroke-width="0.5"/>
+      <path d="M30,58 L27,51 L20,50 L25,45 L23,38 L30,42 L37,38 L35,45 L40,50 L33,51 Z" fill="#e6e6e6" stroke="#d9d9d9" stroke-width="0.5"/>
+      <path d="M2,30 L9,33 L10,40 L15,35 L22,37 L18,30 L22,23 L15,25 L10,20 L9,27 Z" fill="#e6e6e6" stroke="#d9d9d9" stroke-width="0.5"/>
+      <path d="M58,30 L51,27 L50,20 L45,25 L38,23 L42,30 L38,37 L45,35 L50,40 L51,33 Z" fill="#e6e6e6" stroke="#d9d9d9" stroke-width="0.5"/>
+    </g>
+  </g>
+  
+  <!-- Photo Image Icon - Upper Right with scanning effect -->
+  <g opacity="0.65" filter="url(#subtleShadow)">
+    <animateTransform attributeName="transform" type="translate" from="950,220" to="955,225" dur="6.8s" repeatCount="indefinite" additive="sum" begin="0.2s"/>
+    <rect x="0" y="0" width="70" height="55" rx="3" fill="#f5f5f5" stroke="#e0e0e0" stroke-width="1"/>
+    <rect x="5" y="5" width="60" height="45" rx="2" fill="#fafafa" stroke="#e6e6e6" stroke-width="0.5"/>
+    <circle cx="20" cy="20" r="7" fill="#e0e0e0"/>
+    <path d="M5,35 L25,25 L35,30 L50,20 L65,35 L65,45 L5,45 Z" fill="#e6e6e6"/>
+    
+    <!-- Scanning line animation -->
+    <line x1="5" y1="10" x2="65" y2="10" stroke="#e0e0e0" stroke-width="1" opacity="0.7">
+      <animate attributeName="y1" values="10;45;10" dur="5s" repeatCount="indefinite"/>
+      <animate attributeName="y2" values="10;45;10" dur="5s" repeatCount="indefinite"/>
+    </line>
+  </g>
+  
+  <!-- Typography Icon - Left Side with animated cursor -->
+  <g opacity="0.65" filter="url(#subtleShadow)">
+    <animateTransform attributeName="transform" type="translate" from="70,420" to="75,425" dur="7.2s" repeatCount="indefinite" additive="sum" begin="2.3s"/>
+    <rect x="0" y="0" width="50" height="60" rx="3" fill="#f5f5f5" stroke="#e0e0e0" stroke-width="1"/>
+    <text x="25" y="25" font-family="Arial" font-size="24" font-weight="bold" text-anchor="middle" fill="#d0d0d0">A</text>
+    <text x="25" y="45" font-family="Arial" font-size="14" text-anchor="middle" fill="#d9d9d9">a</text>
+    <line x1="10" y1="50" x2="40" y2="50" stroke="#e0e0e0" stroke
