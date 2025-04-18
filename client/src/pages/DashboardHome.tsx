@@ -21,6 +21,37 @@ import {
 import { styled } from '@mui/material/styles';
 import MuiTooltip, { TooltipProps } from '@mui/material/Tooltip';
 
+import { 
+  Assignment as OrdersIcon, 
+  People as ClientsIcon, 
+  People as PeopleIcon,
+  Inventory as InventoryIcon, 
+  Warning as WarningIcon, 
+  TrendingUp as TrendingUpIcon, 
+  MoreVert as MoreVertIcon, 
+  ChevronRight as ChevronRightIcon, 
+  Circle as CircleIcon,
+  CalendarMonth as CalendarIcon,
+  Paid as PaidIcon,
+  Build as BuildIcon,
+  Construction as ConstructionIcon,
+  ShoppingCart as ShoppingCartIcon,
+  Notifications as NotificationsIcon,
+  CheckCircle as CheckCircleIcon,
+  PriorityHigh as PriorityHighIcon,
+  Refresh as RefreshIcon,
+  DashboardCustomize as DashboardCustomizeIcon,
+  FilterAlt as FilterAltIcon,
+  DateRange as DateRangeIcon,
+  RequestQuote as RequestIcon,
+  Sync as SyncIcon
+} from '@mui/icons-material';
+import { 
+  ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, 
+  Legend, PieChart, Pie, Cell, LineChart, Line, AreaChart, Area, RadarChart, PolarGrid,
+  PolarAngleAxis, PolarRadiusAxis, Radar
+} from 'recharts';
+
 // Create a custom Tooltip component that wraps disabled buttons in a span
 const StyledTooltip = styled(({ className, ...props }: TooltipProps) => (
   <MuiTooltip {...props} classes={{ popper: className }} />
@@ -55,36 +86,6 @@ const CustomTooltip = ({ children, ...props }: TooltipProps) => {
     </StyledTooltip>
   );
 };
-import { 
-  Assignment as OrdersIcon, 
-  People as ClientsIcon, 
-  People as PeopleIcon,
-  Inventory as InventoryIcon, 
-  Warning as WarningIcon, 
-  TrendingUp as TrendingUpIcon, 
-  MoreVert as MoreVertIcon, 
-  ChevronRight as ChevronRightIcon, 
-  Circle as CircleIcon,
-  CalendarMonth as CalendarIcon,
-  Paid as PaidIcon,
-  Build as BuildIcon,
-  Construction as ConstructionIcon,
-  ShoppingCart as ShoppingCartIcon,
-  Notifications as NotificationsIcon,
-  CheckCircle as CheckCircleIcon,
-  PriorityHigh as PriorityHighIcon,
-  Refresh as RefreshIcon,
-  DashboardCustomize as DashboardCustomizeIcon,
-  FilterAlt as FilterAltIcon,
-  DateRange as DateRangeIcon,
-  RequestQuote as RequestIcon,
-  Sync as SyncIcon
-} from '@mui/icons-material';
-import { 
-  ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, 
-  Legend, PieChart, Pie, Cell, LineChart, Line, AreaChart, Area, RadarChart, PolarGrid,
-  PolarAngleAxis, PolarRadiusAxis, Radar
-} from 'recharts';
 
 // Interface definitions
 interface Order {
