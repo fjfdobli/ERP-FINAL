@@ -90,6 +90,30 @@ export const calculateOvertimePay = (
 };
 
 /**
+ * Calculate overtime hours based on afternoon time out
+ * Returns hours worked after 6:00 PM, rounded to nearest 0.1 hours
+ */
+export const calculateOvertimeHours = (afternoonTimeOut: string | null): number => {
+  if (!afternoonTimeOut) {
+    return 0;
+  }
+  
+  // Parse time from format "HH:mm"
+  const [hours, minutes] = afternoonTimeOut.split(':').map(Number);
+  
+  // If time is before or equal to 6:00 PM, no overtime
+  if (hours < 18 || (hours === 18 && minutes === 0)) {
+    return 0;
+  }
+  
+  // Calculate hours after 6:00 PM
+  const overtimeHours = hours - 18 + (minutes / 60);
+  
+  // Round to nearest 0.1 hours
+  return Math.round(overtimeHours * 10) / 10;
+};
+
+/**
  * Calculate default deductions (SSS, etc)
  */
 export const calculateDefaultDeductions = (

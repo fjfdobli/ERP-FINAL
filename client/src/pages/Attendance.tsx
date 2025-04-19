@@ -23,6 +23,7 @@ import { fetchEmployees } from '../redux/slices/employeesSlice';
 import { Attendance, AttendanceFilters } from '../services/attendanceService';
 import { format, isToday, isYesterday, parseISO, addDays, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, addMonths, subMonths, isSameDay } from 'date-fns';
 import { Employee } from '../services/employeesService';
+import { calculateOvertimeHours } from '../services/utils/payrollUtils';
 import * as XLSX from 'xlsx';
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, 
@@ -101,6 +102,8 @@ interface AttendanceFormData {
   afternoonTimeIn: Date | null;
   afternoonTimeOut: Date | null;
   status: 'Present' | 'Absent' | 'Late' | 'Half-day' | 'On Leave';
+  isMorningPresent: boolean;
+  isAfternoonPresent: boolean;
   overtime: number | null;
   notes: string;
 }
@@ -114,6 +117,8 @@ interface BulkAttendanceRow {
   afternoonTimeIn: Date | null;
   afternoonTimeOut: Date | null;
   status: 'Present' | 'Absent' | 'Late' | 'Half-day' | 'On Leave';
+  isMorningPresent: boolean;
+  isAfternoonPresent: boolean;
   overtime: number | null;
   notes: string;
 }
@@ -155,7 +160,7 @@ const DailyAttendanceBanner: React.FC<{
     // Get employees present on the selected date
     const dateToRepeat = filters.startDate || '';
     const recordsToRepeat = filteredRecords.filter(r => 
-      r.status === 'Present' || r.status === 'Late'
+      r.status === 'Present' || r.status === 'Late' || r.status === 'Half-day'
     );
     
     // Initialize bulk attendance with these employees
@@ -168,6 +173,8 @@ const DailyAttendanceBanner: React.FC<{
         // Extract morning and afternoon times from notes if available
         let morningOut = null;
         let afternoonIn = null;
+        let isMorningPresent = record.status !== 'Half-day'; // Default assumption
+        let isAfternoonPresent = record.status !== 'Half-day'; // Default assumption
         
         if (record.notes && record.notes.includes('Morning:')) {
           const noteParts = record.notes.split('\n');
@@ -176,29 +183,108 @@ const DailyAttendanceBanner: React.FC<{
           // Extract morning times
           if (timeParts[0].includes('Morning:')) {
             const morningTimes = timeParts[0].replace('Morning:', '').trim().split('-');
-            if (morningTimes.length === 2 && morningTimes[1].trim() !== 'N/A') {
-              morningOut = parseTimeString(morningTimes[1].trim());
+            if (morningTimes.length === 2) {
+              if (morningTimes[0].trim() !== 'N/A') {
+                isMorningPresent = true;
+              } else {
+                isMorningPresent = false;
+              }
+              
+              if (morningTimes[1].trim() !== 'N/A') {
+                morningOut = parseTimeString(morningTimes[1].trim());
+              }
             }
           }
           
           // Extract afternoon times
           if (timeParts.length > 1 && timeParts[1].includes('Afternoon:')) {
             const afternoonTimes = timeParts[1].replace('Afternoon:', '').trim().split('-');
-            if (afternoonTimes.length === 2 && afternoonTimes[0].trim() !== 'N/A') {
-              afternoonIn = parseTimeString(afternoonTimes[0].trim());
+            if (afternoonTimes.length === 2) {
+              if (afternoonTimes[0].trim() !== 'N/A') {
+                isAfternoonPresent = true;
+                afternoonIn = parseTimeString(afternoonTimes[0].trim());
+              } else {
+                isAfternoonPresent = false;
+              }
             }
           }
+        } else {
+          // Fallback for old format records
+          // If it's a half-day, make an educated guess based on available times
+          if (record.status === 'Half-day') {
+            if (morningIn) {
+              isMorningPresent = true;
+              isAfternoonPresent = false;
+              // Set default morning out if it's not already set
+              if (!morningOut) {
+                const defaultMorningOut = new Date();
+                defaultMorningOut.setHours(12, 0, 0, 0);
+                morningOut = defaultMorningOut;
+              }
+            } else if (afternoonOut) {
+              isMorningPresent = false;
+              isAfternoonPresent = true;
+              // Set default afternoon in if it's not already set
+              if (!afternoonIn) {
+                const defaultAfternoonIn = new Date();
+                defaultAfternoonIn.setHours(13, 0, 0, 0);
+                afternoonIn = defaultAfternoonIn;
+              }
+            }
+          }
+        }
+        
+        // Create new time variables for the fixed times
+        let newMorningIn = morningIn;
+        let newMorningOut = morningOut;
+        let newAfternoonIn = afternoonIn;
+        let newAfternoonOut = afternoonOut;
+        
+        // Ensure morning times are fixed at 7AM and 12NN
+        if (isMorningPresent) {
+          const fixedMorningIn = new Date();
+          fixedMorningIn.setHours(7, 0, 0, 0);
+          
+          const fixedMorningOut = new Date();
+          fixedMorningOut.setHours(12, 0, 0, 0);
+          
+          newMorningIn = fixedMorningIn;
+          newMorningOut = fixedMorningOut;
+        }
+        
+        // Ensure afternoon times are fixed at 1PM and 6PM
+        if (isAfternoonPresent) {
+          const fixedAfternoonIn = new Date();
+          fixedAfternoonIn.setHours(13, 0, 0, 0);
+          
+          const fixedAfternoonOut = new Date();
+          fixedAfternoonOut.setHours(18, 0, 0, 0);
+          
+          newAfternoonIn = fixedAfternoonIn;
+          newAfternoonOut = fixedAfternoonOut;
+        }
+        
+        // Determine the correct status based on morning and afternoon presence
+        let status = record.status;
+        if (isMorningPresent && isAfternoonPresent) {
+          status = 'Present';
+        } else if (isMorningPresent || isAfternoonPresent) {
+          status = 'Half-day';
+        } else {
+          status = 'Absent';
         }
         
         return {
           employeeId: record.employeeId,
           employeeName: record.employeeName || getEmployeeName(record.employeeId),
-          present: true,
-          morningTimeIn: morningIn,
-          morningTimeOut: morningOut,
-          afternoonTimeIn: afternoonIn,
-          afternoonTimeOut: afternoonOut,
-          status: record.status as any,
+          present: isMorningPresent || isAfternoonPresent,
+          morningTimeIn: newMorningIn,
+          morningTimeOut: newMorningOut,
+          afternoonTimeIn: newAfternoonIn,
+          afternoonTimeOut: newAfternoonOut,
+          status: status as any,
+          isMorningPresent,
+          isAfternoonPresent,
           overtime: record.overtime || 0,
           notes: `Pattern repeated from ${formatDateMMDDYYYY(dateToRepeat)}`,
         };
@@ -224,6 +310,8 @@ const DailyAttendanceBanner: React.FC<{
       afternoonTimeIn: new Date(new Date().setHours(13, 0, 0, 0)),
       afternoonTimeOut: new Date(new Date().setHours(18, 0, 0, 0)),
       status: 'Present' as const,
+      isMorningPresent: true,
+      isAfternoonPresent: true,
       overtime: 0,
       notes: '',
     }));
@@ -427,6 +515,8 @@ const AttendanceLists: React.FC = () => {
     afternoonTimeIn: null,
     afternoonTimeOut: null,
     status: 'Present',
+    isMorningPresent: true,
+    isAfternoonPresent: true,
     overtime: null,
     notes: '',
   });
@@ -604,31 +694,138 @@ const AttendanceLists: React.FC = () => {
       let morningTimeOut = null;
       let afternoonTimeIn = null;
       let afternoonTimeOut = null;
+      let isMorningPresent = attendance.status !== 'Half-day';
+      let isAfternoonPresent = attendance.status !== 'Half-day';
       
-      if (attendance.timeIn) {
-        // Assuming timeIn is AM (morning)
-        const timeInDate = new Date();
-        const [hours, minutes] = attendance.timeIn.split(':').map(Number);
-        timeInDate.setHours(hours, minutes);
-        morningTimeIn = timeInDate;
-      }
-      
-      if (attendance.timeOut) {
-        const timeOutDate = new Date();
-        const [hours, minutes] = attendance.timeOut.split(':').map(Number);
-        timeOutDate.setHours(hours, minutes);
+      // Try to parse the notes to extract all time periods if available
+      if (attendance.notes && attendance.notes.includes('Morning:')) {
+        const noteParts = attendance.notes.split('\n');
+        const timeParts = noteParts[0].split(',');
         
-        if (hours < 13) {
-          morningTimeOut = timeOutDate;
+        // Extract morning times
+        if (timeParts[0].includes('Morning:')) {
+          const morningTimes = timeParts[0].replace('Morning:', '').trim().split('-');
+          if (morningTimes.length === 2) {
+            if (morningTimes[0].trim() !== 'N/A') {
+              const timeInDate = new Date();
+              const [hours, minutes] = attendance.timeIn ? attendance.timeIn.split(':').map(Number) : [7, 0];
+              timeInDate.setHours(hours, minutes);
+              morningTimeIn = timeInDate;
+              isMorningPresent = true;
+            } else {
+              isMorningPresent = false;
+            }
+            
+            if (morningTimes[1].trim() !== 'N/A') {
+              const morningOutDate = new Date();
+              const morningOutString = morningTimes[1].trim();
+              // Extract hours and minutes from the time string (e.g., "12:00 PM")
+              const [time, period] = morningOutString.split(' ');
+              const [hours, minutes] = time.split(':').map(Number);
+              let adjustedHours = hours;
+              if (period === 'PM' && hours < 12) adjustedHours += 12;
+              if (period === 'AM' && hours === 12) adjustedHours = 0;
+              morningOutDate.setHours(adjustedHours, minutes);
+              morningTimeOut = morningOutDate;
+            }
+          }
+        }
+        
+        // Extract afternoon times
+        if (timeParts.length > 1 && timeParts[1].includes('Afternoon:')) {
+          const afternoonTimes = timeParts[1].replace('Afternoon:', '').trim().split('-');
+          if (afternoonTimes.length === 2) {
+            if (afternoonTimes[0].trim() !== 'N/A') {
+              const afternoonInDate = new Date();
+              const afternoonInString = afternoonTimes[0].trim();
+              // Extract hours and minutes from the time string (e.g., "1:00 PM")
+              const [time, period] = afternoonInString.split(' ');
+              const [hours, minutes] = time.split(':').map(Number);
+              let adjustedHours = hours;
+              if (period === 'PM' && hours < 12) adjustedHours += 12;
+              if (period === 'AM' && hours === 12) adjustedHours = 0;
+              afternoonInDate.setHours(adjustedHours, minutes);
+              afternoonTimeIn = afternoonInDate;
+              isAfternoonPresent = true;
+            } else {
+              isAfternoonPresent = false;
+            }
+            
+            if (afternoonTimes[1].trim() !== 'N/A') {
+              const afternoonOutDate = new Date();
+              const afternoonOutString = afternoonTimes[1].trim();
+              // Extract hours and minutes from the time string (e.g., "6:00 PM")
+              const [time, period] = afternoonOutString.split(' ');
+              const [hours, minutes] = time.split(':').map(Number);
+              let adjustedHours = hours;
+              if (period === 'PM' && hours < 12) adjustedHours += 12;
+              if (period === 'AM' && hours === 12) adjustedHours = 0;
+              afternoonOutDate.setHours(adjustedHours, minutes);
+              afternoonTimeOut = afternoonOutDate;
+            }
+          }
+        }
+      } else {
+        // Fallback if notes don't have the new format
+        if (attendance.timeIn) {
+          // Assuming timeIn is AM (morning)
+          const timeInDate = new Date();
+          const [hours, minutes] = attendance.timeIn.split(':').map(Number);
+          timeInDate.setHours(hours, minutes);
+          morningTimeIn = timeInDate;
+          isMorningPresent = true;
         } else {
-          afternoonTimeOut = timeOutDate;
+          isMorningPresent = false;
+        }
+        
+        if (attendance.timeOut) {
+          const timeOutDate = new Date();
+          const [hours, minutes] = attendance.timeOut.split(':').map(Number);
+          timeOutDate.setHours(hours, minutes);
+          
+          if (hours < 13) {
+            morningTimeOut = timeOutDate;
+          } else {
+            afternoonTimeOut = timeOutDate;
+            isAfternoonPresent = true;
+          }
         }
       }
       
-      if (!afternoonTimeIn && attendance.status === 'Present') {
+      // Default afternoon times for present status if not set
+      if (attendance.status === 'Present' && isAfternoonPresent && !afternoonTimeIn) {
         const defaultAfternoonIn = new Date();
         defaultAfternoonIn.setHours(13, 0);
         afternoonTimeIn = defaultAfternoonIn;
+      }
+      
+      // For half-day, determine which half is present
+      if (attendance.status === 'Half-day') {
+        if (isMorningPresent && !isAfternoonPresent) {
+          // Morning only half-day
+          if (!morningTimeIn) {
+            const defaultMorningIn = new Date();
+            defaultMorningIn.setHours(7, 0);
+            morningTimeIn = defaultMorningIn;
+          }
+          if (!morningTimeOut) {
+            const defaultMorningOut = new Date();
+            defaultMorningOut.setHours(12, 0);
+            morningTimeOut = defaultMorningOut;
+          }
+        } else if (!isMorningPresent && isAfternoonPresent) {
+          // Afternoon only half-day
+          if (!afternoonTimeIn) {
+            const defaultAfternoonIn = new Date();
+            defaultAfternoonIn.setHours(13, 0);
+            afternoonTimeIn = defaultAfternoonIn;
+          }
+          if (!afternoonTimeOut) {
+            const defaultAfternoonOut = new Date();
+            defaultAfternoonOut.setHours(18, 0);
+            afternoonTimeOut = defaultAfternoonOut;
+          }
+        }
       }
       
       setFormData({
@@ -639,6 +836,8 @@ const AttendanceLists: React.FC = () => {
         afternoonTimeIn,
         afternoonTimeOut,
         status: attendance.status as any || 'Present',
+        isMorningPresent,
+        isAfternoonPresent,
         overtime: attendance.overtime,
         notes: attendance.notes || '',
       });
@@ -652,6 +851,8 @@ const AttendanceLists: React.FC = () => {
         afternoonTimeIn: null,
         afternoonTimeOut: null,
         status: 'Present',
+        isMorningPresent: true,
+        isAfternoonPresent: true,
         overtime: null,
         notes: '',
       });
@@ -674,6 +875,8 @@ const AttendanceLists: React.FC = () => {
           afternoonTimeIn: new Date(new Date().setHours(13, 0, 0, 0)),
           afternoonTimeOut: new Date(new Date().setHours(18, 0, 0, 0)),
           status: 'Present' as const,
+          isMorningPresent: true,
+          isAfternoonPresent: true,
           overtime: 0,
           notes: '',
         }));
@@ -747,6 +950,8 @@ const AttendanceLists: React.FC = () => {
         updatedData[index].morningTimeOut = null;
         updatedData[index].afternoonTimeIn = null;
         updatedData[index].afternoonTimeOut = null;
+        updatedData[index].isMorningPresent = false;
+        updatedData[index].isAfternoonPresent = false;
         updatedData[index].overtime = 0;
       } else {
         // Set default times if changed to present
@@ -754,6 +959,62 @@ const AttendanceLists: React.FC = () => {
         updatedData[index].morningTimeOut = new Date(new Date().setHours(12, 0, 0, 0));
         updatedData[index].afternoonTimeIn = new Date(new Date().setHours(13, 0, 0, 0));
         updatedData[index].afternoonTimeOut = new Date(new Date().setHours(18, 0, 0, 0));
+        updatedData[index].isMorningPresent = true;
+        updatedData[index].isAfternoonPresent = true;
+      }
+    }
+    
+    // Handle half-day status changes
+    if (field === 'isMorningPresent' || field === 'isAfternoonPresent') {
+      const isMorningPresent = field === 'isMorningPresent' ? value : updatedData[index].isMorningPresent;
+      const isAfternoonPresent = field === 'isAfternoonPresent' ? value : updatedData[index].isAfternoonPresent;
+      
+      // Update morning time fields
+      if (field === 'isMorningPresent') {
+        if (value) {
+          // Set default morning times
+          updatedData[index].morningTimeIn = new Date(new Date().setHours(7, 0, 0, 0));
+          updatedData[index].morningTimeOut = new Date(new Date().setHours(12, 0, 0, 0));
+        } else {
+          // Clear morning times
+          updatedData[index].morningTimeIn = null;
+          updatedData[index].morningTimeOut = null;
+        }
+      }
+      
+      // Update afternoon time fields
+      if (field === 'isAfternoonPresent') {
+        if (value) {
+          // Set default afternoon times
+          updatedData[index].afternoonTimeIn = new Date(new Date().setHours(13, 0, 0, 0));
+          updatedData[index].afternoonTimeOut = new Date(new Date().setHours(18, 0, 0, 0));
+        } else {
+          // Clear afternoon times
+          updatedData[index].afternoonTimeIn = null;
+          updatedData[index].afternoonTimeOut = null;
+        }
+      }
+      
+      // Update the overall status based on which parts of the day are present
+      if (isMorningPresent && isAfternoonPresent) {
+        updatedData[index].status = 'Present';
+        updatedData[index].present = true;
+      } else if (!isMorningPresent && !isAfternoonPresent) {
+        updatedData[index].status = 'Absent';
+        updatedData[index].present = false;
+      } else {
+        updatedData[index].status = 'Half-day';
+        updatedData[index].present = true;
+      }
+    }
+    
+    // If status is directly changed to Half-day
+    if (field === 'status' && value === 'Half-day') {
+      // Default to afternoon only half-day if both are currently set
+      if (updatedData[index].isMorningPresent && updatedData[index].isAfternoonPresent) {
+        updatedData[index].isMorningPresent = false;
+        updatedData[index].morningTimeIn = null;
+        updatedData[index].morningTimeOut = null;
       }
     }
     
@@ -867,20 +1128,37 @@ const AttendanceLists: React.FC = () => {
         const attendanceRecords = bulkAttendanceData
           .filter(row => row.present || row.status !== 'Present')
           .map(row => {
-            // Combine morning and afternoon times into the format expected by backend
-            // Morning time in will be used as timeIn
-            // Afternoon time out will be used as timeOut
-            const morningIn = row.morningTimeIn ? format(row.morningTimeIn, 'hh:mm a') : null;
-            const afternoonOut = row.afternoonTimeOut ? format(row.afternoonTimeOut, 'hh:mm a') : null;
+            // Determine morning and afternoon times based on presence
+            const morningIn = row.isMorningPresent && row.morningTimeIn ? format(row.morningTimeIn, 'hh:mm a') : null;
+            const morningOut = row.isMorningPresent && row.morningTimeOut ? format(row.morningTimeOut, 'hh:mm a') : null;
+            const afternoonIn = row.isAfternoonPresent && row.afternoonTimeIn ? format(row.afternoonTimeIn, 'hh:mm a') : null;
+            const afternoonOut = row.isAfternoonPresent && row.afternoonTimeOut ? format(row.afternoonTimeOut, 'hh:mm a') : null;
+            
+            // For API timeIn/timeOut fields, use the available times based on which half-day is present
+            // If morning present, use morning in as timeIn; if afternoon present, use afternoon out as timeOut
+            let apiTimeIn = null;
+            let apiTimeOut = null;
+            
+            if (row.isMorningPresent && morningIn) {
+              apiTimeIn = morningIn;
+            } else if (row.isAfternoonPresent && afternoonIn) {
+              apiTimeIn = afternoonIn;
+            }
+            
+            if (row.isAfternoonPresent && afternoonOut) {
+              apiTimeOut = afternoonOut;
+            } else if (row.isMorningPresent && morningOut) {
+              apiTimeOut = morningOut;
+            }
             
             return {
               employeeId: row.employeeId,
               date: format(bulkDate, 'yyyy-MM-dd'),
-              timeIn: morningIn,
-              timeOut: afternoonOut,
+              timeIn: apiTimeIn,
+              timeOut: apiTimeOut,
               // Store all times in notes for display purposes
-              notes: `Morning: ${morningIn || 'N/A'} - ${row.morningTimeOut ? format(row.morningTimeOut, 'hh:mm a') : 'N/A'}, 
-                    Afternoon: ${row.afternoonTimeIn ? format(row.afternoonTimeIn, 'hh:mm a') : 'N/A'} - ${afternoonOut || 'N/A'}
+              notes: `Morning: ${morningIn || 'N/A'} - ${morningOut || 'N/A'}, 
+                    Afternoon: ${afternoonIn || 'N/A'} - ${afternoonOut || 'N/A'}
                     ${row.notes ? `\nNotes: ${row.notes}` : ''}`,
               status: row.status,
               overtime: row.overtime
@@ -891,7 +1169,13 @@ const AttendanceLists: React.FC = () => {
         showSnackbar(`Successfully recorded attendance for ${attendanceRecords.length} employees`, 'success');
       } else {
         // Handle single attendance record
-        const { employeeId, date, morningTimeIn, morningTimeOut, afternoonTimeIn, afternoonTimeOut, status, overtime, notes } = formData;
+        const { 
+          employeeId, date, 
+          morningTimeIn, morningTimeOut, 
+          afternoonTimeIn, afternoonTimeOut, 
+          status, overtime, notes,
+          isMorningPresent, isAfternoonPresent 
+        } = formData;
         
         if (!employeeId) {
           showSnackbar('Please select an employee', 'error');
@@ -899,22 +1183,51 @@ const AttendanceLists: React.FC = () => {
           return;
         }
         
-        // Combine morning and afternoon times into notes for display
-        const morningIn = morningTimeIn ? format(morningTimeIn, 'hh:mm a') : 'N/A';
-        const morningOut = morningTimeOut ? format(morningTimeOut, 'hh:mm a') : 'N/A';
-        const afternoonIn = afternoonTimeIn ? format(afternoonTimeIn, 'hh:mm a') : 'N/A';
-        const afternoonOut = afternoonTimeOut ? format(afternoonTimeOut, 'hh:mm a') : 'N/A';
+        // Format times based on presence
+        const morningIn = isMorningPresent && morningTimeIn ? format(morningTimeIn, 'hh:mm a') : 'N/A';
+        const morningOut = isMorningPresent && morningTimeOut ? format(morningTimeOut, 'hh:mm a') : 'N/A';
+        const afternoonIn = isAfternoonPresent && afternoonTimeIn ? format(afternoonTimeIn, 'hh:mm a') : 'N/A';
+        const afternoonOut = isAfternoonPresent && afternoonTimeOut ? format(afternoonTimeOut, 'hh:mm a') : 'N/A';
         
         const combinedNotes = `Morning: ${morningIn} - ${morningOut}, Afternoon: ${afternoonIn} - ${afternoonOut}${notes ? `\nNotes: ${notes}` : ''}`;
+        
+        // For API timeIn/timeOut fields, use the available times based on which half-day is present
+        let apiTimeIn = null;
+        let apiTimeOut = null;
+        
+        if (isMorningPresent && morningTimeIn) {
+          apiTimeIn = format(morningTimeIn, 'hh:mm a');
+        } else if (isAfternoonPresent && afternoonTimeIn) {
+          apiTimeIn = format(afternoonTimeIn, 'hh:mm a');
+        }
+        
+        if (isAfternoonPresent && afternoonTimeOut) {
+          apiTimeOut = format(afternoonTimeOut, 'hh:mm a');
+        } else if (isMorningPresent && morningTimeOut) {
+          apiTimeOut = format(morningTimeOut, 'hh:mm a');
+        }
+        
+        // Validate if half-day matches the time entries
+        let attendanceStatus = status;
+        if (status === 'Half-day' && isMorningPresent && isAfternoonPresent) {
+          // Cannot be half-day if both morning and afternoon present
+          showSnackbar('Half-day status requires either morning or afternoon to be absent', 'error');
+          setLoading(false);
+          return;
+        } else if ((isMorningPresent && !isAfternoonPresent) || (!isMorningPresent && isAfternoonPresent)) {
+          // Force half-day status if only one part of the day is present
+          attendanceStatus = 'Half-day';
+        } else if (!isMorningPresent && !isAfternoonPresent) {
+          // Cannot be present or half-day if neither morning nor afternoon present
+          attendanceStatus = 'Absent';
+        }
         
         const attendanceData = {
           employeeId: Number(employeeId),
           date: format(date, 'yyyy-MM-dd'),
-          // Morning time in will be used as timeIn
-          timeIn: morningTimeIn ? format(morningTimeIn, 'hh:mm a') : null,
-          // Afternoon time out will be used as timeOut
-          timeOut: afternoonTimeOut ? format(afternoonTimeOut, 'hh:mm a') : null,
-          status,
+          timeIn: apiTimeIn,
+          timeOut: apiTimeOut,
+          status: attendanceStatus,
           overtime,
           notes: combinedNotes
         };
@@ -1028,19 +1341,8 @@ const AttendanceLists: React.FC = () => {
       afternoonTimeIn: Date;
       afternoonTimeOut: Date;
       status: 'Present';
-      overtime: number;
-      notes: string;
-    }
-
-    interface MissingEmployee {
-      employeeId: number;
-      employeeName: string;
-      present: boolean;
-      morningTimeIn: Date;
-      morningTimeOut: Date;
-      afternoonTimeIn: Date;
-      afternoonTimeOut: Date;
-      status: 'Present';
+      isMorningPresent: boolean;
+      isAfternoonPresent: boolean;
       overtime: number;
       notes: string;
     }
@@ -1056,6 +1358,8 @@ const AttendanceLists: React.FC = () => {
       afternoonTimeIn: new Date(new Date().setHours(13, 0, 0, 0)),
       afternoonTimeOut: new Date(new Date().setHours(18, 0, 0, 0)),
       status: 'Present' as const,
+      isMorningPresent: true,
+      isAfternoonPresent: true,
       overtime: 0,
       notes: '',
       }));
@@ -1575,6 +1879,9 @@ const AttendanceLists: React.FC = () => {
                       let notes = '';
                       
                       // Try to parse the notes to extract all time periods if available
+                      let isMorningPresent = record.status !== 'Half-day';
+                      let isAfternoonPresent = record.status !== 'Half-day';
+                      
                       if (record.notes && record.notes.includes('Morning:')) {
                         const noteParts = record.notes.split('\n');
                         const timeParts = noteParts[0].split(',');
@@ -1583,6 +1890,7 @@ const AttendanceLists: React.FC = () => {
                         if (timeParts[0].includes('Morning:')) {
                           const morningTimes = timeParts[0].replace('Morning:', '').trim().split('-');
                           if (morningTimes.length === 2) {
+                            isMorningPresent = morningTimes[0].trim() !== 'N/A';
                             morningIn = morningTimes[0].trim() !== 'N/A' ? morningTimes[0].trim() : '-';
                             morningOut = morningTimes[1].trim() !== 'N/A' ? morningTimes[1].trim() : '-';
                           }
@@ -1592,6 +1900,7 @@ const AttendanceLists: React.FC = () => {
                         if (timeParts.length > 1 && timeParts[1].includes('Afternoon:')) {
                           const afternoonTimes = timeParts[1].replace('Afternoon:', '').trim().split('-');
                           if (afternoonTimes.length === 2) {
+                            isAfternoonPresent = afternoonTimes[0].trim() !== 'N/A';
                             afternoonIn = afternoonTimes[0].trim() !== 'N/A' ? afternoonTimes[0].trim() : '-';
                             afternoonOut = afternoonTimes[1].trim() !== 'N/A' ? afternoonTimes[1].trim() : '-';
                           }
@@ -1603,6 +1912,21 @@ const AttendanceLists: React.FC = () => {
                         }
                       } else {
                         // Fallback for records that don't have the new format
+                        if (record.status === 'Half-day') {
+                          // Make an educated guess - if morning in is present, it's probably morning only
+                          if (record.timeIn) {
+                            isMorningPresent = true;
+                            isAfternoonPresent = false;
+                            afternoonIn = '-';
+                            afternoonOut = '-';
+                          } else if (record.timeOut) {
+                            // Otherwise if time out is present, it's probably afternoon only
+                            isMorningPresent = false;
+                            isAfternoonPresent = true;
+                            morningIn = '-';
+                            morningOut = '-';
+                          }
+                        }
                         notes = record.notes || '';
                       }
                       
@@ -1616,7 +1940,28 @@ const AttendanceLists: React.FC = () => {
                           <TableCell>{morningOut}</TableCell>
                           <TableCell>{afternoonIn}</TableCell>
                           <TableCell>{afternoonOut}</TableCell>
-                          <TableCell>{getStatusChip(record.status)}</TableCell>
+                          <TableCell>
+                            {record.status === 'Half-day' ? (
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <Chip
+                                  label={record.status}
+                                  color="info"
+                                  size="small"
+                                  variant="outlined"
+                                  icon={<HourglassEmptyIcon fontSize="small" />}
+                                />
+                                <Typography variant="body2" sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>
+                                  {isMorningPresent && !isAfternoonPresent 
+                                    ? "(Morning only)" 
+                                    : !isMorningPresent && isAfternoonPresent 
+                                    ? "(Afternoon only)" 
+                                    : ""}
+                                </Typography>
+                              </Box>
+                            ) : (
+                              getStatusChip(record.status)
+                            )}
+                          </TableCell>
                           <TableCell>
                             {record.overtime ? `${record.overtime} hours` : '-'}
                           </TableCell>
@@ -2081,11 +2426,11 @@ const AttendanceLists: React.FC = () => {
                       <TableRow>
                         <TableCell sx={{ minWidth: 150 }}><strong>Employee</strong></TableCell>
                         <TableCell><strong>Status</strong></TableCell>
-                        <TableCell colSpan={2} align="center" sx={{ bgcolor: 'rgba(0, 150, 136, 0.1)' }}>
-                          <Typography variant="subtitle2" color="primary">Morning Session</Typography>
+                        <TableCell colSpan={3} align="center" sx={{ bgcolor: 'rgba(0, 150, 136, 0.1)' }}>
+                          <Typography variant="subtitle2" color="primary">Morning Session (7AM-12NN)</Typography>
                         </TableCell>
-                        <TableCell colSpan={2} align="center" sx={{ bgcolor: 'rgba(63, 81, 181, 0.1)' }}>
-                          <Typography variant="subtitle2" color="primary">Afternoon Session</Typography>
+                        <TableCell colSpan={3} align="center" sx={{ bgcolor: 'rgba(63, 81, 181, 0.1)' }}>
+                          <Typography variant="subtitle2" color="primary">Afternoon Session (1PM-6PM)</Typography>
                         </TableCell>
                         <TableCell><strong>OT (hrs)</strong></TableCell>
                         <TableCell><strong>Notes</strong></TableCell>
@@ -2093,8 +2438,10 @@ const AttendanceLists: React.FC = () => {
                       <TableRow>
                         <TableCell></TableCell>
                         <TableCell></TableCell>
+                        <TableCell sx={{ bgcolor: 'rgba(0, 150, 136, 0.05)' }}><strong>Present</strong></TableCell>
                         <TableCell sx={{ bgcolor: 'rgba(0, 150, 136, 0.05)' }}><strong>Time In</strong></TableCell>
                         <TableCell sx={{ bgcolor: 'rgba(0, 150, 136, 0.05)' }}><strong>Time Out</strong></TableCell>
+                        <TableCell sx={{ bgcolor: 'rgba(63, 81, 181, 0.05)' }}><strong>Present</strong></TableCell>
                         <TableCell sx={{ bgcolor: 'rgba(63, 81, 181, 0.05)' }}><strong>Time In</strong></TableCell>
                         <TableCell sx={{ bgcolor: 'rgba(63, 81, 181, 0.05)' }}><strong>Time Out</strong></TableCell>
                         <TableCell></TableCell>
@@ -2137,15 +2484,42 @@ const AttendanceLists: React.FC = () => {
                             </FormControl>
                           </TableCell>
                           <TableCell sx={{ bgcolor: 'rgba(0, 150, 136, 0.03)' }}>
+                            <Chip
+                              label={row.isMorningPresent ? "Yes" : "No"}
+                              color={row.isMorningPresent ? "success" : "default"}
+                              size="small"
+                              variant="outlined"
+                              onClick={() => handleBulkInputChange(index, 'isMorningPresent', !row.isMorningPresent)}
+                              disabled={row.status === 'Absent' || row.status === 'On Leave'}
+                            />
+                          </TableCell>
+                          <TableCell sx={{ bgcolor: 'rgba(0, 150, 136, 0.03)' }}>
                             <LocalizationProvider dateAdapter={AdapterDateFns}>
                               <TimePicker
                                 value={row.morningTimeIn}
-                                onChange={(newTime) => handleBulkInputChange(index, 'morningTimeIn', newTime)}
-                                disabled={row.status === 'Absent' || row.status === 'On Leave'}
+                                onChange={(newTime) => {
+                                  if (newTime) {
+                                    // Allow time selection between 7:00 AM and 12:00 PM
+                                    const updatedTime = new Date(newTime);
+                                    const hours = updatedTime.getHours();
+                                    
+                                    // Restrict to morning hours (7:00 AM to 12:00 PM)
+                                    if (hours < 7) {
+                                      updatedTime.setHours(7, 0, 0, 0);
+                                    } else if (hours >= 12) {
+                                      updatedTime.setHours(11, 59, 0, 0);
+                                    }
+                                    
+                                    handleBulkInputChange(index, 'morningTimeIn', updatedTime);
+                                  } else {
+                                    handleBulkInputChange(index, 'morningTimeIn', null);
+                                  }
+                                }}
+                                disabled={!row.isMorningPresent || row.status === 'Absent' || row.status === 'On Leave'}
                                 slotProps={{ 
                                   textField: { 
                                     size: 'small',
-                                    placeholder: '7:00 AM',
+                                    placeholder: '7:00 AM - 12:00 PM',
                                     sx: { width: '100%' }
                                   }
                                 }}
@@ -2157,12 +2531,35 @@ const AttendanceLists: React.FC = () => {
                             <LocalizationProvider dateAdapter={AdapterDateFns}>
                               <TimePicker
                                 value={row.morningTimeOut}
-                                onChange={(newTime) => handleBulkInputChange(index, 'morningTimeOut', newTime)}
-                                disabled={row.status === 'Absent' || row.status === 'On Leave'}
+                                onChange={(newTime) => {
+                                  if (newTime) {
+                                    // Allow time selection between 7:00 AM and 12:00 PM
+                                    const updatedTime = new Date(newTime);
+                                    const hours = updatedTime.getHours();
+                                    
+                                    // Restrict to morning hours (7:00 AM to 12:00 PM)
+                                    if (hours < 7) {
+                                      updatedTime.setHours(7, 0, 0, 0);
+                                    } else if (hours > 12) {
+                                      updatedTime.setHours(12, 0, 0, 0);
+                                    }
+                                    
+                                    // Make sure morning out is after morning in
+                                    if (row.morningTimeIn && updatedTime < row.morningTimeIn) {
+                                      // Set to 1 hour after morning in if needed
+                                      updatedTime.setTime(row.morningTimeIn.getTime() + (60 * 60 * 1000));
+                                    }
+                                    
+                                    handleBulkInputChange(index, 'morningTimeOut', updatedTime);
+                                  } else {
+                                    handleBulkInputChange(index, 'morningTimeOut', null);
+                                  }
+                                }}
+                                disabled={!row.isMorningPresent || row.status === 'Absent' || row.status === 'On Leave'}
                                 slotProps={{ 
                                   textField: { 
                                     size: 'small',
-                                    placeholder: '12:00 PM',
+                                    placeholder: '7:00 AM - 12:00 PM',
                                     sx: { width: '100%' }
                                   } 
                                 }}
@@ -2171,15 +2568,46 @@ const AttendanceLists: React.FC = () => {
                             </LocalizationProvider>
                           </TableCell>
                           <TableCell sx={{ bgcolor: 'rgba(63, 81, 181, 0.03)' }}>
+                            <Chip
+                              label={row.isAfternoonPresent ? "Yes" : "No"}
+                              color={row.isAfternoonPresent ? "success" : "default"}
+                              size="small"
+                              variant="outlined"
+                              onClick={() => handleBulkInputChange(index, 'isAfternoonPresent', !row.isAfternoonPresent)}
+                              disabled={row.status === 'Absent' || row.status === 'On Leave'}
+                            />
+                          </TableCell>
+                          <TableCell sx={{ bgcolor: 'rgba(63, 81, 181, 0.03)' }}>
                             <LocalizationProvider dateAdapter={AdapterDateFns}>
                               <TimePicker
                                 value={row.afternoonTimeIn}
-                                onChange={(newTime) => handleBulkInputChange(index, 'afternoonTimeIn', newTime)}
-                                disabled={row.status === 'Absent' || row.status === 'On Leave'}
+                                onChange={(newTime) => {
+                                  if (newTime) {
+                                    // Allow time selection between 1:00 PM and 11:00 PM
+                                    const updatedTime = new Date(newTime);
+                                    const hours = updatedTime.getHours();
+                                    const minutes = updatedTime.getMinutes();
+                                    
+                                    // Restrict to afternoon/evening hours (1:00 PM to 11:00 PM)
+                                    if (hours < 13) {
+                                      updatedTime.setHours(13, minutes, 0, 0);
+                                    } else if (hours > 23) {
+                                      updatedTime.setHours(23, minutes, 0, 0);
+                                    } else {
+                                      // Keep the selected hour but ensure minutes are preserved
+                                      updatedTime.setHours(hours, minutes, 0, 0);
+                                    }
+                                    
+                                    handleBulkInputChange(index, 'afternoonTimeIn', updatedTime);
+                                  } else {
+                                    handleBulkInputChange(index, 'afternoonTimeIn', null);
+                                  }
+                                }}
+                                disabled={!row.isAfternoonPresent || row.status === 'Absent' || row.status === 'On Leave'}
                                 slotProps={{ 
                                   textField: { 
                                     size: 'small',
-                                    placeholder: '1:00 PM',
+                                    placeholder: '1:00 PM - 11:00 PM',
                                     sx: { width: '100%' }
                                   } 
                                 }}
@@ -2191,12 +2619,52 @@ const AttendanceLists: React.FC = () => {
                             <LocalizationProvider dateAdapter={AdapterDateFns}>
                               <TimePicker
                                 value={row.afternoonTimeOut}
-                                onChange={(newTime) => handleBulkInputChange(index, 'afternoonTimeOut', newTime)}
-                                disabled={row.status === 'Absent' || row.status === 'On Leave'}
+                                onChange={(newTime) => {
+                                  if (newTime) {
+                                    // Allow time selection between 1:00 PM and 11:00 PM
+                                    const updatedTime = new Date(newTime);
+                                    const hours = updatedTime.getHours();
+                                    const minutes = updatedTime.getMinutes();
+                                    
+                                    // Restrict to afternoon/evening hours (1:00 PM to 11:00 PM)
+                                    if (hours < 13) {
+                                      updatedTime.setHours(13, minutes, 0, 0);
+                                    } else if (hours > 23) {
+                                      updatedTime.setHours(23, minutes, 0, 0);
+                                    } else {
+                                      // Keep the selected hour but ensure minutes are preserved
+                                      updatedTime.setHours(hours, minutes, 0, 0);
+                                    }
+                                    
+                                    // Make sure afternoon out is after afternoon in
+                                    if (row.afternoonTimeIn && updatedTime < row.afternoonTimeIn) {
+                                      // Set to 1 hour after afternoon in if needed
+                                      const newTimeAfterAdjustment = new Date(row.afternoonTimeIn);
+                                      newTimeAfterAdjustment.setHours(
+                                        row.afternoonTimeIn.getHours() + 1, 
+                                        minutes, // Preserve user-selected minutes
+                                        0, 
+                                        0
+                                      );
+                                      updatedTime.setTime(newTimeAfterAdjustment.getTime());
+                                    }
+                                    
+                                    // Calculate overtime hours if time is beyond 6 PM (18:00)
+                                    const overtimeHours = calculateOvertimeHours(format(updatedTime, 'HH:mm'));
+                                    
+                                    // Update both the afternoon time out and overtime
+                                    handleBulkInputChange(index, 'afternoonTimeOut', updatedTime);
+                                    handleBulkInputChange(index, 'overtime', overtimeHours);
+                                  } else {
+                                    handleBulkInputChange(index, 'afternoonTimeOut', null);
+                                    handleBulkInputChange(index, 'overtime', 0);
+                                  }
+                                }}
+                                disabled={!row.isAfternoonPresent || row.status === 'Absent' || row.status === 'On Leave'}
                                 slotProps={{ 
                                   textField: { 
                                     size: 'small',
-                                    placeholder: '6:00 PM',
+                                    placeholder: '1:00 PM - 11:00 PM',
                                     sx: { width: '100%' }
                                   } 
                                 }}
@@ -2279,7 +2747,86 @@ const AttendanceLists: React.FC = () => {
                     name="status"
                     value={formData.status}
                     label="Status"
-                    onChange={handleSelectChange}
+                    onChange={(e) => {
+                      const newStatus = e.target.value as typeof formData.status;
+                      
+                      // Handle special status logic
+                      if (newStatus === 'Absent') {
+                        // Clear all time fields and set both morning and afternoon to not present
+                        setFormData({
+                          ...formData,
+                          status: newStatus,
+                          isMorningPresent: false,
+                          isAfternoonPresent: false,
+                          morningTimeIn: null,
+                          morningTimeOut: null,
+                          afternoonTimeIn: null,
+                          afternoonTimeOut: null
+                        });
+                      } else if (newStatus === 'Half-day') {
+                        // If both are present, default to afternoon only
+                        if (formData.isMorningPresent && formData.isAfternoonPresent) {
+                          setFormData({
+                            ...formData,
+                            status: newStatus,
+                            isMorningPresent: false,
+                            morningTimeIn: null,
+                            morningTimeOut: null,
+                            isAfternoonPresent: true,
+                            afternoonTimeIn: new Date(new Date().setHours(13, 0, 0, 0)),
+                            afternoonTimeOut: new Date(new Date().setHours(18, 0, 0, 0))
+                          });
+                        } else {
+                          // If one is already not present, leave it as is
+                          setFormData({
+                            ...formData,
+                            status: newStatus
+                          });
+                        }
+                      } else if (newStatus === 'Present') {
+                        // Set both morning and afternoon to present
+                        setFormData({
+                          ...formData,
+                          status: newStatus,
+                          isMorningPresent: true,
+                          isAfternoonPresent: true,
+                          morningTimeIn: new Date(new Date().setHours(7, 0, 0, 0)),
+                          morningTimeOut: new Date(new Date().setHours(12, 0, 0, 0)),
+                          afternoonTimeIn: new Date(new Date().setHours(13, 0, 0, 0)),
+                          afternoonTimeOut: new Date(new Date().setHours(18, 0, 0, 0))
+                        });
+                      } else {
+                        // For any other status, just update the status
+                        setFormData({
+                          ...formData,
+                          status: newStatus
+                        });
+                      }
+                    }}
+                    renderValue={(value) => (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Chip
+                          label={value}
+                          color={
+                            value === "Present" ? "success" : 
+                            value === "Late" ? "warning" : 
+                            value === "Half-day" ? "info" : 
+                            value === "Absent" ? "error" : "default"
+                          }
+                          size="small"
+                          variant="outlined"
+                        />
+                        {value === "Half-day" && (
+                          <Typography variant="body2" sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>
+                            {formData.isMorningPresent && !formData.isAfternoonPresent 
+                              ? "(Morning only)" 
+                              : !formData.isMorningPresent && formData.isAfternoonPresent 
+                              ? "(Afternoon only)" 
+                              : ""}
+                          </Typography>
+                        )}
+                      </Box>
+                    )}
                   >
                     <MenuItem value="Present">Present</MenuItem>
                     <MenuItem value="Absent">Absent</MenuItem>
@@ -2309,9 +2856,64 @@ const AttendanceLists: React.FC = () => {
               <Grid item xs={12} md={6}>
                 <Card variant="outlined" sx={{ mb: 2 }}>
                   <CardContent>
-                    <Typography variant="h6" color="primary" gutterBottom>
-                      Morning Attendance
-                    </Typography>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                      <Typography variant="h6" color="primary">
+                        Morning Attendance
+                      </Typography>
+                      <FormControl>
+                        <Chip
+                          label={formData.isMorningPresent ? "Present" : "Absent"}
+                          color={formData.isMorningPresent ? "success" : "default"}
+                          onClick={() => {
+                            const newValue = !formData.isMorningPresent;
+                            let newMorningTimeIn = formData.morningTimeIn;
+                            let newMorningTimeOut = formData.morningTimeOut;
+                            let newStatus = formData.status;
+                            
+                            if (newValue) {
+                              // Setting to present - add default morning times (7AM-12NN)
+                              // But use 7AM-12NN as placeholders, allowing user to adjust
+                              const defaultMorningIn = new Date();
+                              defaultMorningIn.setHours(7, 0, 0, 0);
+                              newMorningTimeIn = defaultMorningIn;
+                              
+                              const defaultMorningOut = new Date();
+                              defaultMorningOut.setHours(12, 0, 0, 0);
+                              newMorningTimeOut = defaultMorningOut;
+                              
+                              // Update status based on afternoon presence
+                              if (formData.isAfternoonPresent) {
+                                newStatus = 'Present';
+                              } else {
+                                newStatus = 'Half-day';
+                              }
+                            } else {
+                              // Setting to absent - clear morning times
+                              newMorningTimeIn = null;
+                              newMorningTimeOut = null;
+                              
+                              // Update status based on afternoon presence
+                              if (formData.isAfternoonPresent) {
+                                newStatus = 'Half-day';
+                              } else {
+                                newStatus = 'Absent';
+                              }
+                            }
+                            
+                            setFormData({
+                              ...formData,
+                              isMorningPresent: newValue,
+                              morningTimeIn: newMorningTimeIn,
+                              morningTimeOut: newMorningTimeOut,
+                              status: newStatus as any
+                            });
+                          }}
+                          variant="outlined"
+                          size="small"
+                          sx={{ mr: 1 }}
+                        />
+                      </FormControl>
+                    </Box>
                     
                     <Grid container spacing={2}>
                       <Grid item xs={12}>
@@ -2319,12 +2921,41 @@ const AttendanceLists: React.FC = () => {
                           <TimePicker
                             label="Morning Time In"
                             value={formData.morningTimeIn}
-                            onChange={handleTimeChange('morningTimeIn')}
-                            disabled={formData.status === 'Absent' || formData.status === 'On Leave'}
+                            onChange={(time) => {
+                              if (time) {
+                                // Allow time selection between 7:00 AM and 12:00 PM
+                                const newTime = new Date(time);
+                                const hours = newTime.getHours();
+                                // Keep the minutes as selected by the user (0-59)
+                                const minutes = newTime.getMinutes();
+                                
+                                // Restrict to morning hours (7:00 AM to 12:00 PM)
+                                if (hours < 7) {
+                                  newTime.setHours(7, minutes, 0, 0);
+                                } else if (hours >= 12) {
+                                  newTime.setHours(11, minutes, 0, 0);
+                                } else {
+                                  // Keep the selected hour but ensure minutes are preserved
+                                  newTime.setHours(hours, minutes, 0, 0);
+                                }
+                                
+                                setFormData(prev => ({
+                                  ...prev,
+                                  morningTimeIn: newTime
+                                }));
+                              } else {
+                                setFormData(prev => ({
+                                  ...prev,
+                                  morningTimeIn: null
+                                }));
+                              }
+                            }}
+                            disabled={!formData.isMorningPresent || formData.status === 'Absent' || formData.status === 'On Leave'}
                             slotProps={{ 
                               textField: { 
                                 fullWidth: true,
                                 size: "small",
+                                helperText: "Select between 7:00 AM and 12:00 PM"
                               } 
                             }}
                             ampm={true}
@@ -2337,12 +2968,48 @@ const AttendanceLists: React.FC = () => {
                           <TimePicker
                             label="Morning Time Out"
                             value={formData.morningTimeOut}
-                            onChange={handleTimeChange('morningTimeOut')}
-                            disabled={formData.status === 'Absent' || formData.status === 'On Leave'}
+                            onChange={(time) => {
+                              if (time) {
+                                // Allow time selection between 7:00 AM and 12:00 PM
+                                const newTime = new Date(time);
+                                const hours = newTime.getHours();
+                                // Keep the minutes as selected by the user (0-59)
+                                const minutes = newTime.getMinutes();
+                                
+                                // Restrict to morning hours (7:00 AM to 12:00 PM)
+                                // Morning out should be after morning in
+                                if (hours < 7) {
+                                  newTime.setHours(7, minutes, 0, 0);
+                                } else if (hours > 12) {
+                                  newTime.setHours(12, minutes, 0, 0);
+                                } else {
+                                  // Keep the selected hour but ensure minutes are preserved
+                                  newTime.setHours(hours, minutes, 0, 0);
+                                }
+                                
+                                // Make sure morning out is after morning in
+                                if (formData.morningTimeIn && newTime < formData.morningTimeIn) {
+                                  // Set to 1 hour after morning in if needed
+                                  newTime.setTime(formData.morningTimeIn.getTime() + (60 * 60 * 1000));
+                                }
+                                
+                                setFormData(prev => ({
+                                  ...prev,
+                                  morningTimeOut: newTime
+                                }));
+                              } else {
+                                setFormData(prev => ({
+                                  ...prev,
+                                  morningTimeOut: null
+                                }));
+                              }
+                            }}
+                            disabled={!formData.isMorningPresent || formData.status === 'Absent' || formData.status === 'On Leave'}
                             slotProps={{ 
                               textField: { 
                                 fullWidth: true,
                                 size: "small",
+                                helperText: "Select between 7:00 AM and 12:00 PM"
                               } 
                             }}
                             ampm={true}
@@ -2350,7 +3017,7 @@ const AttendanceLists: React.FC = () => {
                         </LocalizationProvider>
                       </Grid>
                       
-                      {formData.morningTimeIn && formData.morningTimeOut && (
+                      {formData.isMorningPresent && (
                         <Grid item xs={12}>
                           <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1 }}>
                             <Typography variant="body2" color="text.secondary">
@@ -2373,9 +3040,64 @@ const AttendanceLists: React.FC = () => {
               <Grid item xs={12} md={6}>
                 <Card variant="outlined" sx={{ mb: 2 }}>
                   <CardContent>
-                    <Typography variant="h6" color="primary" gutterBottom>
-                      Afternoon Attendance
-                    </Typography>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                      <Typography variant="h6" color="primary">
+                        Afternoon Attendance
+                      </Typography>
+                      <FormControl>
+                        <Chip
+                          label={formData.isAfternoonPresent ? "Present" : "Absent"}
+                          color={formData.isAfternoonPresent ? "success" : "default"}
+                          onClick={() => {
+                            const newValue = !formData.isAfternoonPresent;
+                            let newAfternoonTimeIn = formData.afternoonTimeIn;
+                            let newAfternoonTimeOut = formData.afternoonTimeOut;
+                            let newStatus = formData.status;
+                            
+                            if (newValue) {
+                              // Setting to present - add default afternoon times (1PM-6PM)
+                              // But use them as initial values, allowing user to adjust
+                              const defaultAfternoonIn = new Date();
+                              defaultAfternoonIn.setHours(13, 0, 0, 0);
+                              newAfternoonTimeIn = defaultAfternoonIn;
+                              
+                              const defaultAfternoonOut = new Date();
+                              defaultAfternoonOut.setHours(18, 0, 0, 0);
+                              newAfternoonTimeOut = defaultAfternoonOut;
+                              
+                              // Update status based on morning presence
+                              if (formData.isMorningPresent) {
+                                newStatus = 'Present';
+                              } else {
+                                newStatus = 'Half-day';
+                              }
+                            } else {
+                              // Setting to absent - clear afternoon times
+                              newAfternoonTimeIn = null;
+                              newAfternoonTimeOut = null;
+                              
+                              // Update status based on morning presence
+                              if (formData.isMorningPresent) {
+                                newStatus = 'Half-day';
+                              } else {
+                                newStatus = 'Absent';
+                              }
+                            }
+                            
+                            setFormData({
+                              ...formData,
+                              isAfternoonPresent: newValue,
+                              afternoonTimeIn: newAfternoonTimeIn,
+                              afternoonTimeOut: newAfternoonTimeOut,
+                              status: newStatus as any
+                            });
+                          }}
+                          variant="outlined"
+                          size="small"
+                          sx={{ mr: 1 }}
+                        />
+                      </FormControl>
+                    </Box>
                     
                     <Grid container spacing={2}>
                       <Grid item xs={12}>
@@ -2383,12 +3105,40 @@ const AttendanceLists: React.FC = () => {
                           <TimePicker
                             label="Afternoon Time In"
                             value={formData.afternoonTimeIn}
-                            onChange={handleTimeChange('afternoonTimeIn')}
-                            disabled={formData.status === 'Absent' || formData.status === 'On Leave'}
+                            onChange={(time) => {
+                              if (time) {
+                                // Allow time selection between 1:00 PM and 11:00 PM
+                                const newTime = new Date(time);
+                                const hours = newTime.getHours();
+                                const minutes = newTime.getMinutes();
+                                
+                                // Restrict to afternoon/evening hours (1:00 PM to 11:00 PM)
+                                if (hours < 13) {
+                                  newTime.setHours(13, minutes, 0, 0);
+                                } else if (hours > 23) {
+                                  newTime.setHours(23, minutes, 0, 0);
+                                } else {
+                                  // Keep the selected hour but ensure minutes are preserved
+                                  newTime.setHours(hours, minutes, 0, 0);
+                                }
+                                
+                                setFormData(prev => ({
+                                  ...prev,
+                                  afternoonTimeIn: newTime
+                                }));
+                              } else {
+                                setFormData(prev => ({
+                                  ...prev,
+                                  afternoonTimeIn: null
+                                }));
+                              }
+                            }}
+                            disabled={!formData.isAfternoonPresent || formData.status === 'Absent' || formData.status === 'On Leave'}
                             slotProps={{ 
                               textField: { 
                                 fullWidth: true,
                                 size: "small",
+                                helperText: "Select between 1:00 PM and 11:00 PM"
                               } 
                             }}
                             ampm={true}
@@ -2401,12 +3151,58 @@ const AttendanceLists: React.FC = () => {
                           <TimePicker
                             label="Afternoon Time Out"
                             value={formData.afternoonTimeOut}
-                            onChange={handleTimeChange('afternoonTimeOut')}
-                            disabled={formData.status === 'Absent' || formData.status === 'On Leave'}
+                            onChange={(time) => {
+                              if (time) {
+                                // Allow time selection between 1:00 PM and 11:00 PM
+                                const newTime = new Date(time);
+                                const hours = newTime.getHours();
+                                const minutes = newTime.getMinutes();
+                                
+                                // Restrict to afternoon/evening hours (1:00 PM to 11:00 PM)
+                                if (hours < 13) {
+                                  newTime.setHours(13, minutes, 0, 0);
+                                } else if (hours > 23) {
+                                  newTime.setHours(23, minutes, 0, 0);
+                                } else {
+                                  // Keep the selected hour but ensure minutes are preserved
+                                  newTime.setHours(hours, minutes, 0, 0);
+                                }
+                                
+                                // Make sure afternoon out is after afternoon in
+                                if (formData.afternoonTimeIn && newTime < formData.afternoonTimeIn) {
+                                  // Set to 1 hour after afternoon in if needed
+                                  const newTimeAfterAdjustment = new Date(formData.afternoonTimeIn);
+                                  newTimeAfterAdjustment.setHours(
+                                    formData.afternoonTimeIn.getHours() + 1, 
+                                    minutes, // Preserve user-selected minutes
+                                    0, 
+                                    0
+                                  );
+                                  newTime.setTime(newTimeAfterAdjustment.getTime());
+                                }
+                                
+                                // Calculate overtime hours if time is beyond 6 PM (18:00)
+                                const overtimeHours = calculateOvertimeHours(format(newTime, 'HH:mm'));
+                                
+                                setFormData(prev => ({
+                                  ...prev,
+                                  afternoonTimeOut: newTime,
+                                  overtime: overtimeHours
+                                }));
+                              } else {
+                                setFormData(prev => ({
+                                  ...prev,
+                                  afternoonTimeOut: null,
+                                  overtime: 0
+                                }));
+                              }
+                            }}
+                            disabled={!formData.isAfternoonPresent || formData.status === 'Absent' || formData.status === 'On Leave'}
                             slotProps={{ 
                               textField: { 
                                 fullWidth: true,
                                 size: "small",
+                                helperText: "Select between 1:00 PM and 11:00 PM"
                               } 
                             }}
                             ampm={true}
@@ -2414,7 +3210,7 @@ const AttendanceLists: React.FC = () => {
                         </LocalizationProvider>
                       </Grid>
                       
-                      {formData.afternoonTimeIn && formData.afternoonTimeOut && (
+                      {formData.isAfternoonPresent && (
                         <Grid item xs={12}>
                           <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1 }}>
                             <Typography variant="body2" color="text.secondary">
@@ -2459,6 +3255,17 @@ const AttendanceLists: React.FC = () => {
                         })()}
                       </Typography>
                     </Box>
+                    
+                    {formData.overtime && formData.overtime > 0 && (
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
+                        <Typography variant="subtitle1" fontWeight="bold" color="warning.main">
+                          Overtime Hours:
+                        </Typography>
+                        <Typography variant="subtitle1" fontWeight="bold" color="warning.main">
+                          {`${formData.overtime} hours`}
+                        </Typography>
+                      </Box>
+                    )}
                   </CardContent>
                 </Card>
               </Grid>

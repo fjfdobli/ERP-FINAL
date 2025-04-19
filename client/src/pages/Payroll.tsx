@@ -27,7 +27,7 @@ import { Payroll as PayrollType, PayrollFilters } from '../services/payrollServi
 import { format, parseISO, addMonths, subMonths, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
 import { Employee } from '../services/employeesService';
 import { fetchAttendance } from '../redux/slices/attendanceSlice';
-import { calculateBaseSalary, calculateOvertimePay, calculateNetSalary } from '../services/utils/payrollUtils';
+import { calculateBaseSalary, calculateOvertimePay, calculateNetSalary, calculateOvertimeHours } from '../services/utils/payrollUtils';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { autoTable } from 'jspdf-autotable';
