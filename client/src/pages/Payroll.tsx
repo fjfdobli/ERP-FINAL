@@ -73,6 +73,7 @@ interface PayrollFormData {
   notes: string;
   bankTransferRef: string;
   paymentDate: Date | null;
+  paymentCycle?: string; // '15' or '30'
 }
 
 interface BulkPayrollRow {
@@ -119,7 +120,8 @@ const PayrollPage: React.FC = () => {
     status: 'Draft',
     notes: '',
     bankTransferRef: '',
-    paymentDate: null
+    paymentDate: null,
+    paymentCycle: '30'
   });
   
   const [snackbar, setSnackbar] = useState<{
@@ -187,7 +189,8 @@ const PayrollPage: React.FC = () => {
         status: payroll.status as any,
         notes: payroll.notes || '',
         bankTransferRef: payroll.bankTransferRef || '',
-        paymentDate: payroll.paymentDate ? parseISO(payroll.paymentDate) : null
+        paymentDate: payroll.paymentDate ? parseISO(payroll.paymentDate) : null,
+        paymentCycle: payroll.paymentCycle || '30'
       });
     } else {
       setSelectedPayroll(null);
@@ -204,7 +207,8 @@ const PayrollPage: React.FC = () => {
         status: 'Draft',
         notes: '',
         bankTransferRef: '',
-        paymentDate: null
+        paymentDate: null,
+        paymentCycle: '30'
       });
     }
     setOpenDialog(true);
@@ -599,7 +603,8 @@ const PayrollPage: React.FC = () => {
           status,
           notes: notes || null,
           bankTransferRef: bankTransferRef || null,
-          paymentDate: paymentDate ? format(paymentDate, 'yyyy-MM-dd') : null
+          paymentDate: paymentDate ? format(paymentDate, 'yyyy-MM-dd') : null,
+          paymentCycle: formData.paymentCycle
         };
         
         if (selectedPayroll) {
@@ -774,10 +779,16 @@ const PayrollPage: React.FC = () => {
       doc.setFont('helvetica', 'bold');
       doc.text("EMPLOYEE DETAILS", margin + 5, yPos + 8);
 
+      // Determine payment cycle text
+      const paymentCycleText = payroll.paymentCycle === '15' ? 
+        "Bi-monthly (15 days)" : 
+        "Monthly (30 days)";
+
       const empdata = [
         [`Employee Name:`, `${employee.firstName} ${employee.lastName}`, `Pay Period:`, `${format(parseISO(payroll.startDate), 'MM/dd/yyyy')} - ${format(parseISO(payroll.endDate), 'MM/dd/yyyy')}`],
-        [`Employee ID:`, formatCurrency(payroll.deductions), `Payroll Date:`, `${payroll.paymentDate ? format(parseISO(payroll.paymentDate), 'MM/dd/yyyy') : '---'}`],
-        [`Position:`, formatCurrency(payroll.taxWithholding), `Status:`, `${payroll.status}`]
+        [`Employee ID:`, formatCurrency(payroll.deductions), `Payment Cycle:`, paymentCycleText],
+        [`Position:`, formatCurrency(payroll.taxWithholding), `Payroll Date:`, `${payroll.paymentDate ? format(parseISO(payroll.paymentDate), 'MM/dd/yyyy') : '---'}`],
+        [`Status:`, `${payroll.status}`, ``, ``]
       ];
       
 
@@ -1024,6 +1035,13 @@ const PayrollPage: React.FC = () => {
       doc.text("PAYROLL SUMMARY REPORT", pageWidth / 2, yPos, { align: 'center' });
       yPos += 8;
       
+      // Filter payroll records for this period
+      const periodPayrolls = payrollRecords?.filter((record: PayrollType) => record.period === period) || [];
+      
+      // Get first payroll to determine if it's bi-monthly or monthly
+      const firstPayroll = periodPayrolls.length > 0 ? periodPayrolls[0] : null;
+      const isBimonthly = firstPayroll && firstPayroll.paymentCycle === '15';
+      
       // Period subtitle
       doc.setFontSize(12);
       doc.text(`Period: ${format(
@@ -1032,7 +1050,7 @@ const PayrollPage: React.FC = () => {
           Number(period.split('-')[1]) - 1
         ),
         'MMMM yyyy'
-      )}`, pageWidth / 2, yPos, { align: 'center' });
+      )} (${isBimonthly ? 'Bi-monthly' : 'Monthly'})`, pageWidth / 2, yPos, { align: 'center' });
       yPos += 15;
       
       // Reset text color
@@ -1077,10 +1095,7 @@ const PayrollPage: React.FC = () => {
       
       yPos += 60;
       
-      // Filter payroll records for this period
-      const periodPayrolls = payrollRecords?.filter((record: PayrollType) => record.period === period) || [];
-      
-      // Employee Details Table
+      // Employee Details Table uses the periodPayrolls variable that was declared earlier
       const tableHeaders = ["Employee", "Base Salary", "Overtime", "Bonus", "Deductions", "Tax", "Net Salary", "Status"];
       const tableData = periodPayrolls.map((record: PayrollType) => [
         getEmployeeName(record.employeeId),
@@ -1923,21 +1938,78 @@ const PayrollPage: React.FC = () => {
               </Grid>
               
               <Grid item xs={12} md={6}>
-                <FormControl fullWidth>
-                  <InputLabel id="status-label">Status</InputLabel>
-                  <Select
-                    labelId="status-label"
-                    name="status"
-                    value={formData.status}
-                    label="Status"
-                    onChange={handleSelectChange}
-                  >
-                    <MenuItem value="Draft">Draft</MenuItem>
-                    <MenuItem value="Pending">Pending</MenuItem>
-                    <MenuItem value="Approved">Approved</MenuItem>
-                    <MenuItem value="Paid">Paid</MenuItem>
-                  </Select>
-                </FormControl>
+                <Grid container spacing={2}>
+                  <Grid item xs={12}>
+                    <FormControl fullWidth>
+                      <InputLabel id="status-label">Status</InputLabel>
+                      <Select
+                        labelId="status-label"
+                        name="status"
+                        value={formData.status}
+                        label="Status"
+                        onChange={handleSelectChange}
+                      >
+                        <MenuItem value="Draft">Draft</MenuItem>
+                        <MenuItem value="Pending">Pending</MenuItem>
+                        <MenuItem value="Approved">Approved</MenuItem>
+                        <MenuItem value="Paid">Paid</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12}>
+                    <FormControl fullWidth>
+                      <InputLabel id="payment-cycle-label">Payment Cycle</InputLabel>
+                      <Select
+                        labelId="payment-cycle-label"
+                        name="paymentCycle"
+                        value={formData.paymentCycle || '30'}
+                        label="Payment Cycle"
+                        onChange={(e) => {
+                          const cycle = e.target.value;
+                          const currentDate = new Date(formData.startDate);
+                          let newStartDate: Date;
+                          let newEndDate: Date;
+                          
+                          // Current month
+                          const year = currentDate.getFullYear();
+                          const month = currentDate.getMonth();
+                          
+                          if (cycle === '15') {
+                            // Determine if we're in the first or second half of the month
+                            const dayOfMonth = currentDate.getDate();
+                            if (dayOfMonth <= 15) {
+                              // First half of month (1st-15th)
+                              newStartDate = new Date(year, month, 1);
+                              newEndDate = new Date(year, month, 15);
+                            } else {
+                              // Second half of month (16th-end)
+                              newStartDate = new Date(year, month, 16);
+                              newEndDate = new Date(year, month + 1, 0); // Last day of current month
+                            }
+                          } else {
+                            // Monthly (full month)
+                            newStartDate = new Date(year, month, 1);
+                            newEndDate = new Date(year, month + 1, 0); // Last day of current month
+                          }
+                          
+                          setFormData(prev => ({
+                            ...prev,
+                            paymentCycle: cycle,
+                            startDate: newStartDate,
+                            endDate: newEndDate
+                          }));
+                        }}
+                      >
+                        <MenuItem value="15">Every 15 days (Bi-monthly)</MenuItem>
+                        <MenuItem value="30">Every 30 days (Monthly)</MenuItem>
+                      </Select>
+                      <Typography variant="caption" color="textSecondary" sx={{ mt: 1 }}>
+                        Specify the payment schedule for this employee.
+                        Bi-monthly pay periods run from the 1st-15th and 16th-end of month.
+                      </Typography>
+                    </FormControl>
+                  </Grid>
+                </Grid>
               </Grid>
               
               <Grid item xs={12} md={6}>

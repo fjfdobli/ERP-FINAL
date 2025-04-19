@@ -18,6 +18,7 @@ export interface Payroll {
   notes: string | null;
   bankTransferRef: string | null;
   paymentDate: string | null;
+  paymentCycle?: string; // '15' or '30' for bi-monthly or monthly
   createdAt?: string;
   updatedAt?: string;
 }
@@ -37,6 +38,7 @@ export interface InsertPayroll {
   notes?: string | null;
   bankTransferRef?: string | null;
   paymentDate?: string | null;
+  paymentCycle?: string;
 }
 
 export interface PayrollFilters {
