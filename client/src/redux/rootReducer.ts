@@ -9,6 +9,7 @@ import attendanceReducer from './slices/attendanceSlice';
 import payrollReducer from './slices/payrollSlice';
 import machineryReducer from './slices/machinerySlice';
 import suppliersReducer from './slices/suppliersSlice';
+import productProfileReducer from './slices/productProfileSlice';
 
 const rootReducer = combineReducers({
   auth: authReducer,
@@ -20,7 +21,8 @@ const rootReducer = combineReducers({
   attendance: attendanceReducer,
   payroll: payrollReducer,
   machinery: machineryReducer,
-  suppliers: suppliersReducer
+  suppliers: suppliersReducer,
+  productProfile: productProfileReducer
 });
 
 export default rootReducer;

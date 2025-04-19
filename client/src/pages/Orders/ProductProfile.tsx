@@ -5,105 +5,68 @@ import { Box, Typography, Paper, Table, TableBody, TableCell, TableContainer, Ta
 import { Add as AddIcon, Search as SearchIcon, Delete as DeleteIcon, Visibility as ViewIcon } from '@mui/icons-material';
 import { useDispatch, useSelector } from 'react-redux';
 import { AppDispatch, RootState } from '../../redux/store';
-
-interface RawMaterial {
-  id: number;
-  itemName: string;
-  itemType: string;
-  quantity: number;
-}
-
-// Interface for products
-interface Product {
-  id: number;
-  name: string;
-  price: number;
-  description?: string;
-  materials: ProductMaterial[];
-}
-
-// Interface for materials used in a product
-interface ProductMaterial {
-  materialId: number;
-  materialName: string;
-  quantityRequired: number;
-}
+import { 
+  fetchProducts, 
+  createProduct, 
+  updateProduct, 
+  deleteProduct,
+  selectAllProducts,
+  selectProductLoading,
+  selectProductError
+} from '../../redux/slices/productProfileSlice';
+import { 
+  ProductMaterial, 
+  ExtendedProduct 
+} from '../../services/productProfileService';
+import { 
+  fetchInventory,
+  selectAllInventoryItems
+} from '../../redux/slices/inventorySlice';
+import { InventoryItem } from '../../services/inventoryService';
 
 const ProductProfile: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
   
-  // State for product list
-  const [products, setProducts] = useState<Product[]>([]);
-  const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
+  // Redux state
+  const products = useSelector(selectAllProducts);
+  const rawMaterials = useSelector(selectAllInventoryItems);
+  const isLoading = useSelector(selectProductLoading);
+  const error = useSelector(selectProductError);
+  
+  // Local state for UI
+  const [filteredProducts, setFilteredProducts] = useState<ExtendedProduct[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
   
   // State for dialog
   const [dialogOpen, setDialogOpen] = useState(false);
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [currentProduct, setCurrentProduct] = useState<Product | null>(null);
+  const [currentProduct, setCurrentProduct] = useState<ExtendedProduct | null>(null);
   const [isEdit, setIsEdit] = useState(false);
-  
-  // State for inventory items (raw materials)
-  const [rawMaterials, setRawMaterials] = useState<RawMaterial[]>([]);
   
   // State for snackbar
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [snackbarSeverity, setSnackbarSeverity] = useState<'success' | 'error' | 'info'>('success');
 
-  // For demonstration purposes - would typically come from Redux
+  // Fetch products and raw materials on component mount
   useEffect(() => {
-    // Placeholder for fetching products and raw materials
-    setIsLoading(true);
-    // This would be a Redux action in the real implementation
-    // Example: dispatch(fetchProducts());
-    // Example: dispatch(fetchRawMaterials());
+    const loadData = async () => {
+      try {
+        await dispatch(fetchInventory()).unwrap();
+        await dispatch(fetchProducts()).unwrap();
+      } catch (error) {
+        console.error('Error loading data:', error);
+        setSnackbarMessage('Failed to load data. Please refresh the page.');
+        setSnackbarSeverity('error');
+        setSnackbarOpen(true);
+      }
+    };
     
-    // Simulate API call with timeout
-    setTimeout(() => {
-      // Sample data for raw materials
-      const sampleRawMaterials: RawMaterial[] = [
-        { id: 1, itemName: 'Paper - Bond', itemType: 'paper', quantity: 5000 },
-        { id: 2, itemName: 'Ink - Black', itemType: 'ink', quantity: 200 },
-        { id: 3, itemName: 'Ink - Colored', itemType: 'ink', quantity: 150 },
-        { id: 4, itemName: 'Binding Material', itemType: 'binding', quantity: 300 },
-        { id: 5, itemName: 'Printing Plates', itemType: 'plate', quantity: 50 },
-      ];
-      
-      // Sample data for products
-      const sampleProducts: Product[] = [
-        { 
-          id: 1, 
-          name: 'Business Cards', 
-          price: 800, 
-          description: 'Standard business cards, double-sided print',
-          materials: [
-            { materialId: 1, materialName: 'Paper - Bond', quantityRequired: 1 },
-            { materialId: 2, materialName: 'Ink - Black', quantityRequired: 0.5 },
-          ]
-        },
-        { 
-          id: 2, 
-          name: 'Brochures', 
-          price: 1500, 
-          description: 'Tri-fold colored brochures',
-          materials: [
-            { materialId: 1, materialName: 'Paper - Bond', quantityRequired: 3 },
-            { materialId: 3, materialName: 'Ink - Colored', quantityRequired: 2 },
-            { materialId: 4, materialName: 'Binding Material', quantityRequired: 1 },
-          ]
-        },
-      ];
-      
-      setRawMaterials(sampleRawMaterials);
-      setProducts(sampleProducts);
-      setFilteredProducts(sampleProducts);
-      setIsLoading(false);
-    }, 1000);
-  }, []);
+    loadData();
+  }, [dispatch]);
 
+  // Update filtered products when products or search term changes
   useEffect(() => {
     if (!searchTerm.trim()) {
       setFilteredProducts(products);
@@ -124,7 +87,7 @@ const ProductProfile: React.FC = () => {
 
   const handleOpenCreateDialog = () => {
     setCurrentProduct({
-      id: 0, // Will be assigned by backend
+      id: 0,
       name: '',
       price: 0,
       description: '',
@@ -134,7 +97,7 @@ const ProductProfile: React.FC = () => {
     setDialogOpen(true);
   };
 
-  const handleOpenEditDialog = (product: Product) => {
+  const handleOpenEditDialog = (product: ExtendedProduct) => {
     setCurrentProduct({ ...product });
     setIsEdit(true);
     setDialogOpen(true);
@@ -145,7 +108,7 @@ const ProductProfile: React.FC = () => {
     setCurrentProduct(null);
   };
   
-  const handleOpenViewDialog = (product: Product) => {
+  const handleOpenViewDialog = (product: ExtendedProduct) => {
     setCurrentProduct({ ...product });
     setViewDialogOpen(true);
   };
@@ -155,7 +118,7 @@ const ProductProfile: React.FC = () => {
     setCurrentProduct(null);
   };
   
-  const handleOpenDeleteDialog = (product: Product) => {
+  const handleOpenDeleteDialog = (product: ExtendedProduct) => {
     setCurrentProduct(product);
     setDeleteDialogOpen(true);
   };
@@ -165,23 +128,21 @@ const ProductProfile: React.FC = () => {
     setCurrentProduct(null);
   };
   
-  const handleDeleteProduct = () => {
+  const handleDeleteProduct = async () => {
     if (!currentProduct) return;
     
-    // This would be a Redux action in the real implementation
-    // Example: dispatch(deleteProduct(currentProduct.id));
-    
-    // Simulate API call
-    setIsLoading(true);
-    setTimeout(() => {
-      const updatedProducts = products.filter(p => p.id !== currentProduct.id);
-      setProducts(updatedProducts);
+    try {
+      await dispatch(deleteProduct(currentProduct.id)).unwrap();
       setSnackbarMessage('Product deleted successfully');
       setSnackbarSeverity('success');
       setSnackbarOpen(true);
-      setIsLoading(false);
       handleCloseDeleteDialog();
-    }, 1000);
+    } catch (error) {
+      console.error('Failed to delete product:', error);
+      setSnackbarMessage('Failed to delete product');
+      setSnackbarSeverity('error');
+      setSnackbarOpen(true);
+    }
   };
 
   const handleAddMaterial = () => {
@@ -191,7 +152,12 @@ const ProductProfile: React.FC = () => {
       ...currentProduct,
       materials: [
         ...currentProduct.materials,
-        { materialId: 0, materialName: '', quantityRequired: 1 }
+        { 
+          productId: currentProduct.id,
+          materialId: 0,
+          materialName: '',
+          quantityRequired: 1
+        }
       ]
     };
     
@@ -246,7 +212,7 @@ const ProductProfile: React.FC = () => {
     });
   };
 
-  const handleSaveProduct = () => {
+  const handleSaveProduct = async () => {
     if (!currentProduct) return;
     
     // Validate form
@@ -266,34 +232,47 @@ const ProductProfile: React.FC = () => {
       return;
     }
     
-    // This would be a Redux action in the real implementation
-    // Example: dispatch(isEdit ? updateProduct(currentProduct) : createProduct(currentProduct));
-    
-    // Simulate API call
-    setIsLoading(true);
-    setTimeout(() => {
+    try {
       if (isEdit) {
         // Update existing product
-        const updatedProducts = products.map(p => 
-          p.id === currentProduct.id ? currentProduct : p
-        );
-        setProducts(updatedProducts);
+        await dispatch(updateProduct({
+          id: currentProduct.id,
+          updates: {
+            name: currentProduct.name,
+            price: currentProduct.price,
+            description: currentProduct.description
+          },
+          materials: currentProduct.materials
+        })).unwrap();
+        
         setSnackbarMessage('Product updated successfully');
       } else {
-        // Create new product with a fake ID (backend would assign real ID)
-        const newProduct = {
-          ...currentProduct,
-          id: Math.max(0, ...products.map(p => p.id)) + 1
-        };
-        setProducts([...products, newProduct]);
+        // Create new product
+        await dispatch(createProduct({
+          product: {
+            name: currentProduct.name,
+            price: currentProduct.price,
+            description: currentProduct.description
+          },
+          materials: currentProduct.materials.map(m => ({
+            materialId: m.materialId,
+            materialName: m.materialName,
+            quantityRequired: m.quantityRequired
+          }))
+        })).unwrap();
+        
         setSnackbarMessage('Product created successfully');
       }
       
       setSnackbarSeverity('success');
       setSnackbarOpen(true);
-      setIsLoading(false);
       handleCloseDialog();
-    }, 1000);
+    } catch (error) {
+      console.error('Failed to save product:', error);
+      setSnackbarMessage('Failed to save product');
+      setSnackbarSeverity('error');
+      setSnackbarOpen(true);
+    }
   };
 
   const handleCloseSnackbar = () => {
@@ -371,13 +350,29 @@ const ProductProfile: React.FC = () => {
                             <Select
                               value={material.materialId || ''}
                               label="Material"
-                              onChange={(e) => handleMaterialChange(index, 'materialId', Number(e.target.value))}
+                              onChange={(e) => 
+                                handleMaterialChange(index, 'materialId', Number(e.target.value))
+                              }
+                              MenuProps={{
+                                PaperProps: {
+                                  style: {
+                                    maxHeight: 300
+                                  }
+                                }
+                              }}
                             >
-                              {rawMaterials.map((rawMaterial) => (
-                                <MenuItem key={rawMaterial.id} value={rawMaterial.id}>
-                                  {rawMaterial.itemName} ({rawMaterial.quantity} in stock)
-                                </MenuItem>
-                              ))}
+                              {rawMaterials && rawMaterials.length > 0 ? (
+                                rawMaterials
+                                  // Only allow raw materials to be selected
+                                  .filter(item => item.itemType !== 'product')
+                                  .map((rawMaterial) => (
+                                    <MenuItem key={rawMaterial.id} value={rawMaterial.id}>
+                                      {rawMaterial.itemName} ({rawMaterial.quantity} in stock)
+                                    </MenuItem>
+                                  ))
+                              ) : (
+                                <MenuItem disabled>No materials available</MenuItem>
+                              )}
                             </Select>
                           </FormControl>
                         </TableCell>
@@ -386,7 +381,11 @@ const ProductProfile: React.FC = () => {
                             type="number"
                             size="small"
                             value={material.quantityRequired}
-                            onChange={(e) => handleMaterialChange(index, 'quantityRequired', Number(e.target.value))}
+                            onChange={(e) => handleMaterialChange(
+                              index, 
+                              'quantityRequired', 
+                              Number(e.target.value)
+                            )}
                             InputProps={{
                               inputProps: { min: 0.1, step: 0.1 }
                             }}
@@ -458,6 +457,20 @@ const ProductProfile: React.FC = () => {
       {isLoading && products.length === 0 ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
           <CircularProgress />
+        </Box>
+      ) : error ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', my: 4, flexDirection: 'column', alignItems: 'center' }}>
+          <Typography color="error" gutterBottom>Failed to load products</Typography>
+          <Button 
+            variant="contained" 
+            color="primary" 
+            onClick={() => {
+              dispatch(fetchProducts());
+              dispatch(fetchInventory());
+            }}
+          >
+            Retry
+          </Button>
         </Box>
       ) : (
         <TableContainer component={Paper} sx={{ boxShadow: 'none', border: '1px solid rgba(0, 0, 0, 0.08)' }}>

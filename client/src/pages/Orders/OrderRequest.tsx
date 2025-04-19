@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { Box, Typography, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, TextField, InputAdornment, Chip, Dialog, DialogTitle, DialogContent, DialogActions, FormControl, InputLabel, Select, MenuItem, CircularProgress, Snackbar, Alert, Grid, IconButton, SelectChangeEvent } from '@mui/material';
 import { Add as AddIcon, Search as SearchIcon, Delete as DeleteIcon } from '@mui/icons-material';
 import { Client, clientsService } from '../../services/clientsService';
-import { OrderRequestItem, ExtendedOrderRequest } from '../../services/orderRequestsService';
+import { OrderRequestItem as BaseOrderRequestItem, ExtendedOrderRequest } from '../../services/orderRequestsService';
 import { orderRequestsService } from '../../services/orderRequestsService';
 import { 
   fetchOrderRequests, 
@@ -16,47 +16,38 @@ import {
 } from '../../redux/slices/orderRequestSlice';
 import { selectAllClientOrders } from '../../redux/slices/clientOrdersSlice';
 import { AppDispatch, RootState } from '../../redux/store';
+import { 
+  fetchProducts,
+  selectAllProducts
+} from '../../redux/slices/productProfileSlice';
+import { 
+  fetchInventory, 
+  updateInventoryItem,
+  selectAllInventoryItems
+} from '../../redux/slices/inventorySlice';
+import { 
+  ExtendedProduct,
+  ProductMaterial 
+} from '../../services/productProfileService';
+import { InventoryItem } from '../../services/inventoryService';
 
-interface Product {
-  id: number;
-  name: string;
-  price: number;
+// Extended version of OrderRequestItem to include the actual product ID
+interface OrderRequestItem extends BaseOrderRequestItem {
+  product_actual_id?: number;
 }
-
-const printingProducts: Product[] = [
-  { id: 1, name: 'Government Forms', price: 2500 },
-  { id: 2, name: 'Magazines / Manuals', price: 3500 },
-  { id: 3, name: 'Souvenir Programs', price: 2800 },
-  { id: 4, name: 'Receipts / Invoices', price: 1800 },
-  { id: 5, name: 'Yearbooks', price: 4500 },
-  { id: 6, name: 'Business Forms', price: 2000 },
-  { id: 7, name: 'Brochures/Post Cards', price: 1500 },
-  { id: 8, name: 'Election Handbills/Posters', price: 2200 },
-  { id: 9, name: 'Letterheads', price: 1300 },
-  { id: 10, name: 'Workbooks/Books', price: 3800 },
-  { id: 11, name: 'Calling Cards', price: 800 },
-  { id: 12, name: 'Tickets', price: 900 },
-  { id: 13, name: 'News Papers', price: 2500 },
-  { id: 14, name: 'Wedding Invitation', price: 1800 },
-  { id: 15, name: 'Letter Envelope', price: 1200 },
-  { id: 16, name: 'Labels', price: 1000 },
-  { id: 17, name: 'Stickers / Boxes', price: 1400 },
-  { id: 18, name: 'Memo Pads', price: 1100 },
-  { id: 19, name: 'Posters', price: 1700 },
-  { id: 20, name: 'Identification Cards', price: 950 },
-  { id: 21, name: 'Calendars', price: 1600 }
-];
 
 interface OrderRequestFormProps {
   open: boolean;
   onClose: () => void;
   onSubmit: (request: any) => void;
   clients: Client[];
-  products: Product[];
+  products: ExtendedProduct[];
+  rawMaterials: InventoryItem[];
   initialData?: ExtendedOrderRequest | null;
   isEdit?: boolean;
   clientsWithOrders: Set<number>;
   getClientOrderStatus: (clientId: number) => { hasOngoingOrders: boolean, statusText: string };
+  onInventoryUpdate: (updates: Array<{id: number, newQuantity: number}>) => Promise<void>;
 }
 
 const StatusChip: React.FC<{ status: string }> = ({ status }) => {
@@ -94,10 +85,12 @@ const OrderRequestForm: React.FC<OrderRequestFormProps> = ({
   onSubmit, 
   clients, 
   products, 
+  rawMaterials,
   initialData = null, 
   isEdit = false, 
   clientsWithOrders,
-  getClientOrderStatus
+  getClientOrderStatus,
+  onInventoryUpdate
 }) => {
   const [clientId, setClientId] = useState<number>(initialData?.client_id || 0);
   const [items, setItems] = useState<OrderRequestItem[]>(initialData?.items || []);
@@ -143,7 +136,8 @@ const OrderRequestForm: React.FC<OrderRequestFormProps> = ({
       unit_price: 0,
       total_price: 0,
       serial_start: '',
-      serial_end: ''
+      serial_end: '',
+      product_actual_id: undefined
     });
     setItemIndex(null);
     setItemDialogOpen(true);
@@ -173,19 +167,102 @@ const OrderRequestForm: React.FC<OrderRequestFormProps> = ({
     setCustomProduct({ name: '', price: 0 });
   };
 
-  const handleSaveItem = () => {
+  const handleSaveItem = async () => {
     if (!currentItem) return;
     
-    const newItems = [...items];
-    
-    if (itemIndex !== null) {
-      newItems[itemIndex] = currentItem;
+    // If this is an actual product (not custom) that requires inventory adjustment
+    if (currentItem.product_actual_id) {
+      const product = products.find(p => p.id === currentItem.product_actual_id);
+      
+      if (product) {
+        const { hasEnoughInventory, materialRequirements } = 
+          checkInventoryForProduct(product, currentItem.quantity);
+        
+        if (!hasEnoughInventory) {
+          alert('Insufficient inventory to add this item.');
+          return;
+        }
+        
+        // Prepare inventory updates
+        const inventoryUpdates = materialRequirements.map(req => ({
+          id: req.materialId,
+          newQuantity: req.available - req.quantityNeeded
+        }));
+        
+        try {
+          // Update inventory in the database
+          await onInventoryUpdate(inventoryUpdates);
+          
+          // Continue with saving the item
+          const newItems = [...items];
+          
+          if (itemIndex !== null) {
+            newItems[itemIndex] = currentItem;
+          } else {
+            newItems.push(currentItem);
+          }
+          
+          setItems(newItems);
+          handleCloseItemDialog();
+        } catch (error) {
+          alert('Failed to update inventory. Please try again.');
+          console.error('Inventory update error:', error);
+        }
+      }
     } else {
-      newItems.push(currentItem);
+      // For custom products, just add the item without inventory checks
+      const newItems = [...items];
+      
+      if (itemIndex !== null) {
+        newItems[itemIndex] = currentItem;
+      } else {
+        newItems.push(currentItem);
+      }
+      
+      setItems(newItems);
+      handleCloseItemDialog();
+    }
+  };
+
+  // Check if we have enough inventory for a product
+  const checkInventoryForProduct = (product: ExtendedProduct, quantity: number): { 
+    hasEnoughInventory: boolean, 
+    lowStockItems: string[],
+    outOfStockItems: string[],
+    materialRequirements: Array<{materialId: number, quantityNeeded: number, available: number}>
+  } => {
+    const lowStockItems: string[] = [];
+    const outOfStockItems: string[] = [];
+    const materialRequirements: Array<{materialId: number, quantityNeeded: number, available: number}> = [];
+    
+    // Check each material in the product
+    for (const material of product.materials) {
+      const inventoryItem = rawMaterials.find(item => item.id === material.materialId);
+      if (!inventoryItem) {
+        outOfStockItems.push(`${material.materialName} (not found in inventory)`);
+        continue;
+      }
+      
+      const quantityNeeded = material.quantityRequired * quantity;
+      materialRequirements.push({
+        materialId: material.materialId,
+        quantityNeeded,
+        available: inventoryItem.quantity
+      });
+      
+      if (inventoryItem.quantity < quantityNeeded) {
+        outOfStockItems.push(`${material.materialName} (need ${quantityNeeded}, have ${inventoryItem.quantity})`);
+      } else if (inventoryItem.quantity <= inventoryItem.minStockLevel + quantityNeeded) {
+        lowStockItems.push(`${material.materialName} (low stock: ${inventoryItem.quantity})`);
+      }
     }
     
-    setItems(newItems);
-    handleCloseItemDialog();
+    return {
+      hasEnoughInventory: outOfStockItems.length === 0,
+      lowStockItems,
+      outOfStockItems,
+      materialRequirements
+    };
   };
 
   const handleProductChange = (event: SelectChangeEvent<number | string>) => {
@@ -206,12 +283,27 @@ const OrderRequestForm: React.FC<OrderRequestFormProps> = ({
     const unitPrice = product.price;
     const totalPrice = unitPrice * (currentItem.quantity || 1);
     
+    // Check inventory
+    const { hasEnoughInventory, lowStockItems, outOfStockItems } = 
+      checkInventoryForProduct(product, currentItem.quantity || 1);
+    
+    if (!hasEnoughInventory) {
+      alert(`Insufficient inventory for ${product.name}:\n${outOfStockItems.join('\n')}`);
+      return;
+    }
+    
+    if (lowStockItems.length > 0) {
+      alert(`Warning: Low stock for ${product.name}:\n${lowStockItems.join('\n')}`);
+    }
+    
     setCurrentItem({
       ...currentItem,
       product_id: productId,
       product_name: product.name,
       unit_price: unitPrice,
-      total_price: totalPrice
+      total_price: totalPrice,
+      // Store the product's ID for later reference
+      product_actual_id: product.id
     });
   };
 
@@ -225,7 +317,9 @@ const OrderRequestForm: React.FC<OrderRequestFormProps> = ({
       product_id: tempId,
       product_name: customProduct.name,
       unit_price: customProduct.price,
-      total_price: totalPrice
+      total_price: totalPrice,
+      // Set to undefined since it's a custom product
+      product_actual_id: undefined
     });
     
     setShowCustomProductInput(false);
@@ -237,6 +331,25 @@ const OrderRequestForm: React.FC<OrderRequestFormProps> = ({
     
     const quantity = parseInt(event.target.value) || 0;
     const totalPrice = currentItem.unit_price * quantity;
+    
+    // Check inventory if this is a product from our catalog (not a custom product)
+    if (currentItem.product_actual_id) {
+      const product = products.find(p => p.id === currentItem.product_actual_id);
+      
+      if (product) {
+        const { hasEnoughInventory, lowStockItems, outOfStockItems } = 
+          checkInventoryForProduct(product, quantity);
+        
+        if (!hasEnoughInventory) {
+          alert(`Cannot set quantity to ${quantity}. Insufficient inventory:\n${outOfStockItems.join('\n')}`);
+          return;
+        }
+        
+        if (lowStockItems.length > 0) {
+          alert(`Warning: This quantity will result in low stock:\n${lowStockItems.join('\n')}`);
+        }
+      }
+    }
     
     setCurrentItem({
       ...currentItem,
@@ -255,10 +368,11 @@ const OrderRequestForm: React.FC<OrderRequestFormProps> = ({
   };
 
   const handleSubmit = () => {
+    // Save items without product_actual_id for database compatibility
     const requestData = {
       ...(initialData || {}),
       client_id: clientId,
-      items,
+      items, // We handle the cleaning in the main component's submit method
       notes,
       total_amount: calculateTotal(),
       type: items.length > 0 ? items[0].product_name : 'Other',
@@ -434,6 +548,9 @@ const OrderRequestForm: React.FC<OrderRequestFormProps> = ({
                   {products.map((product) => (
                     <MenuItem key={product.id} value={product.id}>
                       {product.name} - ₱{product.price.toLocaleString()}
+                      {product.description && <Box component="span" sx={{ display: 'block', fontSize: '0.75rem', color: 'text.secondary' }}>
+                        {product.description.substring(0, 50)}{product.description.length > 50 ? '...' : ''}
+                      </Box>}
                     </MenuItem>
                   ))}
                   <MenuItem value="custom" divider>
@@ -561,9 +678,13 @@ const OrderRequestsList: React.FC = () => {
   const reduxError = useSelector(selectOrderRequestError);
   const clientOrders = useSelector(selectAllClientOrders); // Get client orders properly
   
+  // Redux state
+  const reduxProducts = useSelector(selectAllProducts);
+  const rawMaterials = useSelector(selectAllInventoryItems);
+  
   // Local state for UI
   const [clients, setClients] = useState<Client[]>([]);
-  const [products] = useState<Product[]>(printingProducts);
+  const [products, setProducts] = useState<ExtendedProduct[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [formOpen, setFormOpen] = useState(false);
   const [currentRequest, setCurrentRequest] = useState<ExtendedOrderRequest | null>(null);
@@ -669,17 +790,26 @@ const OrderRequestsList: React.FC = () => {
         
         // Fetch order requests from Redux
         dispatch(fetchOrderRequests());
+        
+        // Fetch products and inventory
+        await dispatch(fetchProducts());
+        await dispatch(fetchInventory());
       } catch (error) {
-        console.error('Error fetching clients:', error);
+        console.error('Error fetching data:', error);
         setClients([]);
-        setSnackbarMessage('Error fetching clients');
+        setSnackbarMessage('Error fetching data');
         setSnackbarSeverity('error');
         setSnackbarOpen(true);
       }
     };
     
     fetchData();
-  }, [dispatch]);  
+  }, [dispatch]);
+  
+  // Update products state when redux products change
+  useEffect(() => {
+    setProducts(reduxProducts);
+  }, [reduxProducts]);  
 
   // Add function to fetch order history
   const fetchOrderHistory = async (requestId: number) => {
@@ -710,6 +840,22 @@ const OrderRequestsList: React.FC = () => {
 
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(e.target.value);
+  };
+
+  // Function to update inventory quantities
+  const handleInventoryUpdate = async (updates: Array<{id: number, newQuantity: number}>) => {
+    try {
+      // Process each inventory update
+      for (const update of updates) {
+        await dispatch(updateInventoryItem({
+          id: update.id,
+          data: { quantity: update.newQuantity }
+        })).unwrap();
+      }
+    } catch (error) {
+      console.error('Failed to update inventory:', error);
+      throw new Error('Failed to update inventory');
+    }
   };
 
   const handleOpenCreateForm = async () => {
@@ -842,12 +988,19 @@ const OrderRequestsList: React.FC = () => {
         throw new Error('Cannot create or update order for inactive client');
       }
       
+      // Remove product_actual_id from items before sending to the server
+      const cleanedItems = items.map((item: OrderRequestItem) => {
+        // Create a copy without the product_actual_id property
+        const { product_actual_id, ...cleanItem } = item;
+        return cleanItem;
+      });
+      
       if (currentRequest && currentRequest.id) {
         // Update existing request
         await dispatch(updateOrderRequest({
           id: currentRequest.id,
           orderRequest: { client_id, date, type, status, notes },
-          items
+          items: cleanedItems
         })).unwrap();
         
         setSnackbarMessage('Request updated successfully');
@@ -864,7 +1017,7 @@ const OrderRequestsList: React.FC = () => {
             notes,
             total_amount: 0 // This will be calculated in the service
           },
-          items
+          items: cleanedItems
         })).unwrap();
         
         setSnackbarMessage('Request created successfully');
@@ -1109,10 +1262,12 @@ const OrderRequestsList: React.FC = () => {
           onSubmit={handleSubmitRequest}
           clients={isEdit ? clients : clients}
           products={products}
+          rawMaterials={rawMaterials}
           initialData={currentRequest}
           isEdit={isEdit}
           clientsWithOrders={clientsWithOrders}
           getClientOrderStatus={getClientOrderStatus}
+          onInventoryUpdate={handleInventoryUpdate}
         />
       )}
 
