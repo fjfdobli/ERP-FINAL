@@ -1,10 +1,11 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { Box, Typography, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, TextField, InputAdornment, Chip, Dialog, DialogTitle, DialogContent, DialogActions, FormControl, InputLabel, Select, MenuItem, CircularProgress, Snackbar, Alert, Grid, IconButton, SelectChangeEvent } from '@mui/material';
-import { Add as AddIcon, Search as SearchIcon, Delete as DeleteIcon } from '@mui/icons-material';
+import { Add as AddIcon, Search as SearchIcon, Delete as DeleteIcon, Refresh as RefreshIcon } from '@mui/icons-material';
 import { Client, clientsService } from '../../services/clientsService';
 import { OrderRequestItem as BaseOrderRequestItem, ExtendedOrderRequest } from '../../services/orderRequestsService';
 import { orderRequestsService } from '../../services/orderRequestsService';
+import { clientOrdersService } from '../../services/clientOrdersService';
 import { 
   fetchOrderRequests, 
   createOrderRequest, 
@@ -14,7 +15,7 @@ import {
   selectOrderRequestLoading,
   selectOrderRequestError 
 } from '../../redux/slices/orderRequestSlice';
-import { selectAllClientOrders } from '../../redux/slices/clientOrdersSlice';
+import { selectAllClientOrders, fetchClientOrders } from '../../redux/slices/clientOrdersSlice';
 import { AppDispatch, RootState } from '../../redux/store';
 import { 
   fetchProducts,
@@ -46,6 +47,7 @@ interface OrderRequestFormProps {
   initialData?: ExtendedOrderRequest | null;
   isEdit?: boolean;
   clientsWithOrders: Set<number>;
+  clientEligibility: {[key: number]: boolean};
   getClientOrderStatus: (clientId: number) => { hasOngoingOrders: boolean, statusText: string };
   onInventoryUpdate: (updates: Array<{id: number, newQuantity: number}>) => Promise<void>;
 }
@@ -89,6 +91,7 @@ const OrderRequestForm: React.FC<OrderRequestFormProps> = ({
   initialData = null, 
   isEdit = false, 
   clientsWithOrders,
+  clientEligibility,
   getClientOrderStatus,
   onInventoryUpdate
 }) => {
@@ -405,19 +408,43 @@ const OrderRequestForm: React.FC<OrderRequestFormProps> = ({
               {clients
                 .filter(client => {
                   // In edit mode, show the current client even if inactive
-                  // In create mode, only show active clients
-                  return (isEdit && client.id === clientId) || 
-                         (client.status !== 'Inactive' && (!clientsWithOrders.has(client.id) || client.id === initialData?.client_id));
+                  // In create mode, only show active clients using validated results
+                  if (isEdit && client.id === clientId) {
+                    return true;
+                  }
+                  
+                  if (client.status === 'Inactive') {
+                    return false;
+                  }
+                  
+                  // Use the client eligibility mapping from the parent component
+                  if (Object.keys(clientEligibility).length > 0 && clientEligibility[client.id] !== undefined) {
+                    return clientEligibility[client.id] || client.id === initialData?.client_id;
+                  }
+                  
+                  // Fall back to memoized clientsWithOrders
+                  return !clientsWithOrders.has(client.id) || client.id === initialData?.client_id;
                 })
                 .map((client) => {
+                  // Use either client eligibility or fall back to clientsWithOrders
+                  let canPlaceOrders = false;
+                  
+                  if (Object.keys(clientEligibility).length > 0 && clientEligibility[client.id] !== undefined) {
+                    canPlaceOrders = clientEligibility[client.id];
+                  } else {
+                    canPlaceOrders = !clientsWithOrders.has(client.id);
+                  }
+                  
                   const clientStatus = getClientOrderStatus(client.id);
+                  const hasOngoingOrders = !canPlaceOrders;
+                  
                   return (
                     <MenuItem 
                       key={client.id} 
                       value={client.id}
-                      disabled={client.status === 'Inactive' || (!isEdit && clientStatus.hasOngoingOrders)}
+                      disabled={client.status === 'Inactive' || (!isEdit && hasOngoingOrders)}
                       sx={{
-                        opacity: client.status === 'Inactive' || clientStatus.hasOngoingOrders ? 0.5 : 1,
+                        opacity: client.status === 'Inactive' || hasOngoingOrders ? 0.5 : 1,
                         '&.Mui-disabled': {
                           opacity: 0.5,
                         }
@@ -425,8 +452,8 @@ const OrderRequestForm: React.FC<OrderRequestFormProps> = ({
                     >
                       {client.name} 
                       {client.status === 'Inactive' && ' (Inactive)'}
-                      {client.status !== 'Inactive' && clientStatus.hasOngoingOrders && ` (${clientStatus.statusText})`}
-                      {client.status !== 'Inactive' && !clientStatus.hasOngoingOrders && clientStatus.statusText && ` (${clientStatus.statusText})`}
+                      {client.status !== 'Inactive' && hasOngoingOrders && ` (${clientStatus.statusText})`}
+                      {client.status !== 'Inactive' && !hasOngoingOrders && ` (Can place orders)`}
                     </MenuItem>
                   );
                 })}
@@ -553,9 +580,6 @@ const OrderRequestForm: React.FC<OrderRequestFormProps> = ({
                       </Box>}
                     </MenuItem>
                   ))}
-                  <MenuItem value="custom" divider>
-                    <em>Add Custom Product</em>
-                  </MenuItem>
                 </Select>
               </FormControl>
             </Grid>
@@ -695,6 +719,7 @@ const OrderRequestsList: React.FC = () => {
   const [snackbarSeverity, setSnackbarSeverity] = useState<'success' | 'error' | 'info'>('success');
   const [requestHistory, setRequestHistory] = useState<any[]>([]);
   const [historyDialogOpen, setHistoryDialogOpen] = useState<boolean>(false);
+  const [clientEligibility, setClientEligibility] = useState<{[key: number]: boolean}>({});
   
   const clientsWithOrders = useMemo(() => {
     const clientIds = new Set<number>();
@@ -707,15 +732,18 @@ const OrderRequestsList: React.FC = () => {
       }
     });
     
-    // Only restrict clients with Approved orders (not with Completed or Rejected)
+    // Only restrict clients with Approved or Partially Paid orders (not with Completed or Rejected)
     clientOrders.forEach(order => {
-      // If an order is Approved (not Completed or Rejected), the client cannot make new requests
-      if (order.client_id > 0 && order.status === 'Approved') {
+      // If an order is Approved or Partially Paid (not Completed or Rejected), the client cannot make new requests
+      if (order.client_id > 0 && (order.status === 'Approved' || order.status === 'Partially Paid')) {
         clientIds.add(order.client_id);
       }
       // Clients with Completed or Rejected orders can make new requests
       // So we don't add them to clientIds
     });
+    
+    console.log("Clients with restrictions:", Array.from(clientIds));
+    console.log("Client Orders status check:", clientOrders.map(o => `Client: ${o.client_id}, Status: ${o.status}`));
     
     return clientIds;
   }, [orderRequests, clientOrders]);
@@ -726,26 +754,33 @@ const OrderRequestsList: React.FC = () => {
 
   // Helper function to get client order status
   const getClientOrderStatus = (clientId: number): { hasOngoingOrders: boolean, statusText: string } => {
+    console.log(`Checking status for client ${clientId}...`);
+    
     // Check for pending or approved requests
     const hasPendingRequest = orderRequests.some(
       req => req.client_id === clientId && 
              (req.status === 'Pending' || req.status === 'Approved')
     );
+    console.log(`Client ${clientId} - Has pending request: ${hasPendingRequest}`);
     
-    // Check for approved orders
+    // Check for approved or partially paid orders
     const hasApprovedOrder = clientOrders.some(
-      order => order.client_id === clientId && order.status === 'Approved'
+      order => order.client_id === clientId && 
+             (order.status === 'Approved' || order.status === 'Partially Paid')
     );
+    console.log(`Client ${clientId} - Has approved/partially paid order: ${hasApprovedOrder}`);
     
     // Check for completed orders (for informational purposes)
     const hasCompletedOrder = clientOrders.some(
       order => order.client_id === clientId && order.status === 'Completed'
     );
+    console.log(`Client ${clientId} - Has completed order: ${hasCompletedOrder}`);
     
     // Check for rejected orders
     const hasRejectedOrder = clientOrders.some(
       order => order.client_id === clientId && order.status === 'Rejected'
     );
+    console.log(`Client ${clientId} - Has rejected order: ${hasRejectedOrder}`);
     
     if (hasPendingRequest) {
       return { 
@@ -753,9 +788,13 @@ const OrderRequestsList: React.FC = () => {
         statusText: 'Has pending request' 
       };
     } else if (hasApprovedOrder) {
+      const partiallyPaidOrder = clientOrders.some(
+        order => order.client_id === clientId && order.status === 'Partially Paid'
+      );
+      
       return { 
         hasOngoingOrders: true, 
-        statusText: 'Has approved order' 
+        statusText: partiallyPaidOrder ? 'Has partially paid order' : 'Has approved order' 
       };
     } else if (hasCompletedOrder) {
       return { 
@@ -781,7 +820,7 @@ const OrderRequestsList: React.FC = () => {
   };
 
   useEffect(() => {
-    // Fetch data on component mount
+    // Fetch data on component mount or when the component is revisited
     const fetchData = async () => {
       try {
         // Fetch clients from service
@@ -790,6 +829,9 @@ const OrderRequestsList: React.FC = () => {
         
         // Fetch order requests from Redux
         dispatch(fetchOrderRequests());
+        
+        // Fetch client orders - critical for determining which clients can create new orders
+        dispatch(fetchClientOrders());
         
         // Fetch products and inventory
         await dispatch(fetchProducts());
@@ -805,6 +847,59 @@ const OrderRequestsList: React.FC = () => {
     
     fetchData();
   }, [dispatch]);
+  
+  // Add a refresh button and function to manually refresh the data
+  const refreshData = async () => {
+    // This will fetch the latest client orders data
+    setSnackbarMessage('Refreshing data...');
+    setSnackbarSeverity('info');
+    setSnackbarOpen(true);
+    
+    try {
+      // Get fresh clients
+      const freshClients = await clientsService.getClients();
+      setClients(freshClients);
+      
+      // Fetch order data
+      await Promise.all([
+        dispatch(fetchOrderRequests()),
+        dispatch(fetchClientOrders())
+      ]);
+      
+      // Directly check database for each active client's eligibility
+      const activeClients = freshClients.filter(client => client.status === 'Active');
+      
+      const eligibilityChecks = await Promise.all(
+        activeClients.map(async (client) => {
+          const hasActiveOrders = await clientOrdersService.hasActiveOrders(client.id);
+          const hasPendingRequests = await orderRequestsService.hasPendingRequests(client.id);
+          return {
+            clientId: client.id,
+            canPlaceOrders: !hasActiveOrders && !hasPendingRequests
+          };
+        })
+      );
+      
+      // Update client eligibility state
+      const eligibilityMap: {[key: number]: boolean} = {};
+      eligibilityChecks.forEach(check => {
+        eligibilityMap[check.clientId] = check.canPlaceOrders;
+      });
+      
+      setClientEligibility(eligibilityMap);
+      
+      console.log("UPDATED CLIENT ELIGIBILITY:", eligibilityMap);
+      
+      setSnackbarMessage('Data refreshed successfully. Client eligibility updated.');
+      setSnackbarSeverity('success');
+      setSnackbarOpen(true);
+    } catch (error) {
+      console.error('Error refreshing data:', error);
+      setSnackbarMessage('Error refreshing data');
+      setSnackbarSeverity('error');
+      setSnackbarOpen(true);
+    }
+  };
   
   // Update products state when redux products change
   useEffect(() => {
@@ -859,15 +954,63 @@ const OrderRequestsList: React.FC = () => {
   };
 
   const handleOpenCreateForm = async () => {
+    setSnackbarMessage('Loading data and validating client availability...');
+    setSnackbarSeverity('info');
+    setSnackbarOpen(true);
+    
     try {
-      const activeAvailableClients = clients.filter(client => 
-        client.status === 'Active' && !clientsWithOrders.has(client.id)
+      // Get updated client list first
+      const freshClients = await clientsService.getClients();
+      setClients(freshClients);
+      
+      console.log("Checking each client's eligibility directly from database...");
+      
+      // Get all active clients first (regardless of order status)
+      const activeClients = freshClients.filter(client => client.status === 'Active');
+      
+      // Clear the console for better readability
+      console.clear();
+      console.log(`Found ${activeClients.length} active clients`);
+      
+      // Now for each active client, check directly with the database if they can place new orders
+      const availabilityChecks = await Promise.all(
+        activeClients.map(async (client) => {
+          console.log(`\n==== CHECKING CLIENT: ${client.name} (ID: ${client.id}) ====`);
+          
+          // DIRECT DATABASE QUERIES to check client eligibility
+          const hasActiveOrders = await clientOrdersService.hasActiveOrders(client.id);
+          const hasPendingRequests = await orderRequestsService.hasPendingRequests(client.id);
+          
+          const canPlaceOrders = !hasActiveOrders && !hasPendingRequests;
+          
+          console.log(`FINAL RESULT: Client ${client.name} (ID: ${client.id}) can place orders: ${canPlaceOrders}`);
+          
+          return {
+            client,
+            canPlaceOrders
+          };
+        })
       );
+      
+      // Update our local state to track client eligibility
+      const eligibilityMap: {[key: number]: boolean} = {};
+      availabilityChecks.forEach(check => {
+        eligibilityMap[check.client.id] = check.canPlaceOrders;
+      });
+      
+      setClientEligibility(eligibilityMap);
+      
+      console.log("Client eligibility map:", eligibilityMap);
+      
+      // Filter clients that can place orders (based on direct database check)
+      const activeAvailableClients = availabilityChecks
+        .filter(check => check.canPlaceOrders)
+        .map(check => check.client);
 
       if (activeAvailableClients.length === 0) {
-        // Provide a more informative message about client eligibility
-        const clientsWithOngoingTransactions = clients.filter(client => 
-          client.status === 'Active' && clientsWithOrders.has(client.id)
+        // Get ineligible clients to show in the message
+        const clientsWithOngoingTransactions = activeClients.filter(client => 
+          !eligibilityMap[client.id]
         );
         
         let message = 'All active clients already have pending or approved orders. ';
@@ -1128,14 +1271,25 @@ const OrderRequestsList: React.FC = () => {
         <Typography variant="h4" component="h1" fontWeight="bold">
           Order Requests
         </Typography>
-        <Button 
-          variant="contained" 
-          startIcon={<AddIcon />}
-          onClick={handleOpenCreateForm}
-          disabled={isLoading}
-        >
-          New Request
-        </Button>
+        <Box>
+          <Button 
+            variant="outlined" 
+            startIcon={<RefreshIcon />}
+            onClick={refreshData}
+            disabled={isLoading}
+            sx={{ mr: 2 }}
+          >
+            Refresh Data
+          </Button>
+          <Button 
+            variant="contained" 
+            startIcon={<AddIcon />}
+            onClick={handleOpenCreateForm}
+            disabled={isLoading}
+          >
+            New Request
+          </Button>
+        </Box>
       </Box>
 
       <Box sx={{ mb: 3, display: 'flex', alignItems: 'center' }}>
@@ -1266,6 +1420,7 @@ const OrderRequestsList: React.FC = () => {
           initialData={currentRequest}
           isEdit={isEdit}
           clientsWithOrders={clientsWithOrders}
+          clientEligibility={clientEligibility}
           getClientOrderStatus={getClientOrderStatus}
           onInventoryUpdate={handleInventoryUpdate}
         />
@@ -1283,7 +1438,11 @@ const OrderRequestsList: React.FC = () => {
               <br />
               • "Rejected" status means the order is declined.
               <br />
-              • Once moved to Client Orders, you can mark it as "Completed" to allow the client to place new orders.
+              • Once moved to Client Orders, you can mark it as "Partially Paid" for orders with partial payment.
+              <br />
+              • Clients cannot place new orders while they have "Approved" or "Partially Paid" orders.
+              <br />
+              • Only when marked as "Completed" or "Rejected" can the client place new orders.
             </Typography>
           </Box>
           <FormControl fullWidth margin="normal">

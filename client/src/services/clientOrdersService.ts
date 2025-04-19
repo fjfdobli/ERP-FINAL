@@ -1,6 +1,16 @@
 import { supabase } from '../supabaseClient';
 import { OrderRequestItem } from './orderRequestsService';
 
+export interface PaymentRecord {
+  id?: number;
+  order_id: number;
+  amount: number;
+  payment_date: string;
+  payment_method?: string;
+  notes?: string;
+  created_at?: string;
+}
+
 export interface ClientOrder {
   id: number;
   order_id: string;
@@ -10,6 +20,9 @@ export interface ClientOrder {
   status: string;
   notes?: string;
   request_id?: number | null;
+  paid_amount?: number;
+  remaining_amount?: number;
+  payment_plan?: string;
   created_at?: string;
   updated_at?: string;
   clients?: {
@@ -18,9 +31,111 @@ export interface ClientOrder {
     contactPerson: string;
     status: string;
   };
+  payments?: PaymentRecord[];
 }
 
 export const clientOrdersService = {
+  // Add a payment record to an order
+  async addPayment(orderPayment: Omit<PaymentRecord, 'id' | 'created_at'>): Promise<PaymentRecord> {
+    try {
+      // Insert the payment record
+      const { data: payment, error } = await supabase
+        .from('order_payments')
+        .insert({
+          ...orderPayment,
+          created_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Get the order to calculate the new paid and remaining amounts
+      const { data: order, error: orderError } = await supabase
+        .from('client_orders')
+        .select('amount')
+        .eq('id', orderPayment.order_id)
+        .single();
+
+      if (orderError) throw orderError;
+
+      // Get all payments for this order to calculate total paid amount
+      const { data: payments, error: paymentsError } = await supabase
+        .from('order_payments')
+        .select('amount')
+        .eq('order_id', orderPayment.order_id);
+
+      if (paymentsError) throw paymentsError;
+
+      // Calculate total paid amount
+      const paidAmount = payments.reduce((sum, payment) => sum + payment.amount, 0);
+      const remainingAmount = order.amount - paidAmount;
+
+      // Update the order with new payment information
+      const status = remainingAmount <= 0 ? 'Completed' : 'Partially Paid';
+      
+      const { error: updateError } = await supabase
+        .from('client_orders')
+        .update({
+          status,
+          paid_amount: paidAmount,
+          remaining_amount: remainingAmount,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', orderPayment.order_id);
+
+      if (updateError) throw updateError;
+
+      // Add history record
+      await this.addOrderHistory(
+        orderPayment.order_id,
+        'Payment',
+        `Payment of ₱${orderPayment.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })} recorded. ${remainingAmount <= 0 ? 'Order fully paid.' : ''}`,
+        'Admin'
+      );
+
+      // If fully paid, add another history record for completion
+      if (remainingAmount <= 0) {
+        await this.addOrderHistory(
+          orderPayment.order_id,
+          'Completed',
+          'Order automatically marked as completed after full payment',
+          'System'
+        );
+      }
+
+      return payment;
+    } catch (error) {
+      console.error('Error adding payment record:', error);
+      throw error;
+    }
+  },
+
+  // Update payment plan for an order
+  async updatePaymentPlan(orderId: number, paymentPlan: string): Promise<void> {
+    try {
+      const { error } = await supabase
+        .from('client_orders')
+        .update({
+          payment_plan: paymentPlan,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', orderId);
+
+      if (error) throw error;
+
+      // Add history record
+      await this.addOrderHistory(
+        orderId,
+        'Update',
+        `Payment plan updated: ${paymentPlan}`,
+        'Admin'
+      );
+    } catch (error) {
+      console.error(`Error updating payment plan for order ${orderId}:`, error);
+      throw error;
+    }
+  },
   // Get all client orders with client details
   async getClientOrders(): Promise<ClientOrder[]> {
     try {
@@ -40,7 +155,7 @@ export const clientOrdersService = {
     }
   },
 
-  // Get a single client order with all items
+  // Get a single client order with all items and payment history
   async getClientOrderById(id: number): Promise<ClientOrder & { items?: OrderRequestItem[] }> {
     try {
       const { data: order, error } = await supabase
@@ -63,11 +178,28 @@ export const clientOrdersService = {
 
       if (itemsError) throw itemsError;
 
-      console.log(`Found ${items?.length || 0} items for order ${id}`);
+      // Get payment records for this order
+      const { data: payments, error: paymentsError } = await supabase
+        .from('order_payments')
+        .select('*')
+        .eq('order_id', id)
+        .order('payment_date', { ascending: false });
+
+      if (paymentsError) throw paymentsError;
+
+      // Calculate paid amount and remaining amount
+      const paidAmount = payments?.reduce((sum, payment) => sum + payment.amount, 0) || 0;
+      const remainingAmount = order.amount - paidAmount;
+
+      console.log(`Found ${items?.length || 0} items and ${payments?.length || 0} payments for order ${id}`);
+      console.log(`Total amount: ${order.amount}, Paid: ${paidAmount}, Remaining: ${remainingAmount}`);
 
       return {
         ...order,
-        items: items || []
+        items: items || [],
+        payments: payments || [],
+        paid_amount: paidAmount,
+        remaining_amount: remainingAmount
       };
     } catch (error) {
       console.error(`Error fetching client order with ID ${id}:`, error);
@@ -286,6 +418,44 @@ export const clientOrdersService = {
     } catch (error) {
       console.error(`Error adding history for client order ${orderId}:`, error);
       // Don't throw the error to prevent blocking the main operation
+    }
+  },
+  
+  // Check if a client has active orders that would prevent new orders
+  async hasActiveOrders(clientId: number): Promise<boolean> {
+    try {
+      console.log(`Directly checking database for active orders for client ${clientId}...`);
+      
+      // First, get all orders for this client for debugging
+      const { data: allOrders, error: allOrdersError } = await supabase
+        .from('client_orders')
+        .select('id, status')
+        .eq('client_id', clientId);
+      
+      if (allOrdersError) throw allOrdersError;
+      
+      console.log(`All orders for client ${clientId}:`, allOrders);
+      
+      // Only check for Approved or Partially Paid orders
+      const { data, error } = await supabase
+        .from('client_orders')
+        .select('id, status')
+        .eq('client_id', clientId)
+        .in('status', ['Approved', 'Partially Paid']);
+      
+      if (error) throw error;
+      
+      // If we found any active orders, the client cannot place new orders
+      const hasRestrictions = (data && data.length > 0);
+      console.log(`Client ${clientId} has active orders (Approved/Partially Paid): ${hasRestrictions}`);
+      if (hasRestrictions) {
+        console.log(`Active orders:`, data);
+      }
+      
+      return hasRestrictions;
+    } catch (error) {
+      console.error(`Error checking active orders for client ${clientId}:`, error);
+      throw error;
     }
   },
   

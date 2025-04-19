@@ -1,6 +1,6 @@
 import { createSlice, createAsyncThunk, PayloadAction, createSelector } from '@reduxjs/toolkit';
 import { RootState } from '../store';
-import { clientOrdersService, ClientOrder } from '../../services/clientOrdersService';
+import { clientOrdersService, ClientOrder, PaymentRecord } from '../../services/clientOrdersService';
 import { OrderRequestItem } from '../../services/orderRequestsService';
 
 // Define the state interface with extended ClientOrder including items
@@ -62,6 +62,30 @@ export const changeClientOrderStatus = createAsyncThunk(
       return await clientOrdersService.changeOrderStatus(id, status, changedBy);
     } catch (error: any) {
       throw Error(error.message || `Failed to change status for client order with ID ${id}`);
+    }
+  }
+);
+
+export const addOrderPayment = createAsyncThunk(
+  'clientOrders/addOrderPayment',
+  async (paymentData: Omit<PaymentRecord, 'id' | 'created_at'>) => {
+    try {
+      await clientOrdersService.addPayment(paymentData);
+      return await clientOrdersService.getClientOrderById(paymentData.order_id);
+    } catch (error: any) {
+      throw Error(error.message || `Failed to add payment for client order with ID ${paymentData.order_id}`);
+    }
+  }
+);
+
+export const updateOrderPaymentPlan = createAsyncThunk(
+  'clientOrders/updateOrderPaymentPlan',
+  async ({ orderId, paymentPlan }: { orderId: number, paymentPlan: string }) => {
+    try {
+      await clientOrdersService.updatePaymentPlan(orderId, paymentPlan);
+      return await clientOrdersService.getClientOrderById(orderId);
+    } catch (error: any) {
+      throw Error(error.message || `Failed to update payment plan for client order with ID ${orderId}`);
     }
   }
 );
@@ -140,6 +164,56 @@ const clientOrdersSlice = createSlice({
         state.error = action.error.message || 'Failed to change client order status';
       })
       
+      // Handle adding payment
+      .addCase(addOrderPayment.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(addOrderPayment.fulfilled, (state, action: PayloadAction<ClientOrder>) => {
+        state.loading = false;
+        
+        // Update the order with new payment information
+        const index = state.clientOrders.findIndex(order => order.id === action.payload.id);
+        if (index !== -1) {
+          // Preserve the items array if it exists
+          const items = state.clientOrders[index].items;
+          state.clientOrders[index] = {
+            ...action.payload,
+            items
+          };
+          console.log(`Updated order ${action.payload.id} with new payment information`);
+        }
+      })
+      .addCase(addOrderPayment.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.error.message || 'Failed to add payment';
+      })
+      
+      // Handle updating payment plan
+      .addCase(updateOrderPaymentPlan.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(updateOrderPaymentPlan.fulfilled, (state, action: PayloadAction<ClientOrder>) => {
+        state.loading = false;
+        
+        // Update the order with new payment plan
+        const index = state.clientOrders.findIndex(order => order.id === action.payload.id);
+        if (index !== -1) {
+          // Preserve the items array if it exists
+          const items = state.clientOrders[index].items;
+          state.clientOrders[index] = {
+            ...action.payload,
+            items
+          };
+          console.log(`Updated order ${action.payload.id} payment plan`);
+        }
+      })
+      .addCase(updateOrderPaymentPlan.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.error.message || 'Failed to update payment plan';
+      })
+      
       // Handle getOrdersByStatus
       .addCase(getOrdersByStatus.pending, (state) => {
         state.loading = true;
@@ -168,6 +242,11 @@ export const selectClientOrdersError = (state: RootState) => state.orders.error;
 export const selectApprovedOrders = createSelector(
   [selectAllClientOrders],
   (clientOrders) => clientOrders.filter(order => order.status === 'Approved')
+);
+
+export const selectPartiallyPaidOrders = createSelector(
+  [selectAllClientOrders],
+  (clientOrders) => clientOrders.filter(order => order.status === 'Partially Paid')
 );
 
 export const selectCompletedOrders = createSelector(

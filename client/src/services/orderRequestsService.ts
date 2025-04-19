@@ -417,5 +417,43 @@ export const orderRequestsService = {
     const timestamp = Date.now().toString().slice(-6); // Last 6 digits of timestamp
     const randomDigits = Math.floor(Math.random() * 10000).toString().padStart(4, '0'); // 4 random digits
     return `${prefix}${timestamp}-${randomDigits}`;
+  },
+  
+  // Check if a client has pending order requests that would prevent new requests
+  async hasPendingRequests(clientId: number): Promise<boolean> {
+    try {
+      console.log(`Directly checking database for pending requests for client ${clientId}...`);
+      
+      // Get all requests for this client for debugging
+      const { data: allRequests, error: allRequestsError } = await supabase
+        .from('order_requests')
+        .select('id, status')
+        .eq('client_id', clientId);
+      
+      if (allRequestsError) throw allRequestsError;
+      
+      console.log(`All order requests for client ${clientId}:`, allRequests);
+      
+      // Only check for Pending or Approved status
+      const { data, error } = await supabase
+        .from('order_requests')
+        .select('id, status')
+        .eq('client_id', clientId)
+        .in('status', ['Pending', 'Approved']);
+      
+      if (error) throw error;
+      
+      // If we found any pending requests, the client cannot place new orders
+      const hasRestrictions = (data && data.length > 0);
+      console.log(`Client ${clientId} has pending requests: ${hasRestrictions}`);
+      if (hasRestrictions) {
+        console.log(`Pending requests:`, data);
+      }
+      
+      return hasRestrictions;
+    } catch (error) {
+      console.error(`Error checking pending requests for client ${clientId}:`, error);
+      throw error;
+    }
   }
 };

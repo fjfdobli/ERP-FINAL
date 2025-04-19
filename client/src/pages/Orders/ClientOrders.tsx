@@ -5,8 +5,11 @@ import { Search as SearchIcon, Refresh as RefreshIcon } from '@mui/icons-materia
 import { 
   fetchClientOrders,
   changeClientOrderStatus,
+  addOrderPayment,
+  updateOrderPaymentPlan,
   selectAllClientOrders,
   selectApprovedOrders,
+  selectPartiallyPaidOrders,
   selectCompletedOrders,
   selectRejectedOrders,
   selectClientOrdersLoading,
@@ -56,10 +59,16 @@ interface OrderDetailsDialogProps {
 }
 
 const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({ open, onClose, order, onStatusChange }) => {
+  const dispatch = useDispatch<AppDispatch>();
   const [tabValue, setTabValue] = useState(0);
   const [orderHistory, setOrderHistory] = useState<any[]>([]);
   const [selectedStatus, setSelectedStatus] = useState<string>('');
   const [completeOrderHistory, setCompleteOrderHistory] = useState<any[]>([]);
+  const [paymentAmount, setPaymentAmount] = useState<string>('');
+  const [paymentMethod, setPaymentMethod] = useState<string>('Cash');
+  const [paymentDate, setPaymentDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [paymentNotes, setPaymentNotes] = useState<string>('');
+  const [paymentPlan, setPaymentPlan] = useState<string>('');
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
@@ -68,6 +77,11 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({ open, onClose, 
   useEffect(() => {
     if (order && open) {
       setSelectedStatus(order.status);
+      setPaymentAmount('');
+      setPaymentMethod('Cash');
+      setPaymentDate(new Date().toISOString().split('T')[0]);
+      setPaymentNotes('');
+      setPaymentPlan(order.payment_plan || '');
       
       // Fetch complete order history from the database
       const fetchOrderHistory = async () => {
@@ -197,6 +211,8 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({ open, onClose, 
     switch (status.toLowerCase()) {
       case 'approved':
         return 'success';
+      case 'partially paid':
+        return 'warning';
       case 'completed':
         return 'info';
       case 'created':
@@ -226,8 +242,8 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({ open, onClose, 
       
       <Tabs value={tabValue} onChange={handleTabChange} centered>
         <Tab label="Basic Info" />
+        <Tab label="Payment Details" />
         <Tab label="Order History" />
-        <Tab label="Items" />
       </Tabs>
       
       <DialogContent>
@@ -259,12 +275,35 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({ open, onClose, 
             <Typography variant="body1">₱{order.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Typography>
           </Box>
           
+          {order.paid_amount !== undefined && (
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="subtitle1" fontWeight="bold">Paid Amount</Typography>
+              <Typography variant="body1">₱{order.paid_amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Typography>
+            </Box>
+          )}
+          
+          {order.remaining_amount !== undefined && (
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="subtitle1" fontWeight="bold">Remaining Amount</Typography>
+              <Typography variant="body1" color={order.remaining_amount > 0 ? 'error.main' : 'success.main'}>
+                ₱{order.remaining_amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </Typography>
+            </Box>
+          )}
+          
+          {order.payment_plan && (
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="subtitle1" fontWeight="bold">Payment Plan</Typography>
+              <Typography variant="body1">{order.payment_plan}</Typography>
+            </Box>
+          )}
+          
           <Box sx={{ mb: 3 }}>
             <Typography variant="body2" color="text.secondary">
               Changing status to "Pending" will move this order back to Order Requests for modification.
               Changing to "Completed" will mark the order as fulfilled and allow the client to place new orders.
               Changing to "Rejected" will cancel the order and allow the client to place new orders.
-              Orders with "Approved" status indicate ongoing transactions and prevent the client from creating new orders.
+              Orders with "Approved" or "Partially Paid" status indicate ongoing transactions and prevent the client from creating new orders.
             </Typography>
           </Box>
           
@@ -280,6 +319,7 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({ open, onClose, 
               >
                 <MenuItem value="Pending">Pending (Move to Order Requests)</MenuItem>
                 <MenuItem value="Approved">Approved</MenuItem>
+                <MenuItem value="Partially Paid">Partially Paid</MenuItem>
                 <MenuItem value="Completed">Completed</MenuItem>
                 <MenuItem value="Rejected">Rejected</MenuItem>
               </Select>
@@ -293,6 +333,165 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({ open, onClose, 
         </TabPanel>
         
         <TabPanel value={tabValue} index={1}>
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="h6" gutterBottom>Payment Summary</Typography>
+            <Paper variant="outlined" sx={{ p: 2, mb: 3 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                <Typography variant="body1">Total Amount:</Typography>
+                <Typography variant="body1" fontWeight="bold">₱{order.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</Typography>
+              </Box>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                <Typography variant="body1">Paid Amount:</Typography>
+                <Typography variant="body1" color="success.main">₱{(order.paid_amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</Typography>
+              </Box>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                <Typography variant="body1">Remaining Balance:</Typography>
+                <Typography variant="body1" color={order.remaining_amount && order.remaining_amount > 0 ? 'error.main' : 'success.main'} fontWeight="bold">
+                  ₱{(order.remaining_amount || order.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                </Typography>
+              </Box>
+            </Paper>
+          </Box>
+            
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="h6" gutterBottom>Payment Plan</Typography>
+            <TextField
+              fullWidth
+              label="Payment Plan Details"
+              multiline
+              rows={3}
+              value={paymentPlan}
+              onChange={(e) => setPaymentPlan(e.target.value)}
+              placeholder="Enter installment details, due dates, etc."
+              variant="outlined"
+              size="small"
+              sx={{ mb: 2 }}
+            />
+            <Button 
+              variant="outlined" 
+              onClick={() => {
+                dispatch(updateOrderPaymentPlan({ 
+                  orderId: order.id, 
+                  paymentPlan: paymentPlan 
+                }));
+              }}
+              disabled={!paymentPlan || paymentPlan === order.payment_plan}
+            >
+              Update Payment Plan
+            </Button>
+          </Box>
+            
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="h6" gutterBottom>Record New Payment</Typography>
+            <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+              <TextField
+                label="Amount (₱)"
+                type="number"
+                value={paymentAmount}
+                onChange={(e) => setPaymentAmount(e.target.value)}
+                InputProps={{
+                  startAdornment: <InputAdornment position="start">₱</InputAdornment>,
+                }}
+                fullWidth
+                size="small"
+              />
+              <TextField
+                label="Payment Date"
+                type="date"
+                value={paymentDate}
+                onChange={(e) => setPaymentDate(e.target.value)}
+                InputLabelProps={{ shrink: true }}
+                fullWidth
+                size="small"
+              />
+            </Box>
+            <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Payment Method</InputLabel>
+                <Select
+                  value={paymentMethod}
+                  onChange={(e) => setPaymentMethod(e.target.value)}
+                  label="Payment Method"
+                >
+                  <MenuItem value="Cash">Cash</MenuItem>
+                  <MenuItem value="Bank Transfer">Bank Transfer</MenuItem>
+                  <MenuItem value="Check">Check</MenuItem>
+                  <MenuItem value="GCash">GCash</MenuItem>
+                  <MenuItem value="Credit Card">Credit Card</MenuItem>
+                  <MenuItem value="Other">Other</MenuItem>
+                </Select>
+              </FormControl>
+              <TextField
+                label="Notes"
+                value={paymentNotes}
+                onChange={(e) => setPaymentNotes(e.target.value)}
+                fullWidth
+                size="small"
+              />
+            </Box>
+            <Button 
+              variant="contained" 
+              color="primary"
+              onClick={() => {
+                if (!paymentAmount || parseFloat(paymentAmount) <= 0) {
+                  alert('Please enter a valid payment amount');
+                  return;
+                }
+                
+                dispatch(addOrderPayment({
+                  order_id: order.id,
+                  amount: parseFloat(paymentAmount),
+                  payment_date: paymentDate,
+                  payment_method: paymentMethod,
+                  notes: paymentNotes
+                }));
+                
+                // Clear fields after submission
+                setPaymentAmount('');
+                setPaymentNotes('');
+              }}
+              disabled={!paymentAmount || parseFloat(paymentAmount) <= 0}
+            >
+              Record Payment
+            </Button>
+          </Box>
+            
+          {order.payments && order.payments.length > 0 ? (
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="h6" gutterBottom>Payment History</Typography>
+              <TableContainer component={Paper} variant="outlined">
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell><strong>Date</strong></TableCell>
+                      <TableCell><strong>Amount</strong></TableCell>
+                      <TableCell><strong>Method</strong></TableCell>
+                      <TableCell><strong>Notes</strong></TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {order.payments.map((payment, index) => (
+                      <TableRow key={index}>
+                        <TableCell>
+                          {new Date(payment.payment_date).toLocaleDateString()}
+                        </TableCell>
+                        <TableCell>₱{payment.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
+                        <TableCell>{payment.payment_method}</TableCell>
+                        <TableCell>{payment.notes || '-'}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Box>
+          ) : (
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+              No payment records found.
+            </Typography>
+          )}
+        </TabPanel>
+        
+        <TabPanel value={tabValue} index={2}>
           {orderHistory.length === 0 ? (
             <Typography variant="body1" color="text.secondary" sx={{ p: 2, textAlign: 'center' }}>
               No order history available.
@@ -393,6 +592,7 @@ const ClientOrdersList: React.FC = () => {
   // Use Redux for state management
   const dispatch = useDispatch<AppDispatch>();
   const approvedOrders = useSelector(selectApprovedOrders);
+  const partiallyPaidOrders = useSelector(selectPartiallyPaidOrders);
   const completedOrders = useSelector(selectCompletedOrders);
   const rejectedOrders = useSelector(selectRejectedOrders);
   const loading = useSelector(selectClientOrdersLoading);
@@ -405,7 +605,7 @@ const ClientOrdersList: React.FC = () => {
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
     message: string;
-    severity: 'success' | 'error' | 'info';
+    severity: 'success' | 'error' | 'info' | 'warning';
   }>({
     open: false,
     message: '',
@@ -473,6 +673,12 @@ const ClientOrdersList: React.FC = () => {
           message: `Order marked as Completed. Client can now place new orders.`,
           severity: 'success'
         });
+      } else if (newStatus === 'Partially Paid') {
+        setSnackbar({
+          open: true,
+          message: `Order marked as Partially Paid. Client cannot place new orders until fully paid.`,
+          severity: 'warning'
+        });
       } else {
         setSnackbar({
           open: true,
@@ -532,6 +738,7 @@ const ClientOrdersList: React.FC = () => {
                     label={order.status} 
                     color={
                       order.status === 'Approved' ? 'success' : 
+                      order.status === 'Partially Paid' ? 'warning' : 
                       order.status === 'Completed' ? 'info' : 
                       order.status === 'Rejected' ? 'error' : 'default'
                     }
@@ -597,6 +804,7 @@ const ClientOrdersList: React.FC = () => {
           <Box sx={{ width: '100%', mb: 3 }}>
             <Tabs value={activeTab} onChange={handleTabChange} centered>
               <Tab label={`Approved Orders (${approvedOrders.length})`} />
+              <Tab label={`Partially Paid Orders (${partiallyPaidOrders.length})`} />
               <Tab label={`Completed Orders (${completedOrders.length})`} />
               <Tab label={`Rejected Orders (${rejectedOrders.length})`} />
             </Tabs>
@@ -607,10 +815,14 @@ const ClientOrdersList: React.FC = () => {
           </TabPanel>
 
           <TabPanel value={activeTab} index={1}>
-            {renderOrdersTable(completedOrders)}
+            {renderOrdersTable(partiallyPaidOrders)}
           </TabPanel>
 
           <TabPanel value={activeTab} index={2}>
+            {renderOrdersTable(completedOrders)}
+          </TabPanel>
+
+          <TabPanel value={activeTab} index={3}>
             {renderOrdersTable(rejectedOrders)}
           </TabPanel>
         </>
