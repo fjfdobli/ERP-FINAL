@@ -37,7 +37,8 @@ const menuItems = [
     children: [
       { text: 'Product Profiles', icon: <PrintIcon />, path: '/orders/products' },
       { text: 'Order Requests', icon: <RequestIcon />, path: '/orders/requests' },
-      { text: 'Client Orders', icon: <ClientRequestIcon />, path: '/orders/clients' }
+      { text: 'Client Orders', icon: <ClientRequestIcon />, path: '/orders/clients' },
+      { text: 'Supplier Orders', icon: <SupplierRequestIcon />, path: '/orders/suppliers' }
     ]
   },
   { text: 'Suppliers', icon: <SuppliersIcon />, path: '/suppliers' },
