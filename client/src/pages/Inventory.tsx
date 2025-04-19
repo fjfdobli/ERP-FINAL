@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Box, Typography, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, TextField, InputAdornment, Chip, LinearProgress, Dialog, DialogTitle, DialogContent, DialogActions, CircularProgress, Snackbar, Alert, FormControl, InputLabel, Select, MenuItem, SelectChangeEvent, Grid, Divider } from '@mui/material';
-import { Add as AddIcon, Search as SearchIcon } from '@mui/icons-material';
+import { Box, Typography, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, TextField, InputAdornment, Chip, LinearProgress, Dialog, DialogTitle, DialogContent, DialogActions, CircularProgress, Snackbar, Alert, FormControl, InputLabel, Select, MenuItem, SelectChangeEvent, Grid, Divider, IconButton, Tooltip } from '@mui/material';
+import { Add as AddIcon, Search as SearchIcon, Edit as EditIcon, Delete as DeleteIcon, Visibility as VisibilityIcon } from '@mui/icons-material';
 import { useDispatch, useSelector } from 'react-redux';
 import { 
   fetchInventory, 
@@ -8,6 +8,7 @@ import {
   updateInventoryItem, 
   addInventoryTransaction, 
   createInventoryItem,
+  deleteInventoryItem,
   fetchActiveSuppliers,
   fetchActiveEmployees,
   selectAllInventoryItems,
@@ -44,6 +45,9 @@ const InventoryList: React.FC = () => {
   const [showLowStock, setShowLowStock] = useState(false);
   const [quantityDialogOpen, setQuantityDialogOpen] = useState(false);
   const [addItemDialogOpen, setAddItemDialogOpen] = useState(false);
+  const [viewItemDialogOpen, setViewItemDialogOpen] = useState(false);
+  const [editItemDialogOpen, setEditItemDialogOpen] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
   const [adjustmentAmount, setAdjustmentAmount] = useState(1);
   const [adjustmentType, setAdjustmentType] = useState<'add' | 'remove'>('add');
@@ -53,8 +57,20 @@ const InventoryList: React.FC = () => {
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [snackbarSeverity, setSnackbarSeverity] = useState<'success' | 'error'>('success');
   
-  // State for new item form
+  // State for new/edit item form
   const [newItem, setNewItem] = useState({
+    itemName: '',
+    sku: '',
+    itemType: '',
+    quantity: 0,
+    minStockLevel: 0,
+    unitPrice: 0,
+    supplierId: ''
+  });
+  
+  // Copy of item for edit form
+  const [editingItem, setEditingItem] = useState({
+    id: '',
     itemName: '',
     sku: '',
     itemType: '',
@@ -256,6 +272,107 @@ const InventoryList: React.FC = () => {
   const handleCloseSnackbar = () => {
     setSnackbarOpen(false);
   };
+  
+  // Handle view item dialog
+  const handleCloseViewDialog = () => {
+    setViewItemDialogOpen(false);
+    setSelectedItem(null);
+  };
+
+  // Handle edit item dialog
+  const handleCloseEditDialog = () => {
+    setEditItemDialogOpen(false);
+    setSelectedItem(null);
+    setEditingItem({
+      id: '',
+      itemName: '',
+      sku: '',
+      itemType: '',
+      quantity: 0,
+      minStockLevel: 0,
+      unitPrice: 0,
+      supplierId: ''
+    });
+  };
+
+  const handleEditItemChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setEditingItem(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleEditItemNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    const numValue = parseInt(value);
+    if (!isNaN(numValue) && numValue >= 0) {
+      setEditingItem(prev => ({ ...prev, [name]: numValue }));
+    }
+  };
+
+  const handleEditItemSelectChange = (e: SelectChangeEvent<string>) => {
+    const { name, value } = e.target;
+    setEditingItem(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleSaveEditItem = async () => {
+    if (!editingItem.id) return;
+
+    try {
+      // Check required fields
+      if (!editingItem.itemName || !editingItem.sku || !editingItem.itemType) {
+        setSnackbarMessage('Please fill in all required fields');
+        setSnackbarSeverity('error');
+        setSnackbarOpen(true);
+        return;
+      }
+
+      // Convert to the proper format for updating an inventory item
+      await dispatch(updateInventoryItem({
+        id: Number(editingItem.id),
+        data: {
+          itemName: editingItem.itemName,
+          sku: editingItem.sku,
+          itemType: editingItem.itemType,
+          quantity: editingItem.quantity,
+          minStockLevel: editingItem.minStockLevel,
+          unitPrice: editingItem.unitPrice,
+          supplierId: editingItem.supplierId ? Number(editingItem.supplierId) : undefined
+        }
+      })).unwrap();
+
+      setSnackbarMessage('Inventory item updated successfully');
+      setSnackbarSeverity('success');
+      handleCloseEditDialog();
+    } catch (error) {
+      console.error('Error updating inventory item:', error);
+      setSnackbarMessage('Error updating inventory item');
+      setSnackbarSeverity('error');
+    } finally {
+      setSnackbarOpen(true);
+    }
+  };
+
+  // Handle delete confirmation dialog
+  const handleCloseDeleteConfirm = () => {
+    setDeleteConfirmOpen(false);
+    setSelectedItem(null);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!selectedItem) return;
+
+    try {
+      await dispatch(deleteInventoryItem(selectedItem.id)).unwrap();
+      setSnackbarMessage('Inventory item deleted successfully');
+      setSnackbarSeverity('success');
+    } catch (error) {
+      console.error('Error deleting inventory item:', error);
+      setSnackbarMessage('Error deleting inventory item');
+      setSnackbarSeverity('error');
+    } finally {
+      setSnackbarOpen(true);
+      handleCloseDeleteConfirm();
+    }
+  };
 
   return (
     <Box>
@@ -360,25 +477,69 @@ const InventoryList: React.FC = () => {
                         />
                       </TableCell>
                       <TableCell>
-                        <Button 
-                          size="small" 
-                          variant="outlined"
-                          color="primary"
-                          onClick={() => handleOpenQuantityDialog(item, 'add')}
-                          sx={{ mr: 1 }}
-                          disabled={activeSuppliers.length === 0}
-                        >
-                          Stock In
-                        </Button>
-                        <Button 
-                          size="small" 
-                          variant="outlined"
-                          color="error"
-                          onClick={() => handleOpenQuantityDialog(item, 'remove')}
-                          disabled={quantity <= 0 || activeEmployees.length === 0}
-                        >
-                          Stock Out
-                        </Button>
+                        <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
+                          <Button 
+                            size="small" 
+                            variant="outlined"
+                            color="primary"
+                            onClick={() => handleOpenQuantityDialog(item, 'add')}
+                            disabled={activeSuppliers.length === 0}
+                          >
+                            Stock In
+                          </Button>
+                          <Button 
+                            size="small" 
+                            variant="outlined"
+                            color="error"
+                            onClick={() => handleOpenQuantityDialog(item, 'remove')}
+                            disabled={quantity <= 0 || activeEmployees.length === 0}
+                          >
+                            Stock Out
+                          </Button>
+                          <Button 
+                            size="small" 
+                            variant="outlined"
+                            color="info"
+                            onClick={() => {
+                              setSelectedItem(item);
+                              setViewItemDialogOpen(true);
+                            }}
+                          >
+                            View
+                          </Button>
+                          <Button 
+                            size="small" 
+                            variant="outlined"
+                            color="primary"
+                            onClick={() => {
+                              setSelectedItem(item);
+                              setEditingItem({
+                                id: String(item.id),
+                                itemName: item.itemName,
+                                sku: item.sku,
+                                itemType: item.itemType,
+                                quantity: item.quantity,
+                                minStockLevel: item.minStockLevel,
+                                unitPrice: item.unitPrice || 0,
+                                supplierId: item.supplierId ? String(item.supplierId) : ''
+                              });
+                              setEditItemDialogOpen(true);
+                            }}
+                          >
+                            Edit
+                          </Button>
+                          <Button 
+                            size="small" 
+                            variant="outlined"
+                            color="error"
+                            onClick={() => {
+                              setSelectedItem(item);
+                              setDeleteConfirmOpen(true);
+                            }}
+                          >
+                            Delete
+                          </Button>
+                        </Box>
                       </TableCell>
                     </TableRow>
                   );
@@ -607,6 +768,209 @@ const InventoryList: React.FC = () => {
             disabled={!newItem.itemName || !newItem.sku || !newItem.itemType}
           >
             Save Item
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* View Item Dialog */}
+      <Dialog open={viewItemDialogOpen} onClose={handleCloseViewDialog} maxWidth="md" fullWidth>
+        <DialogTitle>View Inventory Item</DialogTitle>
+        <DialogContent>
+          {selectedItem && (
+            <Box sx={{ pt: 2 }}>
+              <Grid container spacing={3}>
+                <Grid item xs={12} md={6}>
+                  <Typography variant="subtitle1" gutterBottom>Basic Information</Typography>
+                  <Divider sx={{ mb: 2 }} />
+                  <Typography variant="body1"><strong>Item Name:</strong> {selectedItem.itemName}</Typography>
+                  <Typography variant="body1"><strong>SKU:</strong> {selectedItem.sku}</Typography>
+                  <Typography variant="body1"><strong>Item Type:</strong> {selectedItem.itemType}</Typography>
+                  <Typography variant="body1">
+                    <strong>Supplier:</strong> {
+                      activeSuppliers.find(s => s.id === selectedItem.supplierId)?.name || 'Not assigned'
+                    }
+                  </Typography>
+                </Grid>
+                
+                <Grid item xs={12} md={6}>
+                  <Typography variant="subtitle1" gutterBottom>Stock Information</Typography>
+                  <Divider sx={{ mb: 2 }} />
+                  <Typography variant="body1"><strong>Current Quantity:</strong> {selectedItem.quantity}</Typography>
+                  <Typography variant="body1"><strong>Minimum Stock Level:</strong> {selectedItem.minStockLevel}</Typography>
+                  <Typography variant="body1">
+                    <strong>Unit Price:</strong> {selectedItem.unitPrice ? `₱${selectedItem.unitPrice.toFixed(2)}` : 'Not set'}
+                  </Typography>
+                  <Box sx={{ mt: 2, display: 'flex', alignItems: 'center' }}>
+                    <Typography variant="body1" sx={{ mr: 2 }}><strong>Stock Status:</strong></Typography>
+                    <Chip 
+                      label={selectedItem.quantity < selectedItem.minStockLevel ? 'Low Stock' : 'In Stock'} 
+                      color={selectedItem.quantity < selectedItem.minStockLevel ? 'error' : 'success'}
+                      size="small"
+                    />
+                  </Box>
+                </Grid>
+              </Grid>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseViewDialog}>Close</Button>
+        </DialogActions>
+      </Dialog>
+      
+      {/* Edit Item Dialog */}
+      <Dialog open={editItemDialogOpen} onClose={handleCloseEditDialog} maxWidth="md" fullWidth>
+        <DialogTitle>Edit Inventory Item</DialogTitle>
+        <DialogContent>
+          <Box sx={{ pt: 2 }}>
+            <Grid container spacing={2}>
+              <Grid item xs={12}>
+                <Typography variant="subtitle1" gutterBottom>
+                  Basic Information
+                </Typography>
+                <Divider sx={{ mb: 2 }} />
+              </Grid>
+              
+              <Grid item xs={12} md={6}>
+                <TextField
+                  name="itemName"
+                  label="Item Name *"
+                  value={editingItem.itemName}
+                  onChange={handleEditItemChange}
+                  fullWidth
+                  required
+                />
+              </Grid>
+              
+              <Grid item xs={12} md={6}>
+                <TextField
+                  name="sku"
+                  label="SKU *"
+                  value={editingItem.sku}
+                  onChange={handleEditItemChange}
+                  fullWidth
+                  required
+                  helperText="Unique identifier for this item"
+                />
+              </Grid>
+              
+              <Grid item xs={12} md={6}>
+                <FormControl fullWidth required>
+                  <InputLabel id="edit-item-type-label">Item Type</InputLabel>
+                  <Select
+                    labelId="edit-item-type-label"
+                    name="itemType"
+                    value={editingItem.itemType}
+                    label="Item Type *"
+                    onChange={handleEditItemSelectChange}
+                  >
+                    {itemTypes.map(type => (
+                      <MenuItem key={type.id} value={type.id}>
+                        {type.name}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              
+              <Grid item xs={12} md={6}>
+                <FormControl fullWidth>
+                  <InputLabel id="edit-supplier-label">Supplier</InputLabel>
+                  <Select
+                    labelId="edit-supplier-label"
+                    name="supplierId"
+                    value={editingItem.supplierId}
+                    label="Supplier"
+                    onChange={handleEditItemSelectChange}
+                  >
+                    {activeSuppliers.map(supplier => (
+                      <MenuItem key={supplier.id} value={supplier.id}>
+                        {supplier.name}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              
+              <Grid item xs={12}>
+                <Typography variant="subtitle1" gutterBottom sx={{ mt: 2 }}>
+                  Stock Information
+                </Typography>
+                <Divider sx={{ mb: 2 }} />
+              </Grid>
+              
+              <Grid item xs={12} md={4}>
+                <TextField
+                  name="quantity"
+                  label="Quantity"
+                  type="number"
+                  value={editingItem.quantity}
+                  onChange={handleEditItemNumberChange}
+                  fullWidth
+                  InputProps={{
+                    inputProps: { min: 0 }
+                  }}
+                />
+              </Grid>
+              
+              <Grid item xs={12} md={4}>
+                <TextField
+                  name="minStockLevel"
+                  label="Minimum Stock Level"
+                  type="number"
+                  value={editingItem.minStockLevel}
+                  onChange={handleEditItemNumberChange}
+                  fullWidth
+                  InputProps={{
+                    inputProps: { min: 0 }
+                  }}
+                  helperText="Alert when below this level"
+                />
+              </Grid>
+              
+              <Grid item xs={12} md={4}>
+                <TextField
+                  name="unitPrice"
+                  label="Unit Price"
+                  type="number"
+                  value={editingItem.unitPrice}
+                  onChange={handleEditItemNumberChange}
+                  fullWidth
+                  InputProps={{
+                    startAdornment: <InputAdornment position="start">₱</InputAdornment>,
+                    inputProps: { min: 0, step: 0.01 }
+                  }}
+                />
+              </Grid>
+            </Grid>
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={handleCloseEditDialog}>Cancel</Button>
+          <Button 
+            onClick={handleSaveEditItem} 
+            variant="contained" 
+            color="primary"
+            disabled={!editingItem.itemName || !editingItem.sku || !editingItem.itemType}
+          >
+            Save Changes
+          </Button>
+        </DialogActions>
+      </Dialog>
+      
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteConfirmOpen} onClose={handleCloseDeleteConfirm}>
+        <DialogTitle>Confirm Delete</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Are you sure you want to delete <strong>{selectedItem?.itemName}</strong>?
+            This action cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseDeleteConfirm}>Cancel</Button>
+          <Button onClick={handleConfirmDelete} color="error" variant="contained">
+            Delete
           </Button>
         </DialogActions>
       </Dialog>
