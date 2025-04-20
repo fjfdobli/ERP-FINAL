@@ -26,6 +26,28 @@ const initialState: ProductProfileState = {
 };
 
 // Async thunks
+export const uploadProductImage = createAsyncThunk(
+  'productProfile/uploadProductImage',
+  async ({ file, productId }: { file: File; productId: number }, { rejectWithValue }) => {
+    try {
+      return await productProfileService.uploadProductImage(file, productId);
+    } catch (error) {
+      return rejectWithValue(error instanceof Error ? error.message : 'Failed to upload product image');
+    }
+  }
+);
+
+export const uploadMultipleProductImages = createAsyncThunk(
+  'productProfile/uploadMultipleProductImages',
+  async ({ files, productId }: { files: File[]; productId: number }, { rejectWithValue }) => {
+    try {
+      return await productProfileService.uploadMultipleProductImages(files, productId);
+    } catch (error) {
+      return rejectWithValue(error instanceof Error ? error.message : 'Failed to upload product images');
+    }
+  }
+);
+
 export const fetchProducts = createAsyncThunk(
   'productProfile/fetchProducts',
   async (_, { rejectWithValue }) => {

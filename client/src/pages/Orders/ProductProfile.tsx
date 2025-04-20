@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Box, 
   Typography, 
@@ -38,6 +38,8 @@ import {
   Visibility as ViewIcon,
   Edit as EditIcon,
   InventoryOutlined as InventoryIcon,
+  PhotoCamera as PhotoCameraIcon,
+  CloudUpload as CloudUploadIcon,
 } from '@mui/icons-material';
 import { useDispatch, useSelector } from 'react-redux';
 import { AppDispatch, RootState } from '../../redux/store';
@@ -46,6 +48,8 @@ import {
   createProduct, 
   updateProduct, 
   deleteProduct,
+  uploadProductImage,
+  uploadMultipleProductImages,
   selectAllProducts,
   selectProductLoading,
   selectProductError
@@ -79,6 +83,11 @@ const ProductProfile: React.FC = () => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [currentProduct, setCurrentProduct] = useState<ExtendedProduct | null>(null);
   const [isEdit, setIsEdit] = useState(false);
+  
+  // State for image upload
+  const [imageFiles, setImageFiles] = useState<File[]>([]);
+  const [imageUploading, setImageUploading] = useState<boolean>(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   // State for snackbar
   const [snackbarOpen, setSnackbarOpen] = useState(false);
@@ -127,16 +136,90 @@ const ProductProfile: React.FC = () => {
       name: '',
       price: 0,
       description: '',
+      imageUrl: null,
+      imageUrls: [],
       materials: []
     });
     setIsEdit(false);
+    setImageFiles([]);
     setDialogOpen(true);
   };
 
   const handleOpenEditDialog = (product: ExtendedProduct) => {
     setCurrentProduct({ ...product });
     setIsEdit(true);
+    setImageFiles([]);
     setDialogOpen(true);
+  };
+  
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      // Convert FileList to array and add to existing files
+      const newFiles = Array.from(e.target.files);
+      setImageFiles(prev => [...prev, ...newFiles]);
+      
+      // Create preview URLs for the new images
+      const newImageUrls = newFiles.map(file => URL.createObjectURL(file));
+      
+      // Update the form with new image URLs
+      setCurrentProduct(prev => {
+        if (!prev) return null;
+        const updatedImageUrls = [...(prev.imageUrls || []), ...newImageUrls];
+        return {
+          ...prev,
+          // Set the first image as the main imageUrl for backward compatibility
+          imageUrl: updatedImageUrls[0] || null,
+          imageUrls: updatedImageUrls
+        };
+      });
+    }
+  };
+  
+  const handleRemoveImage = (index: number) => {
+    // Remove the image file
+    setImageFiles(prev => {
+      const newFiles = [...prev];
+      newFiles.splice(index, 1);
+      return newFiles;
+    });
+    
+    // Remove the image URL from the form
+    setCurrentProduct(prev => {
+      if (!prev) return null;
+      const newImageUrls = [...(prev.imageUrls || [])];
+      newImageUrls.splice(index, 1);
+      return {
+        ...prev,
+        // Update the main imageUrl if needed
+        imageUrl: newImageUrls[0] || null,
+        imageUrls: newImageUrls
+      };
+    });
+  };
+  
+  const handleUploadImages = async (productId: number) => {
+    if (imageFiles.length === 0) return null;
+    
+    setImageUploading(true);
+    try {
+      // Use the multiple image upload function
+      const imageUrls = await dispatch(uploadMultipleProductImages({
+        files: imageFiles,
+        productId
+      })).unwrap();
+      
+      setImageUploading(false);
+      setSnackbarMessage(`${imageUrls.length} images uploaded successfully`);
+      setSnackbarSeverity('success');
+      setSnackbarOpen(true);
+      return imageUrls;
+    } catch (error: any) {
+      setImageUploading(false);
+      setSnackbarMessage(error.message || 'Failed to upload images');
+      setSnackbarSeverity('error');
+      setSnackbarOpen(true);
+      return null;
+    }
   };
 
   const handleCloseDialog = () => {
@@ -270,25 +353,58 @@ const ProductProfile: React.FC = () => {
     
     try {
       if (isEdit) {
+        // For existing product, check if we need to upload new images
+        let finalImageUrls = currentProduct.imageUrls || [];
+        let finalMainImageUrl = finalImageUrls[0] || null;
+        
+        if (imageFiles.length > 0) {
+          const newImageUrls = await handleUploadImages(currentProduct.id);
+          if (newImageUrls && newImageUrls.length > 0) {
+            // Combine existing persisted images with new uploaded ones
+            const existingPersistedImages = (currentProduct.imageUrls || [])
+              .filter(url => !url.startsWith('blob:')); // Filter out any blob URLs
+            
+            finalImageUrls = [...existingPersistedImages, ...newImageUrls];
+            finalMainImageUrl = finalImageUrls[0];
+          }
+        } else {
+          // No new images to upload, keep existing persisted images
+          finalImageUrls = (currentProduct.imageUrls || [])
+            .filter(url => !url.startsWith('blob:'));
+          
+          if (currentProduct.imageUrl && !currentProduct.imageUrl.startsWith('blob:')) {
+            // Make sure the main image is included if it's not a blob URL
+            if (!finalImageUrls.includes(currentProduct.imageUrl)) {
+              finalImageUrls = [currentProduct.imageUrl, ...finalImageUrls];
+            }
+          }
+          
+          finalMainImageUrl = finalImageUrls[0] || null;
+        }
+        
         // Update existing product
         await dispatch(updateProduct({
           id: currentProduct.id,
           updates: {
             name: currentProduct.name,
             price: currentProduct.price,
-            description: currentProduct.description
+            description: currentProduct.description,
+            imageUrl: finalMainImageUrl,
+            imageUrls: finalImageUrls
           },
           materials: currentProduct.materials
         })).unwrap();
         
         setSnackbarMessage('Product updated successfully');
       } else {
-        // Create new product
-        await dispatch(createProduct({
+        // Create new product first without images
+        const createdProduct = await dispatch(createProduct({
           product: {
             name: currentProduct.name,
             price: currentProduct.price,
-            description: currentProduct.description
+            description: currentProduct.description,
+            imageUrl: null,
+            imageUrls: []
           },
           materials: currentProduct.materials.map(m => ({
             materialId: m.materialId,
@@ -296,6 +412,24 @@ const ProductProfile: React.FC = () => {
             quantityRequired: m.quantityRequired
           }))
         })).unwrap();
+        
+        // Now upload the images if available
+        if (imageFiles.length > 0 && createdProduct.id) {
+          const imageUrls = await handleUploadImages(createdProduct.id) || [];
+          const mainImageUrl = imageUrls[0] || null;
+          
+          // Update the newly created product with the image URLs
+          if (imageUrls.length > 0) {
+            await dispatch(updateProduct({ 
+              id: createdProduct.id, 
+              updates: { 
+                imageUrl: mainImageUrl,
+                imageUrls: imageUrls
+              },
+              materials: createdProduct.materials
+            })).unwrap();
+          }
+        }
         
         setSnackbarMessage('Product created successfully');
       }
@@ -330,6 +464,43 @@ const ProductProfile: React.FC = () => {
           },
         }}
       >
+        {/* Product Image */}
+        <Box sx={{ 
+          position: 'relative',
+          paddingTop: '60%', // 60% aspect ratio
+          backgroundColor: 'grey.100',
+          overflow: 'hidden'
+        }}>
+          {product.imageUrl ? (
+            <Box
+              component="img"
+              src={product.imageUrl}
+              alt={product.name}
+              sx={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+              }}
+            />
+          ) : (
+            <Box sx={{ 
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '100%',
+              height: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}>
+              <PhotoCameraIcon color="disabled" sx={{ fontSize: 40 }} />
+            </Box>
+          )}
+        </Box>
+        
         <CardContent sx={{ flexGrow: 1 }}>
           <Typography variant="h6" gutterBottom fontWeight="bold">
             {product.name}
@@ -400,6 +571,127 @@ const ProductProfile: React.FC = () => {
     return (
       <Box>
         <Grid container spacing={2} sx={{ mt: 1 }}>
+          {/* Product Images Section */}
+          <Grid item xs={12}>
+            <Typography variant="subtitle1" gutterBottom>
+              Product Images
+            </Typography>
+            
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 2 }}>
+              {/* Image Gallery */}
+              <Box sx={{ 
+                display: 'flex', 
+                flexWrap: 'wrap', 
+                gap: 2, 
+                justifyContent: 'center',
+                mb: 2,
+                width: '100%'
+              }}>
+                {(currentProduct.imageUrls && currentProduct.imageUrls.length > 0) ? (
+                  currentProduct.imageUrls.map((imageUrl, index) => (
+                    <Box key={index} sx={{ position: 'relative' }}>
+                      <Box 
+                        component="img" 
+                        src={imageUrl} 
+                        alt={`${currentProduct.name} image ${index + 1}`}
+                        sx={{ width: 120, height: 120, border: '1px solid #eee', objectFit: 'cover' }}
+                      />
+                      <IconButton 
+                        size="small" 
+                        color="error" 
+                        onClick={() => handleRemoveImage(index)}
+                        sx={{ 
+                          position: 'absolute', 
+                          top: -10, 
+                          right: -10,
+                          bgcolor: 'background.paper',
+                          boxShadow: 1,
+                          '&:hover': { bgcolor: 'error.light', color: 'white' }
+                        }}
+                      >
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    </Box>
+                  ))
+                ) : (
+                  <Box 
+                    sx={{ 
+                      width: 120, 
+                      height: 120, 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'center',
+                      border: '1px dashed #ccc',
+                      borderRadius: 1
+                    }}
+                  >
+                    <PhotoCameraIcon color="disabled" sx={{ fontSize: 40 }} />
+                  </Box>
+                )}
+                
+                {/* Add New Image Box */}
+                <Box 
+                  component="label" 
+                  htmlFor="image-upload"
+                  sx={{ 
+                    width: 120, 
+                    height: 120, 
+                    display: 'flex', 
+                    flexDirection: 'column',
+                    alignItems: 'center', 
+                    justifyContent: 'center',
+                    border: '1px dashed #ccc',
+                    borderRadius: 1,
+                    cursor: 'pointer',
+                    '&:hover': {
+                      bgcolor: 'action.hover'
+                    }
+                  }}
+                >
+                  <AddIcon sx={{ fontSize: 30, mb: 1, color: 'text.secondary' }} />
+                  <Typography variant="caption" color="text.secondary">
+                    Add Image
+                  </Typography>
+                </Box>
+              </Box>
+              
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                style={{ display: 'none' }}
+                id="image-upload"
+                ref={fileInputRef}
+                onChange={handleImageChange}
+                title="Upload product images"
+                aria-label="Upload product images"
+              />
+              
+              <Button 
+                variant="outlined" 
+                component="label" 
+                htmlFor="image-upload"
+                startIcon={<CloudUploadIcon />}
+                disabled={imageUploading}
+              >
+                {imageUploading ? 'Uploading...' : 'Add Images'}
+              </Button>
+              
+              {imageUploading && (
+                <Box sx={{ display: 'flex', alignItems: 'center', mt: 1 }}>
+                  <CircularProgress size={16} sx={{ mr: 1 }} />
+                  <Typography variant="caption" color="text.secondary">
+                    Uploading images...
+                  </Typography>
+                </Box>
+              )}
+              
+              <Typography variant="caption" color="text.secondary" mt={1}>
+                Add images of your product to make it more appealing to customers.
+              </Typography>
+            </Box>
+          </Grid>
+          
           <Grid item xs={12} md={6}>
             <TextField
               label="Product Name"
@@ -639,6 +931,40 @@ const ProductProfile: React.FC = () => {
           {currentProduct && (
             <Box sx={{ py: 2 }}>
               <Grid container spacing={3}>
+                {/* Product Images Gallery */}
+                {(currentProduct.imageUrls && currentProduct.imageUrls.length > 0) && (
+                  <Grid item xs={12}>
+                    <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 2 }}>Product Images</Typography>
+                    <Box sx={{ 
+                      display: 'flex', 
+                      flexWrap: 'wrap', 
+                      gap: 2, 
+                      justifyContent: 'flex-start' 
+                    }}>
+                      {currentProduct.imageUrls.map((imageUrl, index) => (
+                        <Box 
+                          key={index}
+                          component="img"
+                          src={imageUrl}
+                          alt={`${currentProduct.name} image ${index + 1}`}
+                          sx={{ 
+                            width: 150, 
+                            height: 150,
+                            objectFit: 'cover',
+                            borderRadius: 1,
+                            boxShadow: 1,
+                            cursor: 'pointer',
+                            transition: 'transform 0.2s',
+                            '&:hover': {
+                              transform: 'scale(1.05)'
+                            }
+                          }}
+                        />
+                      ))}
+                    </Box>
+                  </Grid>
+                )}
+                
                 <Grid item xs={12} md={6}>
                   <Typography variant="subtitle2" color="text.secondary">Product Name</Typography>
                   <Typography variant="body1" sx={{ mt: 1, fontWeight: 500 }}>{currentProduct.name}</Typography>

@@ -13,6 +13,8 @@ export interface Product {
   name: string;
   price: number;
   description?: string;
+  imageUrl?: string | null;
+  imageUrls?: string[] | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -25,12 +27,16 @@ export interface CreateProduct {
   name: string;
   price: number;
   description?: string;
+  imageUrl?: string | null;
+  imageUrls?: string[] | null;
 }
 
 export interface UpdateProduct {
   name?: string;
   price?: number;
   description?: string;
+  imageUrl?: string | null;
+  imageUrls?: string[] | null;
 }
 
 // Table names
@@ -41,6 +47,42 @@ const PRODUCT_MATERIALS_TABLE = 'product_materials';
  * Service for managing product profiles in Supabase
  */
 export const productProfileService = {
+  /**
+   * Upload a product image to Supabase storage
+   */
+  async uploadProductImage(file: File, productId: number): Promise<string> {
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${productId}_${Date.now()}.${fileExt}`;
+    const filePath = `product-images/${fileName}`;
+
+    const { data, error } = await supabase.storage
+      .from('product-images')
+      .upload(filePath, file, {
+        cacheControl: '3600',
+        upsert: true
+      });
+
+    if (error) {
+      console.error('Error uploading product image:', error);
+      throw new Error(error.message);
+    }
+
+    // Get the public URL
+    const { data: publicUrlData } = supabase.storage
+      .from('product-images')
+      .getPublicUrl(data.path);
+
+    return publicUrlData.publicUrl;
+  },
+
+  /**
+   * Upload multiple product images to Supabase storage
+   */
+  async uploadMultipleProductImages(files: File[], productId: number): Promise<string[]> {
+    const uploadPromises = files.map(file => this.uploadProductImage(file, productId));
+    return Promise.all(uploadPromises);
+  },
+  
   /**
    * Fetch all products with their materials
    */
