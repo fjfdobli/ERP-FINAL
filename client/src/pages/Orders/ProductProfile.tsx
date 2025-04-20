@@ -1,8 +1,44 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Typography, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, 
-  TextField, InputAdornment, Chip, Dialog, DialogTitle, DialogContent, DialogActions, 
-  FormControl, InputLabel, Select, MenuItem, CircularProgress, Snackbar, Alert, Grid, SelectChangeEvent } from '@mui/material';
-import { Add as AddIcon, Search as SearchIcon, Delete as DeleteIcon, Visibility as ViewIcon } from '@mui/icons-material';
+import { 
+  Box, 
+  Typography, 
+  Paper, 
+  Button, 
+  TextField, 
+  InputAdornment, 
+  Dialog, 
+  DialogTitle, 
+  DialogContent, 
+  DialogActions, 
+  FormControl, 
+  InputLabel, 
+  Select, 
+  MenuItem, 
+  CircularProgress, 
+  Snackbar, 
+  Alert, 
+  Grid,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Card,
+  CardContent,
+  CardActions,
+  Chip,
+  IconButton,
+  Tooltip,
+} from '@mui/material';
+import { 
+  Add as AddIcon, 
+  Search as SearchIcon, 
+  Delete as DeleteIcon, 
+  Visibility as ViewIcon,
+  Edit as EditIcon,
+  InventoryOutlined as InventoryIcon,
+} from '@mui/icons-material';
 import { useDispatch, useSelector } from 'react-redux';
 import { AppDispatch, RootState } from '../../redux/store';
 import { 
@@ -279,6 +315,84 @@ const ProductProfile: React.FC = () => {
     setSnackbarOpen(false);
   };
 
+  // ProductCard component
+  const ProductCard = ({ product }: { product: ExtendedProduct }) => {
+    return (
+      <Card 
+        sx={{ 
+          height: '100%', 
+          display: 'flex', 
+          flexDirection: 'column',
+          transition: 'transform 0.2s, box-shadow 0.2s',
+          '&:hover': {
+            transform: 'translateY(-4px)',
+            boxShadow: 4,
+          },
+        }}
+      >
+        <CardContent sx={{ flexGrow: 1 }}>
+          <Typography variant="h6" gutterBottom fontWeight="bold">
+            {product.name}
+          </Typography>
+          
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="subtitle1" color="primary" gutterBottom>
+              ₱{product.price.toLocaleString()}
+            </Typography>
+            
+            <Typography 
+              variant="body2" 
+              color="text.secondary" 
+              sx={{ 
+                overflow: 'hidden', 
+                textOverflow: 'ellipsis', 
+                display: '-webkit-box', 
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: 'vertical',
+                minHeight: '40px',
+              }}
+            >
+              {product.description || 'No description provided'}
+            </Typography>
+          </Box>
+          
+          <Box sx={{ display: 'flex', alignItems: 'center', mt: 2 }}>
+            <InventoryIcon sx={{ mr: 1, color: 'text.secondary', fontSize: 20 }} />
+            <Typography variant="body2" color="text.secondary">
+              {product.materials.length} material{product.materials.length !== 1 ? 's' : ''} required
+            </Typography>
+          </Box>
+        </CardContent>
+        
+        <CardActions sx={{ justifyContent: 'flex-end', p: 2, pt: 0 }}>
+          <Button 
+            size="small" 
+            color="info"
+            onClick={() => handleOpenViewDialog(product)}
+          >
+            View
+          </Button>
+          
+          <Button 
+            size="small" 
+            color="primary"
+            onClick={() => handleOpenEditDialog(product)}
+          >
+            Edit
+          </Button>
+          
+          <Button 
+            size="small" 
+            color="error"
+            onClick={() => handleOpenDeleteDialog(product)}
+          >
+            Delete
+          </Button>
+        </CardActions>
+      </Card>
+    );
+  };
+
   // ProductForm component for creating/editing products
   const ProductForm = () => {
     if (!currentProduct) return null;
@@ -473,67 +587,26 @@ const ProductProfile: React.FC = () => {
           </Button>
         </Box>
       ) : (
-        <TableContainer component={Paper} sx={{ boxShadow: 'none', border: '1px solid rgba(0, 0, 0, 0.08)' }}>
-          <Table>
-            <TableHead sx={{ backgroundColor: 'background.paper' }}>
-              <TableRow>
-                <TableCell><strong>Product Name</strong></TableCell>
-                <TableCell><strong>Price</strong></TableCell>
-                <TableCell><strong>Description</strong></TableCell>
-                <TableCell><strong>Materials</strong></TableCell>
-                <TableCell><strong>Actions</strong></TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {filteredProducts.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} align="center">
-                    No products found
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filteredProducts.map((product) => (
-                  <TableRow key={product.id}>
-                    <TableCell>{product.name}</TableCell>
-                    <TableCell>₱{product.price.toLocaleString()}</TableCell>
-                    <TableCell>{product.description || '-'}</TableCell>
-                    <TableCell>
-                      {product.materials.length} materials
-                    </TableCell>
-                    <TableCell>
-                      <Box sx={{ display: 'flex', gap: 1 }}>
-                        <Button 
-                          variant="outlined" 
-                          size="small"
-                          color="info"
-                          onClick={() => handleOpenViewDialog(product)}
-                        >
-                          View
-                        </Button>
-                        <Button 
-                          variant="outlined" 
-                          size="small"
-                          color="primary"
-                          onClick={() => handleOpenEditDialog(product)}
-                        >
-                          Edit
-                        </Button>
-                        <Button 
-                          variant="outlined" 
-                          size="small"
-                          color="error"
-                          onClick={() => handleOpenDeleteDialog(product)}
-                        >
-                          Delete
-                        </Button>
-                      </Box>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </TableContainer>
+        <Grid container spacing={3}>
+          {filteredProducts.length === 0 ? (
+            <Grid item xs={12}>
+              <Box sx={{ textAlign: 'center', py: 4 }}>
+                <Typography variant="h6" color="text.secondary">
+                  No products found
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                  {searchTerm ? 'Try adjusting your search term' : 'Click "Create Product" to add your first product'}
+                </Typography>
+              </Box>
+            </Grid>
+          ) : (
+            filteredProducts.map((product) => (
+              <Grid item xs={12} sm={6} md={4} key={product.id}>
+                <ProductCard product={product} />
+              </Grid>
+            ))
+          )}
+        </Grid>
       )}
 
       {/* Create/Edit Dialog */}
