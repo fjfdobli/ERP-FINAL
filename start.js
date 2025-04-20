@@ -1,3 +1,4 @@
+// For macOS and Linux
 console.log('SYSTEM INTEGRATION & ARCHITECTURE 2');
 
 console.log('\nProponents:');
@@ -16,3 +17,19 @@ process.on('SIGINT', () => {
   client.kill();
   process.exit();
 });
+
+// For Windows OS
+/* 
+const { spawnSync } = require('child_process');
+
+const server = spawnSync('npm', ['run', 'server'], { stdio: 'inherit', shell: true });
+const client = spawnSync('npm', ['run', 'client'], { stdio: 'inherit', shell: true });
+
+if (server.error) {
+    console.error('Error with server process:', server.error);
+}
+
+if (client.error) {
+    console.error('Error with client process:', client.error);
+}
+*/
