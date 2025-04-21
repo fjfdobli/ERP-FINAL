@@ -52,6 +52,7 @@ export interface CreateInventoryTransaction {
   createdBy: number;
   isSupplier: boolean;
   notes?: string;
+  transactionDate?: string;
 }
 
 // Table names

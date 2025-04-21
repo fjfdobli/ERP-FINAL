@@ -4,8 +4,9 @@ import { Add as AddIcon, Search as SearchIcon, Edit as EditIcon, Delete as Delet
 import { useDispatch, useSelector } from 'react-redux';
 import { 
   fetchInventory, fetchLowStockItems, updateInventoryItem, addInventoryTransaction, createInventoryItem,
-  deleteInventoryItem, fetchActiveSuppliers, fetchActiveEmployees, selectAllInventoryItems, selectInventoryLoading,
-  selectInventoryError, selectActiveSuppliers, selectActiveEmployees } from '../redux/slices/inventorySlice';
+  deleteInventoryItem, fetchActiveSuppliers, fetchActiveEmployees, fetchItemTransactions,
+  selectAllInventoryItems, selectInventoryLoading, selectInventoryError, selectActiveSuppliers, 
+  selectActiveEmployees, selectInventoryTransactions } from '../redux/slices/inventorySlice';
 import { InventoryItem } from '../services/inventoryService';
 import { AppDispatch } from '../redux/store';
 
@@ -29,6 +30,7 @@ const InventoryList: React.FC = () => {
   const error = useSelector(selectInventoryError);
   const activeSuppliers = useSelector(selectActiveSuppliers);
   const activeEmployees = useSelector(selectActiveEmployees);
+  const transactions = useSelector(selectInventoryTransactions);
   
   const [searchTerm, setSearchTerm] = useState('');
   const [showLowStock, setShowLowStock] = useState(false);
@@ -42,6 +44,9 @@ const InventoryList: React.FC = () => {
   const [adjustmentType, setAdjustmentType] = useState<'add' | 'remove'>('add');
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>('');
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('');
+  // For date picker
+  const [transactionDate, setTransactionDate] = useState<string>(new Date().toISOString().slice(0, 16));
+  const [transactionDateObj, setTransactionDateObj] = useState<Date>(new Date());
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [snackbarSeverity, setSnackbarSeverity] = useState<'success' | 'error'>('success');
@@ -115,6 +120,12 @@ const InventoryList: React.FC = () => {
     setAdjustmentType(type);
     setAdjustmentAmount(1);
     
+    // Set current date (without time)
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0);
+    setTransactionDateObj(today);
+    setTransactionDate(today.toISOString().slice(0, 16));
+    
     // Set default selections based on type
     if (type === 'add' && activeSuppliers.length > 0) {
       setSelectedSupplierId(String(activeSuppliers[0].id));
@@ -167,6 +178,19 @@ const InventoryList: React.FC = () => {
 
   const handleEmployeeChange = (event: SelectChangeEvent<string>) => {
     setSelectedEmployeeId(event.target.value);
+  };
+  
+  const handleDateChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const dateStr = event.target.value; // YYYY-MM-DD
+    
+    // Create a new date with the selected date but set time to noon (12:00:00)
+    const newDate = new Date(`${dateStr}T12:00:00`);
+    
+    // Handle invalid dates
+    if (isNaN(newDate.getTime())) return;
+    
+    setTransactionDateObj(newDate);
+    setTransactionDate(newDate.toISOString().slice(0, 16));
   };
 
   const handleNewItemChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -242,7 +266,8 @@ const InventoryList: React.FC = () => {
           quantity: adjustmentAmount,
           createdBy: Number(adjustmentType === 'add' ? selectedSupplierId : selectedEmployeeId),
           isSupplier: adjustmentType === 'add',
-          notes: `${adjustmentType === 'add' ? 'Stock In' : 'Stock Out'} transaction`
+          notes: `${adjustmentType === 'add' ? 'Stock In' : 'Stock Out'} transaction`,
+          transactionDate: new Date(transactionDate).toISOString()
         }
       })).unwrap();
 
@@ -263,6 +288,13 @@ const InventoryList: React.FC = () => {
   };
   
   // Handle view item dialog
+  const handleOpenViewDialog = (item: InventoryItem) => {
+    setSelectedItem(item);
+    // Fetch transactions for this item
+    dispatch(fetchItemTransactions(item.id));
+    setViewItemDialogOpen(true);
+  };
+  
   const handleCloseViewDialog = () => {
     setViewItemDialogOpen(false);
     setSelectedItem(null);
@@ -489,10 +521,7 @@ const InventoryList: React.FC = () => {
                             size="small" 
                             variant="outlined"
                             color="info"
-                            onClick={() => {
-                              setSelectedItem(item);
-                              setViewItemDialogOpen(true);
-                            }}
+                            onClick={() => handleOpenViewDialog(item)}
                           >
                             View
                           </Button>
@@ -561,6 +590,21 @@ const InventoryList: React.FC = () => {
                 inputProps: { min: 1 }
               }}
               autoFocus
+            />
+            
+            <TextField
+              label="Transaction Date"
+              type="date"
+              fullWidth
+              margin="normal"
+              value={transactionDateObj.toISOString().split('T')[0]}
+              onChange={handleDateChange}
+              InputLabelProps={{
+                shrink: true,
+              }}
+              inputProps={{
+                max: new Date().toISOString().split('T')[0]
+              }}
             />
             
             {adjustmentType === 'add' ? (
@@ -797,6 +841,59 @@ const InventoryList: React.FC = () => {
                       size="small"
                     />
                   </Box>
+                </Grid>
+
+                <Grid item xs={12}>
+                  <Typography variant="subtitle1" gutterBottom sx={{ mt: 2 }}>Transaction History</Typography>
+                  <Divider sx={{ mb: 2 }} />
+                  
+                  <TableContainer component={Paper} variant="outlined">
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell><strong>Date</strong></TableCell>
+                          <TableCell><strong>Type</strong></TableCell>
+                          <TableCell><strong>Quantity</strong></TableCell>
+                          <TableCell><strong>Person</strong></TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {transactions.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={4} align="center">No transaction history found</TableCell>
+                          </TableRow>
+                        ) : (
+                          transactions.map((transaction) => (
+                            <TableRow key={transaction.id}>
+                              <TableCell>
+                                {new Date(transaction.transactionDate).toLocaleDateString()}
+                                {' '}
+                                {new Date(transaction.transactionDate).toLocaleTimeString([], {
+                                  hour: '2-digit', 
+                                  minute: '2-digit',
+                                  hour12: true
+                                })}
+                              </TableCell>
+                              <TableCell>
+                                <Chip
+                                  size="small"
+                                  label={transaction.transactionType === 'stock_in' ? 'Stock In' : 'Stock Out'}
+                                  color={transaction.transactionType === 'stock_in' ? 'primary' : 'error'}
+                                />
+                              </TableCell>
+                              <TableCell>{transaction.quantity}</TableCell>
+                              <TableCell>
+                                {transaction.isSupplier 
+                                  ? activeSuppliers.find(s => s.id === transaction.createdBy)?.name || 'Unknown Supplier'
+                                  : activeEmployees.find(e => e.id === transaction.createdBy)?.name || 'Unknown Employee'
+                                }
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
                 </Grid>
               </Grid>
             </Box>
