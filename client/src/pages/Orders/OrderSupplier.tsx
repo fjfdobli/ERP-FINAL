@@ -2170,19 +2170,19 @@ const OrderSupplier: React.FC = () => {
                     </Button>
                     <Button
                       size="small"
-                      onClick={() => handleDeleteOrder(order.id!)}
-                      color="error"
-                      sx={{ mr: 1 }}
-                    >
-                      Delete
-                    </Button>
-                    <Button
-                      size="small"
                       startIcon={<PdfIcon />}
                       onClick={() => handleGeneratePurchaseOrderPDF(order)}
                       color="secondary"
+                      sx={{ mr: 1 }}
                     >
                       PDF
+                    </Button>
+                    <Button
+                      size="small"
+                      onClick={() => handleDeleteOrder(order.id!)}
+                      color="error"
+                    >
+                      Delete
                     </Button>
                   </TableCell>
                 </TableRow>
@@ -2250,19 +2250,19 @@ const OrderSupplier: React.FC = () => {
                     </Button>
                     <Button
                       size="small"
-                      onClick={() => handleDeleteQuotation(quotation.id!)}
-                      color="error"
-                      sx={{ mr: 1 }}
-                    >
-                      Delete
-                    </Button>
-                    <Button
-                      size="small"
                       startIcon={<PdfIcon />}
                       onClick={() => handleGenerateRFQPDF(quotation)}
                       color="secondary"
+                      sx={{ mr: 1 }}
                     >
                       PDF
+                    </Button>
+                    <Button
+                      size="small"
+                      onClick={() => handleDeleteQuotation(quotation.id!)}
+                      color="error"
+                    >
+                      Delete
                     </Button>
                   </TableCell>
                 </TableRow>
