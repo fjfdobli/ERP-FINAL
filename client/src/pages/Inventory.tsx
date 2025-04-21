@@ -3,20 +3,9 @@ import { Box, Typography, Paper, Table, TableBody, TableCell, TableContainer, Ta
 import { Add as AddIcon, Search as SearchIcon, Edit as EditIcon, Delete as DeleteIcon, Visibility as VisibilityIcon } from '@mui/icons-material';
 import { useDispatch, useSelector } from 'react-redux';
 import { 
-  fetchInventory, 
-  fetchLowStockItems,
-  updateInventoryItem, 
-  addInventoryTransaction, 
-  createInventoryItem,
-  deleteInventoryItem,
-  fetchActiveSuppliers,
-  fetchActiveEmployees,
-  selectAllInventoryItems,
-  selectInventoryLoading,
-  selectInventoryError,
-  selectActiveSuppliers,
-  selectActiveEmployees
-} from '../redux/slices/inventorySlice';
+  fetchInventory, fetchLowStockItems, updateInventoryItem, addInventoryTransaction, createInventoryItem,
+  deleteInventoryItem, fetchActiveSuppliers, fetchActiveEmployees, selectAllInventoryItems, selectInventoryLoading,
+  selectInventoryError, selectActiveSuppliers, selectActiveEmployees } from '../redux/slices/inventorySlice';
 import { InventoryItem } from '../services/inventoryService';
 import { AppDispatch } from '../redux/store';
 

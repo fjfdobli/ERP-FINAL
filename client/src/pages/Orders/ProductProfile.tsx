@@ -1,58 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  Box, 
-  Typography, 
-  Paper, 
-  Button, 
-  TextField, 
-  InputAdornment, 
-  Dialog, 
-  DialogTitle, 
-  DialogContent, 
-  DialogActions, 
-  FormControl, 
-  InputLabel, 
-  Select, 
-  MenuItem, 
-  CircularProgress, 
-  Snackbar, 
-  Alert, 
-  Grid,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Card,
-  CardContent,
-  CardActions,
-  Chip,
-  IconButton,
-  Tooltip,
+  Box, Typography, Paper, Button, TextField, InputAdornment, Dialog, DialogTitle, DialogContent, DialogActions, 
+  FormControl, InputLabel, Select, MenuItem, CircularProgress, Snackbar, Alert, Grid, Table, TableBody, TableCell,
+  TableContainer, TableHead, TableRow, Card, CardContent, CardActions, Chip, IconButton, Tooltip,
 } from '@mui/material';
 import { 
-  Add as AddIcon, 
-  Search as SearchIcon, 
-  Delete as DeleteIcon, 
-  Visibility as ViewIcon,
-  Edit as EditIcon,
-  InventoryOutlined as InventoryIcon,
-  PhotoCamera as PhotoCameraIcon,
-  CloudUpload as CloudUploadIcon,
+  Add as AddIcon, Search as SearchIcon, Delete as DeleteIcon, Visibility as ViewIcon, Edit as EditIcon,
+  InventoryOutlined as InventoryIcon, PhotoCamera as PhotoCameraIcon, CloudUpload as CloudUploadIcon,
 } from '@mui/icons-material';
 import { useDispatch, useSelector } from 'react-redux';
 import { AppDispatch, RootState } from '../../redux/store';
 import { 
-  fetchProducts, 
-  createProduct, 
-  updateProduct, 
-  deleteProduct,
-  uploadProductImage,
-  uploadMultipleProductImages,
-  selectAllProducts,
-  selectProductLoading,
-  selectProductError
+  fetchProducts, createProduct, updateProduct, deleteProduct, uploadProductImage, uploadMultipleProductImages,
+  selectAllProducts, selectProductLoading, selectProductError
 } from '../../redux/slices/productProfileSlice';
 import { 
   ProductMaterial, 

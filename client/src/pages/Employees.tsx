@@ -7,15 +7,8 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { useDispatch, useSelector } from 'react-redux';
 import { 
-  fetchEmployees, 
-  searchEmployees, 
-  createEmployee, 
-  updateEmployee,
-  deleteEmployee,
-  selectAllEmployees,
-  selectEmployeesLoading,
-  selectEmployeesError
-} from '../redux/slices/employeesSlice';
+  fetchEmployees, searchEmployees, createEmployee, updateEmployee, deleteEmployee, 
+  selectAllEmployees, selectEmployeesLoading, selectEmployeesError } from '../redux/slices/employeesSlice';
 import { AppDispatch } from '../redux/store';
 import { RootState } from '../redux/store';
 

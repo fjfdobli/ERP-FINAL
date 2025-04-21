@@ -9,7 +9,6 @@ console.log('- Operario, Raphael Miguel D.');
 const { spawn } = require('child_process');
 
 const server = spawn('npm', ['run', 'server'], { stdio: 'inherit' });
-
 const client = spawn('npm', ['run', 'client'], { stdio: 'inherit' });
 
 process.on('SIGINT', () => {
@@ -20,6 +19,13 @@ process.on('SIGINT', () => {
 
 // For Windows OS
 /* 
+console.log('SYSTEM INTEGRATION & ARCHITECTURE 2');
+
+console.log('\nProponents:');
+console.log('- Dobli, Ferdinand John F.');
+console.log('- Espinosa, Eriel John Q.');
+console.log('- Operario, Raphael Miguel D.');
+
 const { spawnSync } = require('child_process');
 
 const server = spawnSync('npm', ['run', 'server'], { stdio: 'inherit', shell: true });

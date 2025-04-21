@@ -22,29 +22,13 @@ import { styled } from '@mui/material/styles';
 import MuiTooltip, { TooltipProps } from '@mui/material/Tooltip';
 
 import { 
-  Assignment as OrdersIcon, 
-  People as ClientsIcon, 
-  People as PeopleIcon,
-  Inventory as InventoryIcon, 
-  Warning as WarningIcon, 
-  TrendingUp as TrendingUpIcon, 
-  MoreVert as MoreVertIcon, 
-  ChevronRight as ChevronRightIcon, 
-  Circle as CircleIcon,
-  CalendarMonth as CalendarIcon,
-  Paid as PaidIcon,
-  Build as BuildIcon,
-  Construction as ConstructionIcon,
-  ShoppingCart as ShoppingCartIcon,
-  Notifications as NotificationsIcon,
-  CheckCircle as CheckCircleIcon,
-  PriorityHigh as PriorityHighIcon,
-  Refresh as RefreshIcon,
-  DashboardCustomize as DashboardCustomizeIcon,
-  FilterAlt as FilterAltIcon,
-  DateRange as DateRangeIcon,
-  RequestQuote as RequestIcon,
-  Sync as SyncIcon
+  Assignment as OrdersIcon, People as ClientsIcon, People as PeopleIcon, Inventory as InventoryIcon, 
+  Warning as WarningIcon, TrendingUp as TrendingUpIcon, MoreVert as MoreVertIcon, ChevronRight as ChevronRightIcon, 
+  Circle as CircleIcon, CalendarMonth as CalendarIcon, Paid as PaidIcon, Build as BuildIcon, 
+  Construction as ConstructionIcon, ShoppingCart as ShoppingCartIcon, Notifications as NotificationsIcon,
+  CheckCircle as CheckCircleIcon, PriorityHigh as PriorityHighIcon, Refresh as RefreshIcon, 
+  DashboardCustomize as DashboardCustomizeIcon,FilterAlt as FilterAltIcon, DateRange as DateRangeIcon, 
+  RequestQuote as RequestIcon, Sync as SyncIcon
 } from '@mui/icons-material';
 import { 
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, 
@@ -363,25 +347,10 @@ const DashboardHome: React.FC = () => {
     }).length;
     
     return {
-      pendingOrders,
-      inProgressOrders,
-      completedOrders,
-      cancelledOrders,
-      pendingRequests,
-      approvedRequests,
-      rejectedRequests,
-      totalRevenue,
-      outstandingRevenue,
-      currentMonthRevenue,
-      totalEmployees,
-      totalPayroll,
-      totalInventoryItems,
-      totalLowStockItems,
-      totalMachinery,
-      totalSuppliers,
-      totalClients,
-      machinesNeedingMaintenance,
-      todayAttendanceCount
+      pendingOrders, inProgressOrders, completedOrders, cancelledOrders, pendingRequests,
+      approvedRequests, rejectedRequests, totalRevenue, outstandingRevenue, currentMonthRevenue,
+      totalEmployees, totalPayroll, totalInventoryItems, totalLowStockItems, totalMachinery,
+      totalSuppliers, totalClients, machinesNeedingMaintenance, todayAttendanceCount
     };
   }, [orders, orderRequests, employees, payrollRecords, inventoryItems, machinery, suppliers, clients, attendanceRecords]);
   

@@ -747,10 +747,10 @@ const PayrollPage: React.FC = () => {
       
       doc.setFontSize(12);
       doc.setFont('helvetica', 'normal');
-      doc.text("Lanang, Davao City, Philippines", pageWidth / 2, yPos, { align: 'center' });
+      doc.text("197 Kalantas St, Phase V, Hillside Subd, Bajada, Davao City", pageWidth / 2, yPos, { align: 'center' });
       yPos += 6;
       
-      doc.text("Tel: (02) 8123-4567 | Email: payroll@printingpress.com", pageWidth / 2, yPos, { align: 'center' });
+      doc.text("Tel: 2344716 | Email: opzonprinters@yahoo.com", pageWidth / 2, yPos, { align: 'center' });
       yPos += 12;
 
       // Document Title with background
@@ -1022,10 +1022,10 @@ const PayrollPage: React.FC = () => {
       
       doc.setFontSize(12);
       doc.setFont('helvetica', 'normal');
-      doc.text("Lanang, Davao City, Philippines", pageWidth / 2, yPos, { align: 'center' });
+      doc.text("197 Kalantas St, Phase V, Hillside Subd, Bajada, Davao City", pageWidth / 2, yPos, { align: 'center' });
       yPos += 6;
       
-      doc.text("Tel: (02) 8123-4567 | Email: payroll@printingpress.com", pageWidth / 2, yPos, { align: 'center' });
+      doc.text("Tel: 2344716 | Email: opzonprinters@yahoo.com.ph", pageWidth / 2, yPos, { align: 'center' });
       yPos += 15;
 
       // Document Title

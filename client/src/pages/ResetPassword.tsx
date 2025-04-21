@@ -2,18 +2,8 @@ import React, { useState, useEffect, CSSProperties } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { 
-  Box, 
-  Container, 
-  Paper, 
-  Typography, 
-  TextField, 
-  Button, 
-  Alert, 
-  InputAdornment,
-  IconButton,
-  CircularProgress,
-  Grid
-} from '@mui/material';
+  Box, Container, Paper, Typography, TextField, 
+  Button, Alert, InputAdornment, IconButton, CircularProgress, Grid } from '@mui/material';
 import { Lock, Visibility, VisibilityOff } from '@mui/icons-material';
 import PrintIcon from '@mui/icons-material/Print';
 

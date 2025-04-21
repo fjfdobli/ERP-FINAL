@@ -176,12 +176,12 @@ const ReportsList: React.FC = () => {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(16);
     doc.setTextColor(51, 51, 51);
-    doc.text('PRINTING PRESS ERP', 15, 21);
+    doc.text('Opzons Printers', 15, 21);
     
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
     doc.setTextColor(100, 100, 100);
-    doc.text('123 Print Avenue, Inktown, Philippines • +63 (2) 123-4567 • info@printingpresserp.com', 15, 26);
+    doc.text('197 Kalantas St, Phase V, Hillside Subd, Bajada, Davao City • 2344716 • opzonprinters@yahoo.com.ph', 15, 26);
     
     // Report title
     doc.setFont('helvetica', 'bold');
@@ -377,7 +377,7 @@ const ReportsList: React.FC = () => {
       workbook.Props = {
         Title: fileName,
         Subject: `Report generated on ${formatDate(new Date(), 'yyyy-MM-dd')}`,
-        Author: "Printing Press ERP",
+        Author: "Opzons Printers ERP System",
         CreatedDate: new Date()
       };
       

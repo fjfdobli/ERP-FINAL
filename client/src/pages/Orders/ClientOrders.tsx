@@ -3,18 +3,9 @@ import { useDispatch, useSelector } from 'react-redux';
 import { Box, Typography, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, TextField, InputAdornment, Chip, Dialog, DialogTitle, DialogContent, DialogActions, FormControl, InputLabel, Select, MenuItem, SelectChangeEvent, Tabs, Tab, Snackbar, Alert, CircularProgress } from '@mui/material';
 import { Search as SearchIcon, Refresh as RefreshIcon } from '@mui/icons-material';
 import { 
-  fetchClientOrders,
-  changeClientOrderStatus,
-  addOrderPayment,
-  updateOrderPaymentPlan,
-  selectAllClientOrders,
-  selectApprovedOrders,
-  selectPartiallyPaidOrders,
-  selectCompletedOrders,
-  selectRejectedOrders,
-  selectClientOrdersLoading,
-  selectClientOrdersError
-} from '../../redux/slices/clientOrdersSlice';
+  fetchClientOrders, changeClientOrderStatus, addOrderPayment, updateOrderPaymentPlan, selectAllClientOrders,
+  selectApprovedOrders, selectPartiallyPaidOrders, selectCompletedOrders, selectRejectedOrders,
+  selectClientOrdersLoading, selectClientOrdersError } from '../../redux/slices/clientOrdersSlice';
 import { ClientOrder } from '../../services/clientOrdersService';
 import { clientOrdersService } from '../../services/clientOrdersService';
 import { OrderRequestItem } from '../../services/orderRequestsService';

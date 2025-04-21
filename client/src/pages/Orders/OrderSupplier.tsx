@@ -1,77 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { 
-  Box, 
-  Typography, 
-  Paper, 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableContainer, 
-  TableHead, 
-  TableRow, 
-  Button, 
-  TextField, 
-  InputAdornment, 
-  Chip, 
-  Dialog, 
-  DialogTitle, 
-  DialogContent, 
-  DialogActions, 
-  FormControl, 
-  InputLabel, 
-  Select, 
-  MenuItem, 
-  SelectChangeEvent, 
-  Tabs, 
-  Tab, 
-  Snackbar, 
-  Alert, 
-  CircularProgress,
-  Grid
-} from '@mui/material';
+  Box, Typography, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, 
+  TextField, InputAdornment, Chip, Dialog, DialogTitle, DialogContent, DialogActions, FormControl, 
+  InputLabel, Select, MenuItem, SelectChangeEvent, Tabs, Tab, Snackbar, Alert, CircularProgress,
+  Grid } from '@mui/material';
 import { Search as SearchIcon, Refresh as RefreshIcon, Add as AddIcon, PictureAsPdf as PdfIcon } from '@mui/icons-material';
+import { fetchSuppliers, selectAllSuppliers, selectSuppliersStatus, selectSuppliersError } from '../../redux/slices/suppliersSlice';
+import { fetchInventory,  addInventoryTransaction, selectAllInventoryItems, selectInventoryLoading } from '../../redux/slices/inventorySlice';
 import { 
-  fetchSuppliers, 
-  selectAllSuppliers, 
-  selectSuppliersStatus, 
-  selectSuppliersError 
-} from '../../redux/slices/suppliersSlice';
-import { 
-  fetchInventory, 
-  addInventoryTransaction,
-  selectAllInventoryItems, 
-  selectInventoryLoading 
-} from '../../redux/slices/inventorySlice';
-import {
-  fetchSupplierOrders,
-  fetchQuotationRequests,
-  updateSupplierOrder,
-  updateQuotationRequest,
-  addOrderPayment,
-  createOrderFromQuotation,
-  createSupplierOrder,
-  createQuotationRequest,
-  deleteSupplierOrder,
-  deleteQuotationRequest,
-  selectAllSupplierOrders,
-  selectAllQuotationRequests,
-  selectOrderSupplierLoading,
-  selectOrderSupplierError
+  fetchSupplierOrders, fetchQuotationRequests, updateSupplierOrder, updateQuotationRequest, addOrderPayment,
+  createOrderFromQuotation, createSupplierOrder, createQuotationRequest, deleteSupplierOrder, deleteQuotationRequest,
+  selectAllSupplierOrders, selectAllQuotationRequests, selectOrderSupplierLoading, selectOrderSupplierError
 } from '../../redux/slices/orderSupplierSlice';
 import { Supplier } from '../../services/suppliersService';
 import { InventoryItem } from '../../services/inventoryService';
-import { 
-  SupplierOrder,
-  SupplierOrderItem,
-  QuotationRequest,
-  QuotationItem,
-  OrderPayment,
-  CreateSupplierOrder,
-  CreateQuotationRequest,
-  UpdateSupplierOrder,
-  UpdateQuotationRequest,
-  Supplier as OrderSupplierServiceSupplier
+import { SupplierOrder, SupplierOrderItem, QuotationRequest, QuotationItem, OrderPayment, CreateSupplierOrder,
+  CreateQuotationRequest, UpdateSupplierOrder, UpdateQuotationRequest, Supplier as OrderSupplierServiceSupplier
 } from '../../services/orderSupplierService';
 import { AppDispatch } from '../../redux/store';
 import { jsPDF } from 'jspdf';
@@ -1366,13 +1311,13 @@ const OrderSupplier: React.FC = () => {
       yPos += 6;
       doc.text("Opzon's Printers", leftColX, yPos);
       yPos += 5;
-      doc.text("123 Printing Avenue", leftColX, yPos);
+      doc.text("197 Kalantas St, Phase V,", leftColX, yPos);
       yPos += 5;
-      doc.text("Makati City, Philippines", leftColX, yPos);
+      doc.text("Hillside Subd, Bajada, Davao City", leftColX, yPos);
       yPos += 5;
-      doc.text("Phone: (02) 1234-5678", leftColX, yPos);
+      doc.text("Telephone: 2344716", leftColX, yPos);
       yPos += 5;
-      doc.text("Email: info@opzonsprinters.com", leftColX, yPos);
+      doc.text("Email: opzonprinters@yahoo.com.ph", leftColX, yPos);
       
       // Supplier info
       const rightColX = 110;
@@ -1760,13 +1705,13 @@ const OrderSupplier: React.FC = () => {
       yPos += 6;
       doc.text("Opzon's Printers", leftColX, yPos);
       yPos += 5;
-      doc.text("123 Printing Avenue", leftColX, yPos);
+      doc.text("197 Kalantas St, Phase V,", leftColX, yPos);
       yPos += 5;
-      doc.text("Makati City, Philippines", leftColX, yPos);
+      doc.text("Hillside Subd, Bajada, Davao City", leftColX, yPos);
       yPos += 5;
-      doc.text("Phone: (02) 1234-5678", leftColX, yPos);
+      doc.text("Telephone: 2344716", leftColX, yPos);
       yPos += 5;
-      doc.text("Email: info@opzonsprinters.com", leftColX, yPos);
+      doc.text("Email: opzonprinters@yahoo.com.ph", leftColX, yPos);
       
       // Supplier info
       const rightColX = 110;
@@ -1974,7 +1919,7 @@ const OrderSupplier: React.FC = () => {
       doc.setTextColor(100, 100, 100);
       doc.text('Please send your quotation to: purchasing@opzonsprinters.com', 105, yPos, { align: 'center' });
       yPos += 4;
-      doc.text('For inquiries, contact our purchasing department at (02) 1234-5678', 105, yPos, { align: 'center' });
+      doc.text('For inquiries, contact our purchasing department at: 2344716', 105, yPos, { align: 'center' });
       
       // Save the PDF
       doc.save(`QuotationRequest_${quotation.request_id}.pdf`);
