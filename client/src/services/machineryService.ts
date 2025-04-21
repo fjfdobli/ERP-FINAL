@@ -49,6 +49,7 @@ export interface MaintenanceRecord {
   cost: number;
   performedBy: string;
   notes: string | null;
+  imageUrls?: string[] | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -61,6 +62,32 @@ export interface InsertMaintenanceRecord {
   cost: number;
   performedBy: string;
   notes: string | null;
+  imageUrls?: string[] | null;
+}
+
+export interface StatusHistoryRecord {
+  id: number;
+  machineryId: number;
+  date: string;
+  previousStatus: 'Operational' | 'Maintenance' | 'Repair' | 'Offline' | 'Retired';
+  newStatus: 'Operational' | 'Maintenance' | 'Repair' | 'Offline' | 'Retired';
+  reason: string;
+  changedBy: string;
+  notes: string | null;
+  imageUrls?: string[] | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface InsertStatusHistoryRecord {
+  machineryId: number;
+  date: string;
+  previousStatus: string;
+  newStatus: string;
+  reason: string;
+  changedBy: string;
+  notes: string | null;
+  imageUrls?: string[] | null;
 }
 
 export interface MachineryFilters {
@@ -87,6 +114,7 @@ export interface MaintenanceCostSummary {
 
 const MACHINERY_TABLE = 'machinery';
 const MAINTENANCE_RECORDS_TABLE = 'maintenance_records';
+const STATUS_HISTORY_TABLE = 'machinery_status_history';
 
 /**
  * Service for managing machinery and maintenance records in Supabase
@@ -116,12 +144,16 @@ export const machineryService = {
       const fileData = await fileDataPromise;
       console.log('File data loaded, size:', fileData.byteLength);
       
-      // Now upload the file directly
+      // Now upload the file directly - set content type explicitly
+      const contentType = file.type || 'application/octet-stream';
+      console.log('Setting content type for upload:', contentType);
+      
       const { data, error } = await supabase.storage
         .from('machinery-images')
         .upload(fileName, file, {
           cacheControl: '3600',
-          upsert: true
+          upsert: true,
+          contentType: contentType
         });
       
       if (error) {
@@ -137,16 +169,29 @@ export const machineryService = {
       console.log('Upload successful, path:', data.path);
       
       // Get the public URL
-      const { data: urlData } = supabase.storage
-        .from('machinery-images')
-        .getPublicUrl(fileName);
-      
-      if (!urlData?.publicUrl) {
-        throw new Error('Could not generate public URL');
+      try {
+        console.log('Attempting to get public URL for:', fileName);
+        const { data: urlData } = supabase.storage
+          .from('machinery-images')
+          .getPublicUrl(fileName);
+        
+        if (!urlData?.publicUrl) {
+          console.error('No public URL data returned:', urlData);
+          throw new Error('Could not generate public URL');
+        }
+        
+        console.log('Generated public URL:', urlData.publicUrl);
+        return urlData.publicUrl;
+      } catch (urlError) {
+        console.error('Error getting public URL:', urlError);
+        
+        // Fallback to constructing URL manually if needed
+        // Import the supabaseUrl directly from the config rather than trying to access it from the client
+        const supabaseUrl = 'https://iyjfpkcxwljfkxbjagbd.supabase.co';
+        const fallbackUrl = `${supabaseUrl}/storage/v1/object/public/machinery-images/${fileName}`;
+        console.log('Using fallback URL:', fallbackUrl);
+        return fallbackUrl;
       }
-      
-      console.log('Generated public URL:', urlData.publicUrl);
-      return urlData.publicUrl;
     } catch (err) {
       console.error('Exception during image upload:', err);
       throw new Error(err instanceof Error ? err.message : 'Unknown upload error');
@@ -451,5 +496,80 @@ export const machineryService = {
       monthlyCosts,
       costByType: costByTypeArray
     };
+  },
+
+  /**
+   * Fetch status history records for a specific machinery or all records
+   */
+  async getStatusHistory(machineryId?: number): Promise<StatusHistoryRecord[]> {
+    let query = supabase
+      .from(STATUS_HISTORY_TABLE)
+      .select('*')
+      .order('date', { ascending: false });
+
+    if (machineryId) {
+      query = query.eq('machineryId', machineryId);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error('Error fetching status history records:', error);
+      throw new Error(error.message);
+    }
+
+    return data as StatusHistoryRecord[];
+  },
+
+  /**
+   * Create a new status history record
+   */
+  async createStatusHistory(record: InsertStatusHistoryRecord): Promise<StatusHistoryRecord> {
+    const { data, error } = await supabase
+      .from(STATUS_HISTORY_TABLE)
+      .insert([record])
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error creating status history record:', error);
+      throw new Error(error.message);
+    }
+
+    return data as StatusHistoryRecord;
+  },
+
+  /**
+   * Update an existing status history record
+   */
+  async updateStatusHistory(id: number, record: Partial<InsertStatusHistoryRecord>): Promise<StatusHistoryRecord> {
+    const { data, error } = await supabase
+      .from(STATUS_HISTORY_TABLE)
+      .update(record)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error(`Error updating status history record with ID ${id}:`, error);
+      throw new Error(error.message);
+    }
+
+    return data as StatusHistoryRecord;
+  },
+
+  /**
+   * Delete a status history record
+   */
+  async deleteStatusHistory(id: number): Promise<void> {
+    const { error } = await supabase
+      .from(STATUS_HISTORY_TABLE)
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      console.error(`Error deleting status history record with ID ${id}:`, error);
+      throw new Error(error.message);
+    }
   }
 };

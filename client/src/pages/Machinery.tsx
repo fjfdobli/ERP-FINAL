@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Box, Typography, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, TextField, InputAdornment, CircularProgress, Dialog, DialogTitle, DialogContent, DialogActions, Grid, Snackbar, Alert, FormControl, InputLabel, Select, MenuItem, Chip, IconButton, Tooltip, Tabs, Tab, Divider, Card, CardContent, List, ListItem, ListItemText, ListItemIcon, Link, LinearProgress, Avatar } from '@mui/material';
-import { Add as AddIcon, Search as SearchIcon, Refresh as RefreshIcon, History as HistoryIcon, ConstructionOutlined as ConstructionIcon, ReceiptLong as ReceiptLongIcon, Build as BuildIcon, Edit as EditIcon, Delete as DeleteIcon, CheckCircle as CheckCircleIcon, Warning as WarningIcon, Error as ErrorIcon, Info as InfoIcon, DoDisturb as DoDisturbIcon, EventNote as EventNoteIcon, Engineering as EngineeringIcon, Handyman as HandymanIcon, PhotoCamera as PhotoCameraIcon, CloudUpload as CloudUploadIcon } from '@mui/icons-material';
+import { Box, Typography, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, TextField, InputAdornment, CircularProgress, Dialog, DialogTitle, DialogContent, DialogActions, Grid, Snackbar, Alert, FormControl, InputLabel, Select, MenuItem, Chip, IconButton, Tooltip, Tabs, Tab, Divider, Card, CardContent, List, ListItem, ListItemText, ListItemIcon, Link, LinearProgress, Avatar, ImageList, ImageListItem } from '@mui/material';
+import { Add as AddIcon, Search as SearchIcon, Refresh as RefreshIcon, History as HistoryIcon, ConstructionOutlined as ConstructionIcon, ReceiptLong as ReceiptLongIcon, Build as BuildIcon, Edit as EditIcon, Delete as DeleteIcon, CheckCircle as CheckCircleIcon, Warning as WarningIcon, Error as ErrorIcon, Info as InfoIcon, DoDisturb as DoDisturbIcon, EventNote as EventNoteIcon, Engineering as EngineeringIcon, Handyman as HandymanIcon, PhotoCamera as PhotoCameraIcon, CloudUpload as CloudUploadIcon, SwapHoriz as SwapHorizIcon, Timer as TimerIcon, Person as PersonIcon } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { useAppDispatch, useAppSelector } from '../redux/hooks';
-import { fetchMachinery, createMachinery, updateMachinery, deleteMachinery, fetchMaintenanceRecords, createMaintenanceRecord, updateMaintenanceRecord, deleteMaintenanceRecord, fetchMachineryStats, fetchMaintenanceCostSummary, uploadMachineryImage, uploadMultipleMachineryImages } from '../redux/slices/machinerySlice';
-import { Machinery as MachineryType, MachineryFilters, MaintenanceRecord } from '../services/machineryService';
+import { fetchMachinery, createMachinery, updateMachinery, deleteMachinery, fetchMaintenanceRecords, createMaintenanceRecord, updateMaintenanceRecord, deleteMaintenanceRecord, fetchMachineryStats, fetchMaintenanceCostSummary, uploadMachineryImage, uploadMultipleMachineryImages, fetchStatusHistory, createStatusHistory, updateStatusHistory, deleteStatusHistory } from '../redux/slices/machinerySlice';
+import { Machinery as MachineryType, MachineryFilters, MaintenanceRecord, StatusHistoryRecord } from '../services/machineryService';
 import { format, parseISO, addMonths, isBefore, isAfter, formatDistance } from 'date-fns';
 
 interface TabPanelProps {
@@ -61,17 +61,30 @@ interface MaintenanceFormData {
   cost: number;
   performedBy: string;
   notes: string;
+  imageUrls?: string[] | null;
+}
+
+interface StatusHistoryFormData {
+  machineryId: number;
+  date: Date;
+  previousStatus: 'Operational' | 'Maintenance' | 'Repair' | 'Offline' | 'Retired';
+  newStatus: 'Operational' | 'Maintenance' | 'Repair' | 'Offline' | 'Retired';
+  reason: string;
+  changedBy: string;
+  notes: string;
+  imageUrls?: string[] | null;
 }
 
 const MachineryList: React.FC = () => {
   const dispatch = useAppDispatch();
   const { 
-    machinery, currentMachinery, maintenanceRecords, 
+    machinery, currentMachinery, maintenanceRecords, statusHistory,
     machineryStats, isLoading 
   } = useAppSelector((state: any) => state.machinery || {
     machinery: [], 
     currentMachinery: null, 
     maintenanceRecords: [],
+    statusHistory: [],
     machineryStats: null,
     isLoading: false
   });
@@ -82,8 +95,10 @@ const MachineryList: React.FC = () => {
   const [filters, setFilters] = useState<MachineryFilters>({});
   const [machineryDialogOpen, setMachineryDialogOpen] = useState<boolean>(false);
   const [maintenanceDialogOpen, setMaintenanceDialogOpen] = useState<boolean>(false);
+  const [statusHistoryDialogOpen, setStatusHistoryDialogOpen] = useState<boolean>(false);
   const [selectedMachinery, setSelectedMachinery] = useState<MachineryType | null>(null);
   const [selectedMaintenance, setSelectedMaintenance] = useState<MaintenanceRecord | null>(null);
+  const [selectedStatusHistory, setSelectedStatusHistory] = useState<StatusHistoryRecord | null>(null);
   const [machineryDetailsOpen, setMachineryDetailsOpen] = useState<boolean>(false);
   
   const [machineryForm, setMachineryForm] = useState<MachineryFormData>({
@@ -115,13 +130,25 @@ const MachineryList: React.FC = () => {
     description: '',
     cost: 0,
     performedBy: '',
-    notes: ''
+    notes: '',
+    imageUrls: []
+  });
+  
+  const [statusHistoryForm, setStatusHistoryForm] = useState<StatusHistoryFormData>({
+    machineryId: 0,
+    date: new Date(),
+    previousStatus: 'Operational',
+    newStatus: 'Maintenance',
+    reason: '',
+    changedBy: '',
+    notes: '',
+    imageUrls: []
   });
   
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
     message: string;
-    severity: 'success' | 'error';
+    severity: 'success' | 'error' | 'warning' | 'info';
   }>({
     open: false,
     message: '',
@@ -183,7 +210,7 @@ const MachineryList: React.FC = () => {
     'Emergency'
   ];
 
-  const showSnackbar = useCallback((message: string, severity: 'success' | 'error') => {
+  const showSnackbar = useCallback((message: string, severity: 'success' | 'error' | 'warning' | 'info') => {
     setSnackbar({ open: true, message, severity });
   }, []);
 
@@ -535,12 +562,166 @@ const MachineryList: React.FC = () => {
       }));
     }
   };
+  
+  const handleOpenStatusHistoryDialog = (machineryId: number, statusHistory?: StatusHistoryRecord) => {
+    // First, get the machinery details
+    const machine = machinery.find((m: MachineryType) => m.id === machineryId);
+    if (!machine) {
+      showSnackbar('Machinery not found', 'error');
+      return;
+    }
+    
+    setSelectedMachinery(machine);
+    
+    if (statusHistory) {
+      setSelectedStatusHistory(statusHistory);
+      
+      setStatusHistoryForm({
+        machineryId: statusHistory.machineryId,
+        date: parseISO(statusHistory.date),
+        previousStatus: statusHistory.previousStatus as any,
+        newStatus: statusHistory.newStatus as any,
+        reason: statusHistory.reason,
+        changedBy: statusHistory.changedBy,
+        notes: statusHistory.notes || '',
+        imageUrls: statusHistory.imageUrls || []
+      });
+    } else {
+      setSelectedStatusHistory(null);
+      setStatusHistoryForm({
+        machineryId: machineryId,
+        date: new Date(),
+        previousStatus: machine.status as any,
+        newStatus: 'Operational',
+        reason: '',
+        changedBy: '',
+        notes: '',
+        imageUrls: []
+      });
+    }
+    setStatusHistoryDialogOpen(true);
+  };
+
+  const handleCloseStatusHistoryDialog = () => {
+    setStatusHistoryDialogOpen(false);
+    setSelectedStatusHistory(null);
+  };
+
+  const handleStatusHistoryInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setStatusHistoryForm(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  const handleStatusHistorySelectChange = (e: any) => {
+    const { name, value } = e.target;
+    setStatusHistoryForm(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  const handleStatusHistoryDateChange = (date: Date | null) => {
+    if (date) {
+      setStatusHistoryForm(prev => ({
+        ...prev,
+        date
+      }));
+    }
+  };
+
+  const handleStatusHistorySubmit = async () => {
+    setLoading(true);
+    
+    try {
+      const { machineryId, date, previousStatus, newStatus, reason, changedBy, notes, imageUrls } = statusHistoryForm;
+      
+      if (!reason || !changedBy) {
+        showSnackbar('Reason and Changed By are required', 'error');
+        setLoading(false);
+        return;
+      }
+      
+      const statusHistoryData = {
+        machineryId,
+        date: format(date, 'yyyy-MM-dd'),
+        previousStatus,
+        newStatus,
+        reason,
+        changedBy,
+        notes: notes || null,
+        imageUrls: imageUrls || []
+      };
+      
+      let statusUpdateSuccess = false;
+      
+      try {
+        if (selectedStatusHistory) {
+          await dispatch(updateStatusHistory({ 
+            id: selectedStatusHistory.id, 
+            data: statusHistoryData as any 
+          })).unwrap();
+          showSnackbar('Status history record updated successfully', 'success');
+          statusUpdateSuccess = true;
+        } else {
+          await dispatch(createStatusHistory(statusHistoryData as any)).unwrap();
+          showSnackbar('Status history record created successfully', 'success');
+          statusUpdateSuccess = true;
+        }
+      } catch (statusError: any) {
+        console.error('Error saving to status history:', statusError);
+        if (statusError.message && statusError.message.includes('does not exist')) {
+          showSnackbar('Status history table not found in database. The machinery status will still be updated.', 'warning');
+          // Continue with updating the machinery status even if status history fails
+          statusUpdateSuccess = false;
+        } else {
+          throw statusError; // Re-throw if it's a different error
+        }
+      }
+      
+      // Always update the machinery's status when adding a new status record
+      if (!selectedStatusHistory && selectedMachinery) {
+        try {
+          await dispatch(updateMachinery({
+            id: selectedMachinery.id,
+            data: {
+              status: newStatus
+            }
+          })).unwrap();
+          showSnackbar('Machinery status updated successfully', 'success');
+        } catch (machineryError: any) {
+          console.error('Error updating machinery status:', machineryError);
+          showSnackbar(machineryError.message || 'Failed to update machinery status', 'error');
+        }
+      }
+      
+      handleCloseStatusHistoryDialog();
+      // Refresh machinery data to get updated status
+      fetchData();
+      
+      // Only try to refresh status history if the previous operation was successful
+      if (statusUpdateSuccess && currentMachinery) {
+        try {
+          dispatch(fetchStatusHistory(currentMachinery.id));
+        } catch (error) {
+          console.warn('Could not fetch status history after update:', error);
+        }
+      }
+    } catch (error: any) {
+      console.error('Error in status history workflow:', error);
+      showSnackbar(error.message || 'Failed to save status history record', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleMaintenanceSubmit = async () => {
     setLoading(true);
     
     try {
-      const { machineryId, date, type, description, cost, performedBy, notes } = maintenanceForm;
+      const { machineryId, date, type, description, cost, performedBy, notes, imageUrls } = maintenanceForm;
       
       if (!description || !performedBy) {
         showSnackbar('Description and Performed By are required', 'error');
@@ -555,7 +736,8 @@ const MachineryList: React.FC = () => {
         description,
         cost,
         performedBy,
-        notes: notes || null
+        notes: notes || null,
+        imageUrls: imageUrls || []
       };
       
       if (selectedMaintenance) {
@@ -600,12 +782,24 @@ const MachineryList: React.FC = () => {
     try {
       setLoading(true);
       setSelectedMachinery(machinery);
+      
+      // Fetch maintenance records first
       await dispatch(fetchMaintenanceRecords(machinery.id)).unwrap();
+      
+      // Try to fetch status history, but continue even if it fails
+      try {
+        await dispatch(fetchStatusHistory(machinery.id)).unwrap();
+      } catch (statusError) {
+        console.warn('Could not fetch status history, table might not exist yet:', statusError);
+        // Clear status history to avoid showing stale data
+        dispatch({ type: 'machinery/fetchStatusHistory/fulfilled', payload: [] });
+      }
+      
       setMachineryDetailsOpen(true);
       setLoading(false);
     } catch (error: any) {
-      console.error('Error fetching maintenance records:', error);
-      showSnackbar(error.message || 'Failed to fetch maintenance records', 'error');
+      console.error('Error fetching machinery details:', error);
+      showSnackbar(error.message || 'Failed to fetch machinery details', 'error');
       setLoading(false);
     }
   };
@@ -645,6 +839,26 @@ const MachineryList: React.FC = () => {
       } catch (error: any) {
         console.error('Error deleting maintenance record:', error);
         showSnackbar(error.message || 'Failed to delete maintenance record', 'error');
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+  
+  const handleDeleteStatusHistory = async (id: number) => {
+    if (window.confirm('Are you sure you want to delete this status history record?')) {
+      setLoading(true);
+      try {
+        await dispatch(deleteStatusHistory(id)).unwrap();
+        showSnackbar('Status history record deleted successfully', 'success');
+        
+        // Refresh status history records if we're viewing a specific machinery
+        if (selectedMachinery) {
+          dispatch(fetchStatusHistory(selectedMachinery.id));
+        }
+      } catch (error: any) {
+        console.error('Error deleting status history record:', error);
+        showSnackbar(error.message || 'Failed to delete status history record', 'error');
       } finally {
         setLoading(false);
       }
@@ -811,6 +1025,7 @@ const MachineryList: React.FC = () => {
         <Tabs value={tabValue} onChange={handleTabChange} aria-label="machinery management tabs">
           <Tab icon={<ConstructionIcon />} label="Machinery List" />
           <Tab icon={<HistoryIcon />} label="Maintenance History" />
+          <Tab icon={<SwapHorizIcon />} label="Status History" />
           <Tab icon={<ReceiptLongIcon />} label="Overview & Stats" />
         </Tabs>
         
@@ -1092,6 +1307,114 @@ const MachineryList: React.FC = () => {
         </TabPanel>
         
         <TabPanel value={tabValue} index={2}>
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="h6" gutterBottom>
+              Status History Records
+            </Typography>
+            <Typography variant="body2" color="text.secondary" paragraph>
+              Select a machinery from the Machinery List tab to view its status history, or view all status history records below.
+            </Typography>
+            
+            <Button 
+              variant="outlined" 
+              onClick={() => {
+                try {
+                  dispatch(fetchStatusHistory(undefined));
+                } catch (error) {
+                  console.warn('Could not fetch status history, table might not exist yet:', error);
+                  showSnackbar('Status history table may not exist yet in the database', 'error');
+                }
+              }}
+              startIcon={<RefreshIcon />}
+              sx={{ mt: 2 }}
+            >
+              Load All Status History Records
+            </Button>
+          </Box>
+          
+          {(loading || isLoading) ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
+              <CircularProgress />
+            </Box>
+          ) : (
+            <TableContainer sx={{ maxHeight: 600 }}>
+              <Table stickyHeader>
+                <TableHead>
+                  <TableRow>
+                    <TableCell><strong>Machinery</strong></TableCell>
+                    <TableCell><strong>Date</strong></TableCell>
+                    <TableCell><strong>Previous Status</strong></TableCell>
+                    <TableCell><strong>New Status</strong></TableCell>
+                    <TableCell><strong>Reason</strong></TableCell>
+                    <TableCell><strong>Changed By</strong></TableCell>
+                    <TableCell><strong>Actions</strong></TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {statusHistory && statusHistory.length > 0 ? (
+                    statusHistory.map((record: StatusHistoryRecord) => {
+                      const machineInfo = machinery?.find((m: MachineryType) => m.id === record.machineryId);
+                      
+                      return (
+                        <TableRow key={record.id}>
+                          <TableCell>
+                            {machineInfo ? (
+                              <Link 
+                                component="button"
+                                variant="body1"
+                                onClick={() => handleOpenMachineryDetails(machineInfo)}
+                                underline="hover"
+                              >
+                                {machineInfo.name}
+                              </Link>
+                            ) : record.machineryId}
+                          </TableCell>
+                          <TableCell>{format(parseISO(record.date), 'MMM d, yyyy')}</TableCell>
+                          <TableCell>{getStatusChip(record.previousStatus)}</TableCell>
+                          <TableCell>{getStatusChip(record.newStatus)}</TableCell>
+                          <TableCell>
+                            {record.reason.length > 50 ? 
+                              `${record.reason.substring(0, 50)}...` : 
+                              record.reason}
+                          </TableCell>
+                          <TableCell>{record.changedBy}</TableCell>
+                          <TableCell>
+                            <Box sx={{ display: 'flex', gap: 1 }}>
+                              <Button 
+                                size="small" 
+                                color="primary"
+                                variant="outlined"
+                                onClick={() => record.machineryId && handleOpenStatusHistoryDialog(record.machineryId, record)}
+                              >
+                                Edit
+                              </Button>
+                              <Button 
+                                size="small" 
+                                color="error"
+                                variant="outlined"
+                                onClick={() => handleDeleteStatusHistory(record.id)}
+                              >
+                                Delete
+                              </Button>
+                            </Box>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={7} align="center">
+                        No status history records found
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </TabPanel>
+        
+        <TabPanel value={tabValue} index={3}>
           <Grid container spacing={3}>
             <Grid item xs={12} md={8}>
               <Typography variant="h6" gutterBottom>
@@ -1775,6 +2098,109 @@ const MachineryList: React.FC = () => {
             </Grid>
             
             <Grid item xs={12}>
+              <Typography variant="subtitle2" gutterBottom>
+                Images (Optional)
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Add images showing the maintenance work or parts replaced.
+              </Typography>
+              
+              <Box sx={{ mt: 2, display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+                {/* Display existing images */}
+                {maintenanceForm.imageUrls && maintenanceForm.imageUrls.map((url, index) => (
+                  <Box key={index} sx={{ position: 'relative' }}>
+                    <Avatar 
+                      src={url} 
+                      alt={`Maintenance documentation ${index + 1}`}
+                      variant="rounded"
+                      sx={{ width: 100, height: 100, border: '1px solid #eee' }}
+                    />
+                    <IconButton 
+                      size="small" 
+                      color="error" 
+                      onClick={() => {
+                        setMaintenanceForm(prev => ({
+                          ...prev,
+                          imageUrls: prev.imageUrls?.filter((_, i) => i !== index) || []
+                        }));
+                      }}
+                      sx={{ 
+                        position: 'absolute', 
+                        top: -10, 
+                        right: -10,
+                        bgcolor: 'background.paper',
+                        boxShadow: 1
+                      }}
+                    >
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Box>
+                ))}
+                
+                {/* Image upload placeholder */}
+                <Box 
+                  component="label" 
+                  htmlFor="maintenance-image-upload"
+                  sx={{ 
+                    width: 100, 
+                    height: 100, 
+                    border: '1px dashed #ccc', 
+                    borderRadius: 1,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    '&:hover': { bgcolor: 'action.hover' }
+                  }}
+                >
+                  <AddIcon sx={{ color: 'text.secondary', mb: 1 }} />
+                  <Typography variant="caption" color="text.secondary">
+                    Add Image
+                  </Typography>
+                </Box>
+                
+                <input
+                  type="file"
+                  accept="image/*"
+                  id="maintenance-image-upload"
+                  style={{ display: 'none' }}
+                  onChange={async (e) => {
+                    if (e.target.files && e.target.files.length > 0) {
+                      try {
+                        setLoading(true);
+                        const file = e.target.files[0];
+                        
+                        // We need to actually upload the image to get a permanent URL
+                        if (selectedMachinery) {
+                          const imageUrl = await dispatch(uploadMachineryImage({
+                            file,
+                            machineryId: selectedMachinery.id
+                          })).unwrap();
+                          
+                          // Add the real URL from the server
+                          setMaintenanceForm(prev => ({
+                            ...prev,
+                            imageUrls: [...(prev.imageUrls || []), imageUrl]
+                          }));
+                          
+                          showSnackbar('Image uploaded successfully', 'success');
+                        } else {
+                          showSnackbar('Please select a machinery first', 'error');
+                        }
+                      } catch (error: any) {
+                        console.error('Error uploading image:', error);
+                        showSnackbar(error.message || 'Failed to upload image', 'error');
+                      } finally {
+                        setLoading(false);
+                      }
+                    }
+                  }}
+                />
+              </Box>
+            </Grid>
+            
+            <Grid item xs={12}>
               <TextField
                 name="notes"
                 label="Notes"
@@ -1797,6 +2223,235 @@ const MachineryList: React.FC = () => {
             disabled={loading}
           >
             {loading ? <CircularProgress size={24} /> : (selectedMaintenance ? 'Update Record' : 'Save Record')}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Status History Dialog */}
+      <Dialog open={statusHistoryDialogOpen} onClose={handleCloseStatusHistoryDialog} maxWidth="md" fullWidth>
+        <DialogTitle>
+          {selectedStatusHistory ? 'Edit Status History Record' : 'Add Status Change Record'}
+        </DialogTitle>
+        {selectedMachinery && (
+          <Box sx={{ px: 3, mt: -2, mb: 2 }}>
+            <Typography variant="subtitle1" color="text.secondary">
+              for {selectedMachinery.name}
+            </Typography>
+          </Box>
+        )}
+        
+        <DialogContent>
+          <Grid container spacing={3} sx={{ mt: 1 }}>
+            <Grid item xs={12} md={6}>
+              <LocalizationProvider dateAdapter={AdapterDateFns}>
+                <DatePicker
+                  label="Status Change Date"
+                  value={statusHistoryForm.date}
+                  onChange={handleStatusHistoryDateChange}
+                  slotProps={{ textField: { fullWidth: true } }}
+                />
+              </LocalizationProvider>
+            </Grid>
+            
+            <Grid item xs={12} md={6}>
+              <TextField
+                name="changedBy"
+                label="Changed By"
+                fullWidth
+                required
+                value={statusHistoryForm.changedBy}
+                onChange={handleStatusHistoryInputChange}
+                placeholder="Person who changed the status"
+                InputProps={{
+                  startAdornment: <InputAdornment position="start"><PersonIcon fontSize="small" /></InputAdornment>
+                }}
+              />
+            </Grid>
+            
+            <Grid item xs={12} md={6}>
+              <FormControl fullWidth>
+                <InputLabel id="previous-status-label">Previous Status</InputLabel>
+                <Select
+                  labelId="previous-status-label"
+                  name="previousStatus"
+                  value={statusHistoryForm.previousStatus}
+                  label="Previous Status"
+                  onChange={handleStatusHistorySelectChange}
+                >
+                  {machineryStatuses.map(status => (
+                    <MenuItem key={status} value={status}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        {getStatusChip(status)}
+                        <span>{status}</span>
+                      </Box>
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            
+            <Grid item xs={12} md={6}>
+              <FormControl fullWidth>
+                <InputLabel id="new-status-label">New Status</InputLabel>
+                <Select
+                  labelId="new-status-label"
+                  name="newStatus"
+                  value={statusHistoryForm.newStatus}
+                  label="New Status"
+                  onChange={handleStatusHistorySelectChange}
+                >
+                  {machineryStatuses.map(status => (
+                    <MenuItem key={status} value={status}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        {getStatusChip(status)}
+                        <span>{status}</span>
+                      </Box>
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            
+            <Grid item xs={12}>
+              <TextField
+                name="reason"
+                label="Reason for Status Change"
+                multiline
+                rows={3}
+                fullWidth
+                required
+                value={statusHistoryForm.reason}
+                onChange={handleStatusHistoryInputChange}
+                placeholder="Explain why the status was changed"
+              />
+            </Grid>
+            
+            <Grid item xs={12}>
+              <Typography variant="subtitle2" gutterBottom>
+                Images (Optional)
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Add images showing the machinery condition or other visual documentation.
+              </Typography>
+              
+              <Box sx={{ mt: 2, display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+                {/* Display existing images */}
+                {statusHistoryForm.imageUrls && statusHistoryForm.imageUrls.map((url, index) => (
+                  <Box key={index} sx={{ position: 'relative' }}>
+                    <Avatar 
+                      src={url} 
+                      alt={`Status documentation ${index + 1}`}
+                      variant="rounded"
+                      sx={{ width: 100, height: 100, border: '1px solid #eee' }}
+                    />
+                    <IconButton 
+                      size="small" 
+                      color="error" 
+                      onClick={() => {
+                        setStatusHistoryForm(prev => ({
+                          ...prev,
+                          imageUrls: prev.imageUrls?.filter((_, i) => i !== index) || []
+                        }));
+                      }}
+                      sx={{ 
+                        position: 'absolute', 
+                        top: -10, 
+                        right: -10,
+                        bgcolor: 'background.paper',
+                        boxShadow: 1
+                      }}
+                    >
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Box>
+                ))}
+                
+                {/* Image upload placeholder */}
+                <Box 
+                  component="label" 
+                  htmlFor="status-image-upload"
+                  sx={{ 
+                    width: 100, 
+                    height: 100, 
+                    border: '1px dashed #ccc', 
+                    borderRadius: 1,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    '&:hover': { bgcolor: 'action.hover' }
+                  }}
+                >
+                  <AddIcon sx={{ color: 'text.secondary', mb: 1 }} />
+                  <Typography variant="caption" color="text.secondary">
+                    Add Image
+                  </Typography>
+                </Box>
+                
+                <input
+                  type="file"
+                  accept="image/*"
+                  id="status-image-upload"
+                  style={{ display: 'none' }}
+                  onChange={async (e) => {
+                    if (e.target.files && e.target.files.length > 0) {
+                      try {
+                        setLoading(true);
+                        const file = e.target.files[0];
+                        
+                        // We need to actually upload the image to get a permanent URL
+                        if (selectedMachinery) {
+                          const imageUrl = await dispatch(uploadMachineryImage({
+                            file,
+                            machineryId: selectedMachinery.id
+                          })).unwrap();
+                          
+                          // Add the real URL from the server
+                          setStatusHistoryForm(prev => ({
+                            ...prev,
+                            imageUrls: [...(prev.imageUrls || []), imageUrl]
+                          }));
+                          
+                          showSnackbar('Image uploaded successfully', 'success');
+                        } else {
+                          showSnackbar('Please select a machinery first', 'error');
+                        }
+                      } catch (error: any) {
+                        console.error('Error uploading image:', error);
+                        showSnackbar(error.message || 'Failed to upload image', 'error');
+                      } finally {
+                        setLoading(false);
+                      }
+                    }
+                  }}
+                />
+              </Box>
+            </Grid>
+            
+            <Grid item xs={12}>
+              <TextField
+                name="notes"
+                label="Additional Notes"
+                multiline
+                rows={2}
+                fullWidth
+                value={statusHistoryForm.notes}
+                onChange={handleStatusHistoryInputChange}
+                placeholder="Any additional information about this status change"
+              />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseStatusHistoryDialog}>Cancel</Button>
+          <Button 
+            onClick={handleStatusHistorySubmit} 
+            variant="contained" 
+            color="primary"
+            disabled={loading}
+          >
+            {loading ? <CircularProgress size={24} /> : (selectedStatusHistory ? 'Update Record' : 'Save Record')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -1968,6 +2623,14 @@ const MachineryList: React.FC = () => {
                       >
                         Add Maintenance Record
                       </Button>
+
+                      <Button
+                        variant="outlined"
+                        startIcon={<SwapHorizIcon />}
+                        onClick={() => handleOpenStatusHistoryDialog(selectedMachinery.id)}
+                      >
+                        Add Status Change
+                      </Button>
                       
                       <Button
                         variant="outlined"
@@ -2028,6 +2691,26 @@ const MachineryList: React.FC = () => {
                                   {record.description}
                                 </Typography>
                                 
+                                {record.imageUrls && record.imageUrls.length > 0 && (
+                                  <Box sx={{ mt: 2, mb: 2 }}>
+                                    <Typography variant="body2" color="text.secondary" gutterBottom>
+                                      Images:
+                                    </Typography>
+                                    <ImageList sx={{ width: '100%', maxHeight: 200 }} cols={3} rowHeight={100}>
+                                      {record.imageUrls.map((url, index) => (
+                                        <ImageListItem key={index}>
+                                          <img
+                                            src={url}
+                                            alt={`Maintenance documentation ${index + 1}`}
+                                            loading="lazy"
+                                            style={{ objectFit: 'cover', height: '100%', width: '100%', borderRadius: 4 }}
+                                          />
+                                        </ImageListItem>
+                                      ))}
+                                    </ImageList>
+                                  </Box>
+                                )}
+                                
                                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                   <Typography variant="body2" color="text.secondary">
                                     Performed by: {record.performedBy}
@@ -2072,6 +2755,127 @@ const MachineryList: React.FC = () => {
                               onClick={() => handleOpenMaintenanceDialog(selectedMachinery.id)}
                             >
                               Add First Maintenance Record
+                            </Button>
+                          </Box>
+                        )}
+                      </>
+                    )}
+                  </Paper>
+
+                  <Paper sx={{ p: 2, mt: 3 }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+                        Status History
+                      </Typography>
+                      
+                      <Button 
+                        size="small" 
+                        startIcon={<RefreshIcon />}
+                        onClick={() => {
+                          try {
+                            dispatch(fetchStatusHistory(selectedMachinery.id));
+                          } catch (error) {
+                            console.warn('Could not fetch status history, table might not exist yet:', error);
+                            showSnackbar('Status history table may not exist yet in the database', 'info');
+                          }
+                        }}
+                      >
+                        Refresh
+                      </Button>
+                    </Box>
+                    
+                    {isLoading ? (
+                      <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
+                        <CircularProgress />
+                      </Box>
+                    ) : (
+                      <>
+                        {statusHistory && statusHistory.length > 0 ? (
+                          <List sx={{ mt: 2 }}>
+                            {statusHistory.map((record: StatusHistoryRecord) => (
+                              <Paper key={record.id} elevation={1} sx={{ mb: 2, p: 2 }}>
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                  <Box>
+                                    <Typography variant="subtitle1" fontWeight="medium">
+                                      {format(parseISO(record.date), 'MMM d, yyyy')}
+                                    </Typography>
+                                    <Box sx={{ mt: 0.5, mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+                                      {getStatusChip(record.previousStatus)}
+                                      <SwapHorizIcon fontSize="small" sx={{ color: 'text.secondary' }} />
+                                      {getStatusChip(record.newStatus)}
+                                    </Box>
+                                  </Box>
+                                  
+                                  <Typography variant="subtitle2" color="text.secondary">
+                                    By: {record.changedBy}
+                                  </Typography>
+                                </Box>
+                                
+                                <Typography variant="body2" paragraph>
+                                  <strong>Reason:</strong> {record.reason}
+                                </Typography>
+                                
+                                {record.imageUrls && record.imageUrls.length > 0 && (
+                                  <Box sx={{ mt: 2, mb: 2 }}>
+                                    <Typography variant="body2" color="text.secondary" gutterBottom>
+                                      Images:
+                                    </Typography>
+                                    <ImageList sx={{ width: '100%', maxHeight: 200 }} cols={3} rowHeight={100}>
+                                      {record.imageUrls.map((url, index) => (
+                                        <ImageListItem key={index}>
+                                          <img
+                                            src={url}
+                                            alt={`Status change documentation ${index + 1}`}
+                                            loading="lazy"
+                                            style={{ objectFit: 'cover', height: '100%', width: '100%', borderRadius: 4 }}
+                                          />
+                                        </ImageListItem>
+                                      ))}
+                                    </ImageList>
+                                  </Box>
+                                )}
+                                
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  {record.notes && (
+                                    <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                                      Note: {record.notes}
+                                    </Typography>
+                                  )}
+                                  
+                                  <Box sx={{ display: 'flex', gap: 1, ml: 'auto' }}>
+                                    <Button 
+                                      size="small" 
+                                      color="primary"
+                                      variant="outlined"
+                                      onClick={() => handleOpenStatusHistoryDialog(selectedMachinery.id, record)}
+                                    >
+                                      Edit
+                                    </Button>
+                                    <Button 
+                                      size="small" 
+                                      color="error"
+                                      variant="outlined"
+                                      onClick={() => handleDeleteStatusHistory(record.id)}
+                                    >
+                                      Delete
+                                    </Button>
+                                  </Box>
+                                </Box>
+                              </Paper>
+                            ))}
+                          </List>
+                        ) : (
+                          <Box sx={{ py: 4, textAlign: 'center' }}>
+                            <Typography variant="body1" color="text.secondary">
+                              No status history records found for this machinery.
+                            </Typography>
+                            <Button 
+                              variant="outlined" 
+                              sx={{ mt: 2 }}
+                              startIcon={<SwapHorizIcon />}
+                              onClick={() => handleOpenStatusHistoryDialog(selectedMachinery.id)}
+                            >
+                              Add First Status Change Record
                             </Button>
                           </Box>
                         )}

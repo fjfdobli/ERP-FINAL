@@ -7,7 +7,9 @@ import {
   MachineryStats,
   MaintenanceCostSummary,
   InsertMachinery,
-  InsertMaintenanceRecord
+  InsertMaintenanceRecord,
+  StatusHistoryRecord,
+  InsertStatusHistoryRecord
 } from '../../services/machineryService';
 import { RootState } from '../store';
 
@@ -15,6 +17,7 @@ interface MachineryState {
   machinery: Machinery[];
   currentMachinery: Machinery | null;
   maintenanceRecords: MaintenanceRecord[];
+  statusHistory: StatusHistoryRecord[];
   machineryStats: MachineryStats | null;
   maintenanceCostSummary: MaintenanceCostSummary | null;
   isLoading: boolean;
@@ -25,6 +28,7 @@ const initialState: MachineryState = {
   machinery: [],
   currentMachinery: null,
   maintenanceRecords: [],
+  statusHistory: [],
   machineryStats: null,
   maintenanceCostSummary: null,
   isLoading: false,
@@ -152,6 +156,52 @@ export const deleteMaintenanceRecord = createAsyncThunk(
       return id;
     } catch (error) {
       return rejectWithValue(error instanceof Error ? error.message : 'Failed to delete maintenance record');
+    }
+  }
+);
+
+// Async thunks for status history
+export const fetchStatusHistory = createAsyncThunk(
+  'machinery/fetchStatusHistory',
+  async (machineryId: number | undefined, { rejectWithValue }) => {
+    try {
+      return await machineryService.getStatusHistory(machineryId);
+    } catch (error) {
+      return rejectWithValue(error instanceof Error ? error.message : 'Failed to fetch status history');
+    }
+  }
+);
+
+export const createStatusHistory = createAsyncThunk(
+  'machinery/createStatusHistory',
+  async (record: InsertStatusHistoryRecord, { rejectWithValue }) => {
+    try {
+      return await machineryService.createStatusHistory(record);
+    } catch (error) {
+      return rejectWithValue(error instanceof Error ? error.message : 'Failed to create status history record');
+    }
+  }
+);
+
+export const updateStatusHistory = createAsyncThunk(
+  'machinery/updateStatusHistory',
+  async ({ id, data }: { id: number; data: Partial<InsertStatusHistoryRecord> }, { rejectWithValue }) => {
+    try {
+      return await machineryService.updateStatusHistory(id, data);
+    } catch (error) {
+      return rejectWithValue(error instanceof Error ? error.message : 'Failed to update status history record');
+    }
+  }
+);
+
+export const deleteStatusHistory = createAsyncThunk(
+  'machinery/deleteStatusHistory',
+  async (id: number, { rejectWithValue }) => {
+    try {
+      await machineryService.deleteStatusHistory(id);
+      return id;
+    } catch (error) {
+      return rejectWithValue(error instanceof Error ? error.message : 'Failed to delete status history record');
     }
   }
 );
@@ -378,6 +428,65 @@ const machinerySlice = createSlice({
       .addCase(fetchMaintenanceCostSummary.rejected, (state, action) => {
         state.isLoading = false;
         state.error = action.payload as string;
+      })
+      
+      // Fetch status history
+      .addCase(fetchStatusHistory.pending, (state) => {
+        state.isLoading = true;
+      })
+      .addCase(fetchStatusHistory.fulfilled, (state, action) => {
+        state.statusHistory = action.payload;
+        state.isLoading = false;
+        state.error = null;
+      })
+      .addCase(fetchStatusHistory.rejected, (state, action) => {
+        state.isLoading = false;
+        state.error = action.payload as string;
+      })
+      
+      // Create status history record
+      .addCase(createStatusHistory.pending, (state) => {
+        state.isLoading = true;
+      })
+      .addCase(createStatusHistory.fulfilled, (state, action) => {
+        state.statusHistory.unshift(action.payload);
+        state.isLoading = false;
+        state.error = null;
+      })
+      .addCase(createStatusHistory.rejected, (state, action) => {
+        state.isLoading = false;
+        state.error = action.payload as string;
+      })
+      
+      // Update status history record
+      .addCase(updateStatusHistory.pending, (state) => {
+        state.isLoading = true;
+      })
+      .addCase(updateStatusHistory.fulfilled, (state, action) => {
+        const index = state.statusHistory.findIndex(item => item.id === action.payload.id);
+        if (index !== -1) {
+          state.statusHistory[index] = action.payload;
+        }
+        state.isLoading = false;
+        state.error = null;
+      })
+      .addCase(updateStatusHistory.rejected, (state, action) => {
+        state.isLoading = false;
+        state.error = action.payload as string;
+      })
+      
+      // Delete status history record
+      .addCase(deleteStatusHistory.pending, (state) => {
+        state.isLoading = true;
+      })
+      .addCase(deleteStatusHistory.fulfilled, (state, action) => {
+        state.statusHistory = state.statusHistory.filter(item => item.id !== action.payload);
+        state.isLoading = false;
+        state.error = null;
+      })
+      .addCase(deleteStatusHistory.rejected, (state, action) => {
+        state.isLoading = false;
+        state.error = action.payload as string;
       });
   }
 });
@@ -388,6 +497,7 @@ export const { setCurrentMachinery, clearError } = machinerySlice.actions;
 export const selectAllMachinery = (state: RootState) => state.machinery.machinery;
 export const selectCurrentMachinery = (state: RootState) => state.machinery.currentMachinery;
 export const selectMaintenanceRecords = (state: RootState) => state.machinery.maintenanceRecords;
+export const selectStatusHistory = (state: RootState) => state.machinery.statusHistory;
 export const selectMachineryStats = (state: RootState) => state.machinery.machineryStats;
 export const selectMaintenanceCostSummary = (state: RootState) => state.machinery.maintenanceCostSummary;
 export const selectMachineryLoading = (state: RootState) => state.machinery.isLoading;
