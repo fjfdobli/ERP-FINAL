@@ -10,6 +10,7 @@ interface User {
   role?: string;
   phone?: string;
   jobTitle?: string;
+  avatar?: string | null;  // Allow null for avatar
   settings?: UserSettings;
 }
 
@@ -20,6 +21,7 @@ interface UserSettings {
   language?: string;
   theme?: string;
   twoFactorAuth?: boolean;
+  compactView?: boolean;
 }
 
 interface AuthState {
@@ -67,6 +69,9 @@ const getOrCreateUserProfile = async (authUser: any) => {
       }
     }
     
+    // Check for locally stored avatar
+    const localAvatar = localStorage.getItem('user_avatar');
+    
     // Return generic user if no auth user and no stored data
     return {
       id: 1,
@@ -75,6 +80,7 @@ const getOrCreateUserProfile = async (authUser: any) => {
       firstName: 'User',
       lastName: '',
       role: 'Admin',
+      avatar: localAvatar || undefined,
       settings: {
         darkMode: false,
         language: 'en',
@@ -92,13 +98,18 @@ const getOrCreateUserProfile = async (authUser: any) => {
     const firstName = metadata.firstName || metadata.first_name || (authUser.email ? authUser.email.split('@')[0] : 'User');
     const lastName = metadata.lastName || metadata.last_name || '';
     
+    // Check for locally stored avatar
+    const localAvatar = localStorage.getItem('user_avatar');
+    
     // Save this data for future use
     const userData = {
-      id: authUser.id,
+      id: 1, // Always use a number for id in localStorage
+      auth_id: authUser.id,
       email: authUser.email,
       firstName: firstName,
       lastName: lastName,
-      role: 'Admin'
+      role: 'Admin',
+      avatar: metadata.avatar || localAvatar
     };
     
     localStorage.setItem('userData', JSON.stringify(userData));
@@ -113,15 +124,20 @@ const getOrCreateUserProfile = async (authUser: any) => {
       role: 'Admin',
       phone: metadata.phone || '',
       jobTitle: metadata.job_title || '',
+      avatar: metadata.avatar || localAvatar,
       settings: {
         darkMode: false,
         language: 'en',
         theme: 'default',
-        emailNotifications: true
+        emailNotifications: true,
+        compactView: false
       }
     };
   } catch (error) {
     console.error('Error in getOrCreateUserProfile:', error);
+    
+    // Check for locally stored avatar
+    const localAvatar = localStorage.getItem('user_avatar');
     
     // Return a fallback user object with better defaults
     return {
@@ -131,9 +147,11 @@ const getOrCreateUserProfile = async (authUser: any) => {
       firstName: authUser.email ? authUser.email.split('@')[0] : 'User',
       lastName: '',
       role: 'Admin',
+      avatar: localAvatar,
       settings: {
         darkMode: false,
-        theme: 'default'
+        theme: 'default',
+        compactView: false
       }
     };
   }
@@ -200,6 +218,10 @@ export const login = createAsyncThunk(
       const lastName = metadata.lastName || metadata.last_name || '';
       
       // Create user profile from auth data
+      // Check for locally stored avatar
+      const localAvatar = localStorage.getItem('user_avatar');
+      const userAvatar = metadata.avatar || localAvatar;
+      
       const userProfile = {
         id: 1,
         auth_id: data.user?.id || 'auth-user',
@@ -207,10 +229,12 @@ export const login = createAsyncThunk(
         firstName: firstName,
         lastName: lastName,
         role: 'Admin',
+        avatar: userAvatar,
         settings: {
           darkMode: false,
           theme: 'default',
-          emailNotifications: true
+          emailNotifications: true,
+          compactView: false
         }
       };
       
@@ -269,7 +293,7 @@ export const register = createAsyncThunk(
 export const getCurrentUser = createAsyncThunk(
   'auth/getCurrentUser',
   async (_, { rejectWithValue }) => {
-    try {
+    try {      
       // FIRST PRIORITY: Check for stored user data (most reliable)
       const storedUserData = localStorage.getItem('userData');
       if (storedUserData) {
@@ -358,6 +382,9 @@ export const getCurrentUser = createAsyncThunk(
       // Try to use the email from localStorage if available
       const email = localStorage.getItem('userEmail');
       
+      // Get avatar from localStorage
+      const localAvatar = localStorage.getItem('user_avatar');
+      
       return {
         id: 1,
         auth_id: 'auth-user',
@@ -365,15 +392,19 @@ export const getCurrentUser = createAsyncThunk(
         firstName: email ? email.split('@')[0] : 'User',
         lastName: '',
         role: 'Admin',
+        avatar: localAvatar || undefined,
         settings: {
           darkMode: false,
-          theme: 'default'
+          theme: 'default',
+          compactView: false
         }
       };
     } catch (error: any) {
       console.error('Unexpected error in getCurrentUser:', error);
       
       // Always return a user instead of failing with rejectWithValue
+      const fallbackAvatar = localStorage.getItem('user_avatar');
+      
       return {
         id: 1,
         auth_id: 'auth-user',
@@ -381,9 +412,11 @@ export const getCurrentUser = createAsyncThunk(
         firstName: 'User',
         lastName: '',
         role: 'Admin',
+        avatar: fallbackAvatar || undefined,
         settings: {
           darkMode: false,
-          theme: 'default'
+          theme: 'default',
+          compactView: false
         }
       };
     }
@@ -401,40 +434,80 @@ export const updateUserProfile = createAsyncThunk(
         return rejectWithValue('User not authenticated');
       }
       
-      const { error: authUpdateError } = await supabase.auth.updateUser({
-        data: {
-          firstName: profileData.firstName,
-          lastName: profileData.lastName
+      // Handle local storage updates for user data
+      try {
+        const storedUserData = localStorage.getItem('userData');
+        if (storedUserData) {
+          const userData = JSON.parse(storedUserData);
+          const updatedUserData = {
+            ...userData,
+            firstName: profileData.firstName || userData.firstName,
+            lastName: profileData.lastName || userData.lastName,
+            phone: profileData.phone || userData.phone,
+            jobTitle: profileData.jobTitle || userData.jobTitle,
+            avatar: profileData.avatar || userData.avatar
+          };
+          localStorage.setItem('userData', JSON.stringify(updatedUserData));
         }
-      });
-      
-      if (authUpdateError) {
-        console.error('Error updating auth metadata:', authUpdateError);
+        
+        // For avatar specifically, handle local storage
+        if (profileData.avatar) {
+          // Check if it's a base64 image (from local storage fallback)
+          if (profileData.avatar.startsWith('data:image')) {
+            localStorage.setItem('user_avatar', profileData.avatar);
+          }
+        }
+      } catch (localStorageError) {
+        console.warn('Error updating local storage:', localStorageError);
       }
       
-      const { error } = await supabase
-        .from('user_profiles')
-        .update({
-          first_name: profileData.firstName,
-          last_name: profileData.lastName,
-          phone: profileData.phone,
-          job_title: profileData.jobTitle
-        })
-        .eq('id', user.id)
-        .select()
-        .single();
-      
-      if (error) {
-        console.error('Error updating user profile:', error);
-        return rejectWithValue(error.message);
+      // Try to update Supabase data
+      try {
+        const { error: authUpdateError } = await supabase.auth.updateUser({
+          data: {
+            firstName: profileData.firstName,
+            lastName: profileData.lastName,
+            avatar: profileData.avatar
+          }
+        });
+        
+        if (authUpdateError) {
+          console.warn('Error updating auth metadata (continuing):', authUpdateError);
+        }
+        
+        try {
+          const { error } = await supabase
+            .from('user_profiles')
+            .update({
+              first_name: profileData.firstName,
+              last_name: profileData.lastName,
+              phone: profileData.phone,
+              job_title: profileData.jobTitle,
+              avatar: profileData.avatar
+            })
+            .eq('id', user.id)
+            .select()
+            .single();
+          
+          if (error) {
+            console.warn('Error updating user profile in database (continuing):', error);
+          }
+        } catch (dbError) {
+          console.warn('Database update failed (continuing):', dbError);
+        }
+      } catch (supabaseError) {
+        console.warn('Supabase update failed (continuing with local updates):', supabaseError);
+        // Continue with local updates only
       }
       
+      // Return updated user regardless of remote success
       return {
         ...user,
         firstName: profileData.firstName || user.firstName,
         lastName: profileData.lastName || user.lastName,
         phone: profileData.phone || user.phone,
-        jobTitle: profileData.jobTitle || user.jobTitle
+        jobTitle: profileData.jobTitle || user.jobTitle,
+        avatar: profileData.avatar || user.avatar
       };
     } catch (error: any) {
       console.error('Unexpected profile update error:', error);
@@ -442,6 +515,95 @@ export const updateUserProfile = createAsyncThunk(
     }
   }
 );
+
+export const uploadAvatar = createAsyncThunk(
+  'auth/uploadAvatar',
+  async (file: File, { getState, dispatch, rejectWithValue }) => {
+    try {
+      const state: any = getState();
+      const { user } = state.auth;
+      
+      if (!user || !user.id) {
+        return rejectWithValue('User not authenticated');
+      }
+      
+      // Create a unique file name
+      const fileExt = file.name.split('.').pop();
+      const fileName = `avatar-${user.id}-${Date.now()}.${fileExt}`;
+      const filePath = `avatars/${fileName}`;
+      
+      try {
+        // Try to upload file to Supabase Storage
+        const { data, error } = await supabase.storage
+          .from('profiles')
+          .upload(filePath, file, {
+            cacheControl: '3600',
+            upsert: true
+          });
+        
+        if (error) {
+          // If storage doesn't exist, use Base64 fallback
+          if (error.message.includes('storage') || error.message.includes("bucket") || error.message.includes("permission")) {
+            console.warn('Using local storage fallback for avatar:', error.message);
+            return handleLocalAvatarFallback(file, dispatch);
+          }
+          console.error('Error uploading avatar:', error);
+          return rejectWithValue(error.message);
+        }
+        
+        // Get public URL for the file
+        const { data: { publicUrl } } = supabase.storage
+          .from('profiles')
+          .getPublicUrl(filePath);
+        
+        // Update user profile with the avatar URL
+        await dispatch(updateUserProfile({ avatar: publicUrl })).unwrap();
+        
+        return publicUrl;
+      } catch (storageError) {
+        console.warn('Storage error, using fallback:', storageError);
+        return handleLocalAvatarFallback(file, dispatch);
+      }
+    } catch (error: any) {
+      console.error('Unexpected avatar upload error:', error);
+      return rejectWithValue(error.message || 'Avatar upload failed');
+    }
+  }
+);
+
+const handleLocalAvatarFallback = async (file: File, dispatch: any): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    try {
+      const reader = new FileReader();
+      
+      reader.onload = async (event) => {
+        if (!event.target || typeof event.target.result !== 'string') {
+          reject('Failed to read file');
+          return;
+        }
+        
+        const base64String = event.target.result;
+        
+        if (base64String.length > 150000) {
+          reject('Image too large for local storage');
+          return;
+        }
+        
+        await dispatch(updateUserProfile({ avatar: base64String })).unwrap();
+        
+        resolve(base64String);
+      };
+      
+      reader.onerror = () => {
+        reject('Error reading file');
+      };
+      
+      reader.readAsDataURL(file);
+    } catch (error) {
+      reject(error);
+    }
+  });
+};
 
 export const updateUserSettings = createAsyncThunk(
   'auth/updateUserSettings',
@@ -454,23 +616,58 @@ export const updateUserSettings = createAsyncThunk(
         return rejectWithValue('User not authenticated');
       }
       
-      const { error } = await supabase
-        .from('user_profiles')
-        .update({
-          settings: settings
-        })
-        .eq('id', user.id)
-        .select()
-        .single();
+      // Always update local storage settings first
+      try {
+        const storedUserData = localStorage.getItem('userData');
+        if (storedUserData) {
+          const userData = JSON.parse(storedUserData);
+          const updatedUserData = {
+            ...userData,
+            settings: {
+              ...userData.settings,
+              ...settings
+            }
+          };
+          localStorage.setItem('userData', JSON.stringify(updatedUserData));
+        }
+        
+        // Save theme settings separately too for persistence
+        if (settings.darkMode !== undefined || settings.theme || settings.compactView !== undefined) {
+          const themeSettings = {
+            darkMode: settings.darkMode,
+            themeColor: settings.theme,
+            compactView: settings.compactView
+          };
+          localStorage.setItem('theme_settings', JSON.stringify(themeSettings));
+        }
+      } catch (localStorageError) {
+        console.warn('Error updating settings in local storage:', localStorageError);
+      }
       
-      if (error) {
-        console.error('Error updating user settings:', error);
-        return rejectWithValue(error.message);
+      // Try to update settings in Supabase
+      try {
+        const { error } = await supabase
+          .from('user_profiles')
+          .update({
+            settings: settings
+          })
+          .eq('id', user.id)
+          .select()
+          .single();
+        
+        if (error) {
+          console.warn('Error updating user settings in database (continuing):', error);
+        }
+      } catch (dbError) {
+        console.warn('Database settings update failed (continuing with local updates):', dbError);
       }
       
       return {
         ...user,
-        settings
+        settings: {
+          ...user.settings,
+          ...settings
+        }
       };
     } catch (error: any) {
       console.error('Unexpected settings update error:', error);
@@ -490,6 +687,7 @@ const authSlice = createSlice({
       localStorage.removeItem('supabase_auth_token');
       localStorage.removeItem('userData');
       localStorage.removeItem('userEmail');
+      localStorage.removeItem('theme_settings');
       state.user = null;
       state.token = null;
       state.isAuthenticated = false;
@@ -583,6 +781,21 @@ const authSlice = createSlice({
         state.user = action.payload;
       })
       .addCase(updateUserSettings.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      })
+      
+      .addCase(uploadAvatar.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(uploadAvatar.fulfilled, (state, action) => {
+        state.loading = false;
+        if (state.user) {
+          state.user.avatar = action.payload;
+        }
+      })
+      .addCase(uploadAvatar.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload as string;
       });

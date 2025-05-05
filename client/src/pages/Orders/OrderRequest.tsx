@@ -1,31 +1,58 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { Box, Typography, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, TextField, InputAdornment, Chip, Dialog, DialogTitle, DialogContent, DialogActions, FormControl, InputLabel, Select, MenuItem, CircularProgress, Snackbar, Alert, Grid, IconButton, SelectChangeEvent } from '@mui/material';
-import { Add as AddIcon, Search as SearchIcon, Delete as DeleteIcon, Refresh as RefreshIcon } from '@mui/icons-material';
+import { Add as AddIcon, Search as SearchIcon, Delete as DeleteIcon, Refresh as RefreshIcon, Edit as EditIcon } from '@mui/icons-material';
 import { Client, clientsService } from '../../services/clientsService';
 import { OrderRequestItem as BaseOrderRequestItem, ExtendedOrderRequest } from '../../services/orderRequestsService';
 import { orderRequestsService } from '../../services/orderRequestsService';
 import { clientOrdersService } from '../../services/clientOrdersService';
-import { 
+import {
   fetchOrderRequests, createOrderRequest, updateOrderRequest, changeOrderRequestStatus,
-  selectOrderRequests, selectOrderRequestLoading, selectOrderRequestError 
+  selectOrderRequests, selectOrderRequestLoading, selectOrderRequestError
 } from '../../redux/slices/orderRequestSlice';
 import { selectAllClientOrders, fetchClientOrders } from '../../redux/slices/clientOrdersSlice';
 import { AppDispatch, RootState } from '../../redux/store';
-import { 
+import {
   fetchProducts,
   selectAllProducts
 } from '../../redux/slices/productProfileSlice';
-import { 
-  fetchInventory, 
+import {
+  fetchInventory,
   updateInventoryItem,
   selectAllInventoryItems
 } from '../../redux/slices/inventorySlice';
-import { 
+import {
   ExtendedProduct,
-  ProductMaterial 
+  ProductMaterial
 } from '../../services/productProfileService';
 import { InventoryItem } from '../../services/inventoryService';
+
+const getClientEligibilityMap = (
+  clients: Client[],
+  orderRequests: ExtendedOrderRequest[],
+  clientOrders: any[]
+): { [key: number]: boolean } => {
+  const map: { [key: number]: boolean } = {};
+
+  clients
+    .filter(client => client.status === 'Active')
+    .forEach(client => {
+      const hasPendingRequest = orderRequests.some(
+        req => req.client_id === client.id && req.status === 'Pending'
+      );
+
+
+      const hasActiveOrder = clientOrders.some(
+        order => order.client_id === client.id &&
+          ['Approved', 'Partially Paid'].includes(order.status)
+      );
+
+      map[client.id] = !hasPendingRequest && !hasActiveOrder;
+    });
+
+  return map;
+};
+
 
 // Extended version of OrderRequestItem to include the actual product ID
 interface OrderRequestItem extends BaseOrderRequestItem {
@@ -42,14 +69,14 @@ interface OrderRequestFormProps {
   initialData?: ExtendedOrderRequest | null;
   isEdit?: boolean;
   clientsWithOrders: Set<number>;
-  clientEligibility: {[key: number]: boolean};
+  clientEligibility: { [key: number]: boolean };
   getClientOrderStatus: (clientId: number) => { hasOngoingOrders: boolean, statusText: string };
-  onInventoryUpdate: (updates: Array<{id: number, newQuantity: number}>) => Promise<void>;
+  onInventoryUpdate: (updates: Array<{ id: number, newQuantity: number }>) => Promise<void>;
 }
 
 const StatusChip: React.FC<{ status: string }> = ({ status }) => {
   let color: 'success' | 'info' | 'warning' | 'error' = 'info';
-  
+
   switch (status.toLowerCase()) {
     case 'approved':
       color = 'success';
@@ -66,25 +93,25 @@ const StatusChip: React.FC<{ status: string }> = ({ status }) => {
     default:
       color = 'info';
   }
-  
+
   return (
-    <Chip 
-      label={status} 
+    <Chip
+      label={status}
       color={color}
       size="small"
     />
   );
 };
 
-const OrderRequestForm: React.FC<OrderRequestFormProps> = ({ 
-  open, 
-  onClose, 
-  onSubmit, 
-  clients, 
-  products, 
+const OrderRequestForm: React.FC<OrderRequestFormProps> = ({
+  open,
+  onClose,
+  onSubmit,
+  clients,
+  products,
   rawMaterials,
-  initialData = null, 
-  isEdit = false, 
+  initialData = null,
+  isEdit = false,
   clientsWithOrders,
   clientEligibility,
   getClientOrderStatus,
@@ -97,22 +124,53 @@ const OrderRequestForm: React.FC<OrderRequestFormProps> = ({
   const [currentItem, setCurrentItem] = useState<OrderRequestItem | null>(null);
   const [itemIndex, setItemIndex] = useState<number | null>(null);
   const [showCustomProductInput, setShowCustomProductInput] = useState<boolean>(false);
-  const [customProduct, setCustomProduct] = useState<{name: string; price: number}>({
+  const [customProduct, setCustomProduct] = useState<{ name: string; price: number }>({
     name: '',
     price: 0
   });
-  
+
+  const filteredClients = useMemo(() => {
+    const selectedClient = clients.find(c => c.id === clientId);
+    const eligibleClients = clients.filter(client => {
+      if (client.status !== 'Active') return false;
+      return clientEligibility[client.id] !== false;
+    });
+
+    // Ensure selected client appears even if no longer eligible
+    if (selectedClient && !eligibleClients.some(c => c.id === selectedClient.id)) {
+      return [...eligibleClients, selectedClient];
+    }
+
+    return eligibleClients;
+  }, [clients, clientEligibility, clientId]);
+
+
+
+  const usedProductIds = useMemo(() => {
+    return items.map(item => item.product_actual_id).filter(id => id !== undefined);
+  }, [items]);
+
   useEffect(() => {
+    if (!clients.length || Object.keys(clientEligibility).length === 0) return;
+
     if (initialData) {
       setClientId(initialData.client_id || 0);
       setItems(initialData.items || []);
       setNotes(initialData.notes || '');
     } else {
-      setClientId(0);
+      const firstEligible = clients.find(c => clientEligibility[c.id]);
+      if (firstEligible) {
+        setClientId(firstEligible.id);
+      } else {
+        console.warn('[OrderForm] No eligible clients available');
+        setClientId(-1); // Or any non-zero invalid fallback that won’t render
+      }
       setItems([]);
       setNotes('');
     }
-  }, [initialData]);
+  }, [initialData, clients, clientEligibility]);
+
+
 
   const handleClientChange = (event: SelectChangeEvent<number>) => {
     setClientId(event.target.value as number);
@@ -151,11 +209,44 @@ const OrderRequestForm: React.FC<OrderRequestFormProps> = ({
     setCustomProduct({ name: '', price: 0 });
   };
 
-  const handleDeleteItem = (index: number) => {
+  const handleDeleteItem = async (index: number) => {
+    const itemToDelete = items[index];
+    if (!itemToDelete) return;
+
+    if (itemToDelete.product_actual_id) {
+      const product = products.find(p => p.id === itemToDelete.product_actual_id);
+      if (product) {
+        const { materialRequirements } = checkInventoryForProduct(product, itemToDelete.quantity);
+
+        const inventoryRestores = materialRequirements.map(req => ({
+          id: req.materialId,
+          newQuantity: req.available + req.quantityNeeded
+        }));
+
+        console.log('Restoring inventory from deleted item:', inventoryRestores); // ✅ LOGGING
+        try {
+          await onInventoryUpdate(inventoryRestores);
+        } catch (error) {
+          console.error("Failed to restore inventory after deleting item", error);
+          alert("Inventory restore failed. Please try again.");
+          return;
+        }
+      }
+    }
+
     const newItems = [...items];
     newItems.splice(index, 1);
+
+    if (newItems.length === 0) {
+      alert("You must have at least one product in the request items.");
+      return;
+    }
+
     setItems(newItems);
   };
+
+
+
 
   const handleCloseItemDialog = () => {
     setItemDialogOpen(false);
@@ -167,72 +258,83 @@ const OrderRequestForm: React.FC<OrderRequestFormProps> = ({
 
   const handleSaveItem = async () => {
     if (!currentItem) return;
-    
-    // If this is an actual product (not custom) that requires inventory adjustment
+
+    // Check duplicate
+    const isDuplicate = items.some(
+      (item, index) => item.product_id === currentItem.product_id && index !== itemIndex
+    );
+
+    if (isDuplicate) {
+      alert('This product is already added in the request items.');
+      return;
+    }
+
     if (currentItem.product_actual_id) {
       const product = products.find(p => p.id === currentItem.product_actual_id);
-      
+
       if (product) {
-        const { hasEnoughInventory, materialRequirements } = 
-          checkInventoryForProduct(product, currentItem.quantity);
-        
-        if (!hasEnoughInventory) {
-          alert('Insufficient inventory to add this item.');
-          return;
-        }
-        
-        // Prepare inventory updates
-        const inventoryUpdates = materialRequirements.map(req => ({
-          id: req.materialId,
-          newQuantity: req.available - req.quantityNeeded
-        }));
-        
-        try {
-          // Update inventory in the database
-          await onInventoryUpdate(inventoryUpdates);
-          
-          // Continue with saving the item
-          const newItems = [...items];
-          
-          if (itemIndex !== null) {
-            newItems[itemIndex] = currentItem;
-          } else {
-            newItems.push(currentItem);
+        const previousQuantity = itemIndex !== null ? items[itemIndex].quantity : 0;
+        const quantityDifference = (currentItem.quantity || 0) - previousQuantity;
+
+        if (quantityDifference !== 0) {
+          const { hasEnoughInventory, materialRequirements } = checkInventoryForProduct(product, Math.abs(quantityDifference));
+
+          if (!hasEnoughInventory && quantityDifference > 0) {
+            alert('Insufficient inventory to add more quantity.');
+            return;
           }
-          
-          setItems(newItems);
-          handleCloseItemDialog();
-        } catch (error) {
-          alert('Failed to update inventory. Please try again.');
-          console.error('Inventory update error:', error);
+
+          const inventoryUpdates = materialRequirements.map(req => ({
+            id: req.materialId,
+            newQuantity: quantityDifference > 0
+              ? req.available - req.quantityNeeded
+              : req.available + req.quantityNeeded
+          }));
+
+          try {
+            await onInventoryUpdate(inventoryUpdates);
+          } catch (error) {
+            alert('Failed to update inventory. Please try again.');
+            console.error('Inventory update error:', error);
+            return;
+          }
         }
+
+        // Finally update the item list
+        const newItems = [...items];
+        if (itemIndex !== null) {
+          newItems[itemIndex] = currentItem;
+        } else {
+          newItems.push(currentItem);
+        }
+        setItems(newItems);
+        handleCloseItemDialog();
       }
     } else {
-      // For custom products, just add the item without inventory checks
+      // For custom product (if you still allow in the future)
       const newItems = [...items];
-      
       if (itemIndex !== null) {
         newItems[itemIndex] = currentItem;
       } else {
         newItems.push(currentItem);
       }
-      
       setItems(newItems);
       handleCloseItemDialog();
     }
   };
 
+
   // Check if we have enough inventory for a product
-  const checkInventoryForProduct = (product: ExtendedProduct, quantity: number): { 
-    hasEnoughInventory: boolean, 
+  const checkInventoryForProduct = (product: ExtendedProduct, quantity: number): {
+    hasEnoughInventory: boolean,
     lowStockItems: string[],
     outOfStockItems: string[],
-    materialRequirements: Array<{materialId: number, quantityNeeded: number, available: number}>
+    materialRequirements: Array<{ materialId: number, quantityNeeded: number, available: number }>
   } => {
     const lowStockItems: string[] = [];
     const outOfStockItems: string[] = [];
-    const materialRequirements: Array<{materialId: number, quantityNeeded: number, available: number}> = [];
-    
+    const materialRequirements: Array<{ materialId: number, quantityNeeded: number, available: number }> = [];
+
     // Check each material in the product
     for (const material of product.materials) {
       const inventoryItem = rawMaterials.find(item => item.id === material.materialId);
@@ -240,21 +342,21 @@ const OrderRequestForm: React.FC<OrderRequestFormProps> = ({
         outOfStockItems.push(`${material.materialName} (not found in inventory)`);
         continue;
       }
-      
+
       const quantityNeeded = material.quantityRequired * quantity;
       materialRequirements.push({
         materialId: material.materialId,
         quantityNeeded,
         available: inventoryItem.quantity
       });
-      
+
       if (inventoryItem.quantity < quantityNeeded) {
         outOfStockItems.push(`${material.materialName} (need ${quantityNeeded}, have ${inventoryItem.quantity})`);
       } else if (inventoryItem.quantity <= inventoryItem.minStockLevel + quantityNeeded) {
         lowStockItems.push(`${material.materialName} (low stock: ${inventoryItem.quantity})`);
       }
     }
-    
+
     return {
       hasEnoughInventory: outOfStockItems.length === 0,
       lowStockItems,
@@ -265,35 +367,35 @@ const OrderRequestForm: React.FC<OrderRequestFormProps> = ({
 
   const handleProductChange = (event: SelectChangeEvent<number | string>) => {
     const value = event.target.value;
-    
+
     if (value === 'custom') {
       setShowCustomProductInput(true);
       return;
     }
-    
+
     setShowCustomProductInput(false);
-    
+
     const productId = value as number;
     const product = products.find(p => p.id === productId);
-    
+
     if (!currentItem || !product) return;
-    
+
     const unitPrice = product.price;
     const totalPrice = unitPrice * (currentItem.quantity || 1);
-    
+
     // Check inventory
-    const { hasEnoughInventory, lowStockItems, outOfStockItems } = 
+    const { hasEnoughInventory, lowStockItems, outOfStockItems } =
       checkInventoryForProduct(product, currentItem.quantity || 1);
-    
+
     if (!hasEnoughInventory) {
       alert(`Insufficient inventory for ${product.name}:\n${outOfStockItems.join('\n')}`);
       return;
     }
-    
+
     if (lowStockItems.length > 0) {
       alert(`Warning: Low stock for ${product.name}:\n${lowStockItems.join('\n')}`);
     }
-    
+
     setCurrentItem({
       ...currentItem,
       product_id: productId,
@@ -309,7 +411,7 @@ const OrderRequestForm: React.FC<OrderRequestFormProps> = ({
     if (!currentItem || !customProduct.name || customProduct.price <= 0) return;
     const tempId = -Math.floor(Math.random() * 1000) - 1;
     const totalPrice = customProduct.price * (currentItem.quantity || 1);
-    
+
     setCurrentItem({
       ...currentItem,
       product_id: tempId,
@@ -319,36 +421,36 @@ const OrderRequestForm: React.FC<OrderRequestFormProps> = ({
       // Set to undefined since it's a custom product
       product_actual_id: undefined
     });
-    
+
     setShowCustomProductInput(false);
     setCustomProduct({ name: '', price: 0 });
   };
 
   const handleQuantityChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (!currentItem) return;
-    
+
     const quantity = parseInt(event.target.value) || 0;
     const totalPrice = currentItem.unit_price * quantity;
-    
+
     // Check inventory if this is a product from our catalog (not a custom product)
     if (currentItem.product_actual_id) {
       const product = products.find(p => p.id === currentItem.product_actual_id);
-      
+
       if (product) {
-        const { hasEnoughInventory, lowStockItems, outOfStockItems } = 
+        const { hasEnoughInventory, lowStockItems, outOfStockItems } =
           checkInventoryForProduct(product, quantity);
-        
+
         if (!hasEnoughInventory) {
           alert(`Cannot set quantity to ${quantity}. Insufficient inventory:\n${outOfStockItems.join('\n')}`);
           return;
         }
-        
+
         if (lowStockItems.length > 0) {
           alert(`Warning: This quantity will result in low stock:\n${lowStockItems.join('\n')}`);
         }
       }
     }
-    
+
     setCurrentItem({
       ...currentItem,
       quantity,
@@ -358,7 +460,7 @@ const OrderRequestForm: React.FC<OrderRequestFormProps> = ({
 
   const handleSerialChange = (field: 'serial_start' | 'serial_end', value: string) => {
     if (!currentItem) return;
-    
+
     setCurrentItem({
       ...currentItem,
       [field]: value
@@ -366,18 +468,22 @@ const OrderRequestForm: React.FC<OrderRequestFormProps> = ({
   };
 
   const handleSubmit = () => {
-    // Save items without product_actual_id for database compatibility
+    if (items.length === 0) {
+      alert('You must have at least one item in the order request.');
+      return;
+    }
+
     const requestData = {
       ...(initialData || {}),
       client_id: clientId,
-      items, // We handle the cleaning in the main component's submit method
+      items: items.map(({ id, ...rest }) => rest),  // Keep this!
       notes,
       total_amount: calculateTotal(),
       type: items.length > 0 ? items[0].product_name : 'Other',
-      status: initialData?.status || 'Pending', // Set initial status to Pending instead of New
+      status: initialData?.status || 'Pending',
       date: initialData?.date || new Date().toISOString().split('T')[0]
     };
-    
+
     onSubmit(requestData);
     onClose();
   };
@@ -396,68 +502,41 @@ const OrderRequestForm: React.FC<OrderRequestFormProps> = ({
             <InputLabel id="client-label">Client</InputLabel>
             <Select
               labelId="client-label"
-              value={clientId || ''}
+              value={clientId && clientId > 0 ? clientId : ''}
               onChange={handleClientChange}
               label="Client"
             >
-              {clients
-                .filter(client => {
-                  // In edit mode, show the current client even if inactive
-                  // In create mode, only show active clients using validated results
-                  if (isEdit && client.id === clientId) {
-                    return true;
-                  }
-                  
-                  if (client.status === 'Inactive') {
-                    return false;
-                  }
-                  
-                  // Use the client eligibility mapping from the parent component
-                  if (Object.keys(clientEligibility).length > 0 && clientEligibility[client.id] !== undefined) {
-                    return clientEligibility[client.id] || client.id === initialData?.client_id;
-                  }
-                  
-                  // Fall back to memoized clientsWithOrders
-                  return !clientsWithOrders.has(client.id) || client.id === initialData?.client_id;
-                })
-                .map((client) => {
-                  // Use either client eligibility or fall back to clientsWithOrders
-                  let canPlaceOrders = false;
-                  
-                  if (Object.keys(clientEligibility).length > 0 && clientEligibility[client.id] !== undefined) {
-                    canPlaceOrders = clientEligibility[client.id];
-                  } else {
-                    canPlaceOrders = !clientsWithOrders.has(client.id);
-                  }
-                  
-                  const clientStatus = getClientOrderStatus(client.id);
-                  const hasOngoingOrders = !canPlaceOrders;
-                  
-                  return (
-                    <MenuItem 
-                      key={client.id} 
-                      value={client.id}
-                      disabled={client.status === 'Inactive' || (!isEdit && hasOngoingOrders)}
-                      sx={{
-                        opacity: client.status === 'Inactive' || hasOngoingOrders ? 0.5 : 1,
-                        '&.Mui-disabled': {
-                          opacity: 0.5,
-                        }
-                      }}
-                    >
-                      {client.name} 
-                      {client.status === 'Inactive' && ' (Inactive)'}
-                      {client.status !== 'Inactive' && hasOngoingOrders && ` (${clientStatus.statusText})`}
-                      {client.status !== 'Inactive' && !hasOngoingOrders && ` (Can place orders)`}
-                    </MenuItem>
-                  );
-                })}
+              {filteredClients.map((client) => {
+                const canPlaceOrders = clientEligibility[client.id] !== false;
+                const clientStatus = getClientOrderStatus(client.id);
+                const hasOngoingOrders = !canPlaceOrders;
+
+                return (
+                  <MenuItem
+                    key={client.id}
+                    value={client.id}
+                    disabled={!isEdit && hasOngoingOrders}
+                    sx={{
+                      opacity: !isEdit && hasOngoingOrders ? 0.5 : 1,
+                      '&.Mui-disabled': {
+                        opacity: 0.5,
+                      }
+                    }}
+                  >
+                    {client.name}
+                    {client.status === 'Inactive' && ' (Inactive)'}
+                    {hasOngoingOrders && ` (${clientStatus.statusText})`}
+                    {!hasOngoingOrders && ' (Can place orders)'}
+                  </MenuItem>
+                );
+              })}
             </Select>
           </FormControl>
+
         </Box>
-        
+
         <Typography variant="h6" sx={{ mb: 2 }}>Request Items</Typography>
-        
+
         <TableContainer component={Paper} variant="outlined" sx={{ mb: 3 }}>
           <Table>
             <TableHead>
@@ -482,7 +561,7 @@ const OrderRequestForm: React.FC<OrderRequestFormProps> = ({
                   <TableRow key={index}>
                     <TableCell>{item.product_name}</TableCell>
                     <TableCell>
-                      {item.serial_start && item.serial_end 
+                      {item.serial_start && item.serial_end
                         ? `${item.serial_start} - ${item.serial_end}`
                         : 'start - end'}
                     </TableCell>
@@ -490,19 +569,21 @@ const OrderRequestForm: React.FC<OrderRequestFormProps> = ({
                     <TableCell>{item.quantity}</TableCell>
                     <TableCell>₱{item.total_price.toLocaleString()}</TableCell>
                     <TableCell>
-                      <IconButton 
-                        size="small" 
+                      <IconButton
+                        size="small"
                         onClick={() => handleEditItem(item, index)}
                         sx={{ mr: 1 }}
                       >
+                        <EditIcon fontSize="small" />
                       </IconButton>
-                      <IconButton 
+                      <IconButton
                         size="small"
                         onClick={() => handleDeleteItem(index)}
                       >
                         <DeleteIcon />
                       </IconButton>
                     </TableCell>
+
                   </TableRow>
                 ))
               )}
@@ -518,17 +599,17 @@ const OrderRequestForm: React.FC<OrderRequestFormProps> = ({
             </TableBody>
           </Table>
         </TableContainer>
-        
+
         <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 3 }}>
-          <Button 
-            variant="outlined" 
+          <Button
+            variant="outlined"
             startIcon={<AddIcon />}
             onClick={handleAddItem}
           >
             ADD ITEM
           </Button>
         </Box>
-        
+
         <TextField
           label="Notes"
           multiline
@@ -543,9 +624,9 @@ const OrderRequestForm: React.FC<OrderRequestFormProps> = ({
         <Button onClick={onClose} color="primary">
           CANCEL
         </Button>
-        <Button 
-          onClick={handleSubmit} 
-          variant="contained" 
+        <Button
+          onClick={handleSubmit}
+          variant="contained"
           color="primary"
           disabled={clientId === 0 || items.length === 0 || isClientInactive(clientId)}
         >
@@ -560,24 +641,44 @@ const OrderRequestForm: React.FC<OrderRequestFormProps> = ({
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 1 }}>
             <Grid item xs={12}>
-              <FormControl fullWidth required>
-                <InputLabel>Product</InputLabel>
-                <Select
-                  value={showCustomProductInput ? 'custom' : (currentItem?.product_id || '')}
-                  onChange={handleProductChange}
+              {itemIndex !== null ? (
+                // If editing existing item
+                <TextField
                   label="Product"
-                >
-                  {products.map((product) => (
-                    <MenuItem key={product.id} value={product.id}>
-                      {product.name} - ₱{product.price.toLocaleString()}
-                      {product.description && <Box component="span" sx={{ display: 'block', fontSize: '0.75rem', color: 'text.secondary' }}>
-                        {product.description.substring(0, 50)}{product.description.length > 50 ? '...' : ''}
-                      </Box>}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+                  fullWidth
+                  value={currentItem?.product_name || ''}
+                  disabled
+                />
+              ) : (
+                // If adding new item
+                <FormControl fullWidth required>
+                  <InputLabel>Product</InputLabel>
+                  <Select
+                    value={currentItem?.product_id || ''}
+                    onChange={handleProductChange}
+                    label="Product"
+                  >
+                    {products
+                      .filter(product => {
+                        const isAlreadySelected = items.some(item => item.product_actual_id === product.id);
+                        if (currentItem?.product_actual_id === product.id) return true;
+                        return !isAlreadySelected;
+                      })
+                      .map(product => (
+                        <MenuItem key={product.id} value={product.id}>
+                          {product.name} - ₱{product.price.toLocaleString()}
+                        </MenuItem>
+                      ))
+                    }
+                  </Select>
+                </FormControl>
+
+              )}
+
+
+
             </Grid>
+
             {showCustomProductInput && (
               <>
                 <Grid item xs={12}>
@@ -586,7 +687,7 @@ const OrderRequestForm: React.FC<OrderRequestFormProps> = ({
                     fullWidth
                     required
                     value={customProduct.name}
-                    onChange={(e) => setCustomProduct({...customProduct, name: e.target.value})}
+                    onChange={(e) => setCustomProduct({ ...customProduct, name: e.target.value })}
                     placeholder="Enter product name"
                   />
                 </Grid>
@@ -597,7 +698,7 @@ const OrderRequestForm: React.FC<OrderRequestFormProps> = ({
                     fullWidth
                     required
                     value={customProduct.price}
-                    onChange={(e) => setCustomProduct({...customProduct, price: Number(e.target.value)})}
+                    onChange={(e) => setCustomProduct({ ...customProduct, price: Number(e.target.value) })}
                     InputProps={{
                       startAdornment: <InputAdornment position="start">₱</InputAdornment>,
                       inputProps: { min: 0 }
@@ -605,8 +706,8 @@ const OrderRequestForm: React.FC<OrderRequestFormProps> = ({
                   />
                 </Grid>
                 <Grid item xs={12}>
-                  <Button 
-                    variant="contained" 
+                  <Button
+                    variant="contained"
                     color="primary"
                     fullWidth
                     disabled={!customProduct.name || customProduct.price <= 0}
@@ -674,8 +775,8 @@ const OrderRequestForm: React.FC<OrderRequestFormProps> = ({
         <DialogActions>
           <Button onClick={handleCloseItemDialog}>CANCEL</Button>
           {!showCustomProductInput && (
-            <Button 
-              onClick={handleSaveItem} 
+            <Button
+              onClick={handleSaveItem}
               variant="contained"
               disabled={!currentItem?.product_id || !currentItem?.quantity}
             >
@@ -696,11 +797,11 @@ const OrderRequestsList: React.FC = () => {
   const isLoading = useSelector(selectOrderRequestLoading);
   const reduxError = useSelector(selectOrderRequestError);
   const clientOrders = useSelector(selectAllClientOrders); // Get client orders properly
-  
+
   // Redux state
   const reduxProducts = useSelector(selectAllProducts);
   const rawMaterials = useSelector(selectAllInventoryItems);
-  
+
   // Local state for UI
   const [clients, setClients] = useState<Client[]>([]);
   const [products, setProducts] = useState<ExtendedProduct[]>([]);
@@ -714,35 +815,63 @@ const OrderRequestsList: React.FC = () => {
   const [snackbarSeverity, setSnackbarSeverity] = useState<'success' | 'error' | 'info'>('success');
   const [requestHistory, setRequestHistory] = useState<any[]>([]);
   const [historyDialogOpen, setHistoryDialogOpen] = useState<boolean>(false);
-  const [clientEligibility, setClientEligibility] = useState<{[key: number]: boolean}>({});
-  
+  const [clientEligibility, setClientEligibility] = useState<{ [key: number]: boolean }>({});
+
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        // Fetch static resources in parallel
+        const [freshClients] = await Promise.all([
+          clientsService.getClients(),
+          dispatch(fetchProducts()),
+          dispatch(fetchInventory())
+        ]);
+
+        setClients(freshClients); // ✅ store immediately
+
+        // Fetch stateful data with unwrapped Redux calls
+        const orderRequestsResult = await dispatch(fetchOrderRequests()).unwrap();
+        const clientOrdersResult = await dispatch(fetchClientOrders()).unwrap();
+
+        // Final eligibility calculation once all is ready
+        const eligibilityMap = getClientEligibilityMap(freshClients, orderRequestsResult, clientOrdersResult);
+        setClientEligibility(eligibilityMap);
+      } catch (error) {
+        console.error('Error loading data:', error);
+        setSnackbarMessage('Failed to load order request data');
+        setSnackbarSeverity('error');
+        setSnackbarOpen(true);
+      }
+    };
+
+    fetchData();
+  }, [dispatch]);
+
   const clientsWithOrders = useMemo(() => {
     const clientIds = new Set<number>();
-    
-    // Only restrict clients that have Pending or Approved order requests
+
+    // ✅ Block if order request is Pending or Approved
     orderRequests.forEach(request => {
-      if (request.client_id > 0 && 
-          (request.status === 'Pending' || request.status === 'Approved')) { 
+      if (request.client_id > 0 && ['Pending', 'Approved'].includes(request.status)) {
         clientIds.add(request.client_id);
       }
     });
-    
-    // Only restrict clients with Approved or Partially Paid orders (not with Completed or Rejected)
+
+    // ✅ Block if client order is Approved or Partially Paid
     clientOrders.forEach(order => {
-      // If an order is Approved or Partially Paid (not Completed or Rejected), the client cannot make new requests
-      if (order.client_id > 0 && (order.status === 'Approved' || order.status === 'Partially Paid')) {
+      if (order.client_id > 0 && ['Approved', 'Partially Paid'].includes(order.status)) {
         clientIds.add(order.client_id);
       }
-      // Clients with Completed or Rejected orders can make new requests
-      // So we don't add them to clientIds
     });
-    
-    console.log("Clients with restrictions:", Array.from(clientIds));
-    console.log("Client Orders status check:", clientOrders.map(o => `Client: ${o.client_id}, Status: ${o.status}`));
-    
+
+    // 🚫 Don't add clients with Completed/Rejected orders — they are free to order again
+
     return clientIds;
   }, [orderRequests, clientOrders]);
-  
+
+
+
   const availableClients = useMemo(() => {
     return clients.filter(client => !clientsWithOrders.has(client.id) && client.status !== 'Inactive');
   }, [clients, clientsWithOrders]);
@@ -750,61 +879,61 @@ const OrderRequestsList: React.FC = () => {
   // Helper function to get client order status
   const getClientOrderStatus = (clientId: number): { hasOngoingOrders: boolean, statusText: string } => {
     console.log(`Checking status for client ${clientId}...`);
-    
+
     // Check for pending or approved requests
     const hasPendingRequest = orderRequests.some(
-      req => req.client_id === clientId && 
-             (req.status === 'Pending' || req.status === 'Approved')
+      req => req.client_id === clientId &&
+        (req.status === 'Pending' || req.status === 'Approved')
     );
     console.log(`Client ${clientId} - Has pending request: ${hasPendingRequest}`);
-    
+
     // Check for approved or partially paid orders
     const hasApprovedOrder = clientOrders.some(
-      order => order.client_id === clientId && 
-             (order.status === 'Approved' || order.status === 'Partially Paid')
+      order => order.client_id === clientId &&
+        (order.status === 'Approved' || order.status === 'Partially Paid')
     );
     console.log(`Client ${clientId} - Has approved/partially paid order: ${hasApprovedOrder}`);
-    
+
     // Check for completed orders (for informational purposes)
     const hasCompletedOrder = clientOrders.some(
       order => order.client_id === clientId && order.status === 'Completed'
     );
     console.log(`Client ${clientId} - Has completed order: ${hasCompletedOrder}`);
-    
+
     // Check for rejected orders
     const hasRejectedOrder = clientOrders.some(
       order => order.client_id === clientId && order.status === 'Rejected'
     );
     console.log(`Client ${clientId} - Has rejected order: ${hasRejectedOrder}`);
-    
+
     if (hasPendingRequest) {
-      return { 
-        hasOngoingOrders: true, 
-        statusText: 'Has pending request' 
+      return {
+        hasOngoingOrders: true,
+        statusText: 'Has pending request'
       };
     } else if (hasApprovedOrder) {
       const partiallyPaidOrder = clientOrders.some(
         order => order.client_id === clientId && order.status === 'Partially Paid'
       );
-      
-      return { 
-        hasOngoingOrders: true, 
-        statusText: partiallyPaidOrder ? 'Has partially paid order' : 'Has approved order' 
+
+      return {
+        hasOngoingOrders: true,
+        statusText: partiallyPaidOrder ? 'Has partially paid order' : 'Has approved order'
       };
     } else if (hasCompletedOrder) {
-      return { 
-        hasOngoingOrders: false, 
-        statusText: 'Has completed orders (can place new orders)' 
+      return {
+        hasOngoingOrders: false,
+        statusText: 'Has completed orders (can place new orders)'
       };
     } else if (hasRejectedOrder) {
-      return { 
-        hasOngoingOrders: false, 
-        statusText: 'Has rejected orders (can place new orders)' 
+      return {
+        hasOngoingOrders: false,
+        statusText: 'Has rejected orders (can place new orders)'
       };
     } else {
-      return { 
-        hasOngoingOrders: false, 
-        statusText: 'No active orders' 
+      return {
+        hasOngoingOrders: false,
+        statusText: 'No active orders'
       };
     }
   };
@@ -814,56 +943,27 @@ const OrderRequestsList: React.FC = () => {
     return client?.status === 'Inactive';
   };
 
-  useEffect(() => {
-    // Fetch data on component mount or when the component is revisited
-    const fetchData = async () => {
-      try {
-        // Fetch clients from service
-        const fetchedClients = await clientsService.getClients();
-        setClients(fetchedClients);
-        
-        // Fetch order requests from Redux
-        dispatch(fetchOrderRequests());
-        
-        // Fetch client orders - critical for determining which clients can create new orders
-        dispatch(fetchClientOrders());
-        
-        // Fetch products and inventory
-        await dispatch(fetchProducts());
-        await dispatch(fetchInventory());
-      } catch (error) {
-        console.error('Error fetching data:', error);
-        setClients([]);
-        setSnackbarMessage('Error fetching data');
-        setSnackbarSeverity('error');
-        setSnackbarOpen(true);
-      }
-    };
-    
-    fetchData();
-  }, [dispatch]);
-  
   // Add a refresh button and function to manually refresh the data
   const refreshData = async () => {
     // This will fetch the latest client orders data
     setSnackbarMessage('Refreshing data...');
     setSnackbarSeverity('info');
     setSnackbarOpen(true);
-    
+
     try {
       // Get fresh clients
       const freshClients = await clientsService.getClients();
       setClients(freshClients);
-      
+
       // Fetch order data
       await Promise.all([
         dispatch(fetchOrderRequests()),
         dispatch(fetchClientOrders())
       ]);
-      
+
       // Directly check database for each active client's eligibility
       const activeClients = freshClients.filter(client => client.status === 'Active');
-      
+
       const eligibilityChecks = await Promise.all(
         activeClients.map(async (client) => {
           const hasActiveOrders = await clientOrdersService.hasActiveOrders(client.id);
@@ -874,17 +974,17 @@ const OrderRequestsList: React.FC = () => {
           };
         })
       );
-      
+
       // Update client eligibility state
-      const eligibilityMap: {[key: number]: boolean} = {};
+      const eligibilityMap: { [key: number]: boolean } = {};
       eligibilityChecks.forEach(check => {
         eligibilityMap[check.clientId] = check.canPlaceOrders;
       });
-      
+
       setClientEligibility(eligibilityMap);
-      
+
       console.log("UPDATED CLIENT ELIGIBILITY:", eligibilityMap);
-      
+
       setSnackbarMessage('Data refreshed successfully. Client eligibility updated.');
       setSnackbarSeverity('success');
       setSnackbarOpen(true);
@@ -895,11 +995,11 @@ const OrderRequestsList: React.FC = () => {
       setSnackbarOpen(true);
     }
   };
-  
+
   // Update products state when redux products change
   useEffect(() => {
     setProducts(reduxProducts);
-  }, [reduxProducts]);  
+  }, [reduxProducts]);
 
   // Add function to fetch order history
   const fetchOrderHistory = async (requestId: number) => {
@@ -917,14 +1017,14 @@ const OrderRequestsList: React.FC = () => {
 
   const filteredRequests = orderRequests.filter(request => {
     if (!searchTerm.trim()) return true;
-    
+
     const searchLower = searchTerm.toLowerCase();
     const requestIdMatch = request.request_id.toLowerCase().includes(searchLower);
     const client = clients.find(c => c.id === request.client_id);
     const clientNameMatch = client ? client.name.toLowerCase().includes(searchLower) : false;
     const typeMatch = request.type.toLowerCase().includes(searchLower);
     const statusMatch = request.status.toLowerCase().includes(searchLower);
-    
+
     return requestIdMatch || clientNameMatch || typeMatch || statusMatch;
   });
 
@@ -933,9 +1033,9 @@ const OrderRequestsList: React.FC = () => {
   };
 
   // Function to update inventory quantities
-  const handleInventoryUpdate = async (updates: Array<{id: number, newQuantity: number}>) => {
+  const handleInventoryUpdate = async (updates: Array<{ id: number, newQuantity: number }>) => {
+    console.log('[THUNK] Dispatching inventory update:', updates); // <--- ADD THIS
     try {
-      // Process each inventory update
       for (const update of updates) {
         await dispatch(updateInventoryItem({
           id: update.id,
@@ -943,106 +1043,55 @@ const OrderRequestsList: React.FC = () => {
         })).unwrap();
       }
     } catch (error) {
-      console.error('Failed to update inventory:', error);
+      console.error('[THUNK ERROR] Inventory update failed:', error);
       throw new Error('Failed to update inventory');
     }
   };
 
+
   const handleOpenCreateForm = async () => {
-    setSnackbarMessage('Loading data and validating client availability...');
+    setSnackbarMessage('Preparing form...');
     setSnackbarSeverity('info');
     setSnackbarOpen(true);
-    
+
     try {
-      // Get updated client list first
-      const freshClients = await clientsService.getClients();
-      setClients(freshClients);
-      
-      console.log("Checking each client's eligibility directly from database...");
-      
-      // Get all active clients first (regardless of order status)
-      const activeClients = freshClients.filter(client => client.status === 'Active');
-      
-      // Clear the console for better readability
-      console.clear();
-      console.log(`Found ${activeClients.length} active clients`);
-      
-      // Now for each active client, check directly with the database if they can place new orders
-      const availabilityChecks = await Promise.all(
-        activeClients.map(async (client) => {
-          console.log(`\n==== CHECKING CLIENT: ${client.name} (ID: ${client.id}) ====`);
-          
-          // DIRECT DATABASE QUERIES to check client eligibility
-          const hasActiveOrders = await clientOrdersService.hasActiveOrders(client.id);
-          const hasPendingRequests = await orderRequestsService.hasPendingRequests(client.id);
-          
-          const canPlaceOrders = !hasActiveOrders && !hasPendingRequests;
-          
-          console.log(`FINAL RESULT: Client ${client.name} (ID: ${client.id}) can place orders: ${canPlaceOrders}`);
-          
-          return {
-            client,
-            canPlaceOrders
-          };
-        })
-      );
-      
-      // Update our local state to track client eligibility
-      const eligibilityMap: {[key: number]: boolean} = {};
-      availabilityChecks.forEach(check => {
-        eligibilityMap[check.client.id] = check.canPlaceOrders;
-      });
-      
+      const eligibilityMap = getClientEligibilityMap(clients, orderRequests, clientOrders);
       setClientEligibility(eligibilityMap);
-      
-      console.log("Client eligibility map:", eligibilityMap);
-      
-      // Filter clients that can place orders (based on direct database check)
-      const activeAvailableClients = availabilityChecks
-        .filter(check => check.canPlaceOrders)
-        .map(check => check.client);
+
+      const activeClients = clients.filter(c => c.status === 'Active');
+      const activeAvailableClients = activeClients.filter(c => eligibilityMap[c.id]);
 
       if (activeAvailableClients.length === 0) {
-        // Get ineligible clients to show in the message
-        const clientsWithOngoingTransactions = activeClients.filter(client => 
-          !eligibilityMap[client.id]
-        );
-        
-        let message = 'All active clients already have pending or approved orders. ';
-        
-        if (clientsWithOngoingTransactions.length > 0) {
-          message += 'The following clients have ongoing transactions and cannot create new orders: ';
-          message += clientsWithOngoingTransactions.map(c => c.name).join(', ') + '. ';
-          message += 'Complete or reject their current orders to allow new order requests.';
-        } else {
-          message += 'Please add new clients or activate existing ones to create more orders.';
+        const busyClients = activeClients.filter(c => !eligibilityMap[c.id]);
+        let message = 'All active clients already have ongoing orders. ';
+        if (busyClients.length > 0) {
+          message += 'Busy: ' + busyClients.map(c => c.name).join(', ');
         }
-        
         setSnackbarMessage(message);
         setSnackbarSeverity('info');
         setSnackbarOpen(true);
         return;
       }
-      
-      // Use your service to generate a request ID
+
       const newRequestId = await orderRequestsService.generateRequestId();
-      
+
       setCurrentRequest({
         id: 0,
         request_id: newRequestId,
-        client_id: activeAvailableClients.length > 0 ? activeAvailableClients[0].id : 0,
+        client_id: activeAvailableClients[0]?.id || 0,
         date: new Date().toISOString().split('T')[0],
         type: '',
         status: 'Pending',
         created_at: new Date().toISOString(),
         items: [],
         notes: '',
-        total_amount: 0 
+        total_amount: 0
       });
+
       setFormOpen(true);
     } catch (error) {
-      console.error('Error generating request ID:', error);
-      setSnackbarMessage('Error generating request ID');
+      console.error('Error opening form:', error);
+      setSnackbarMessage('Failed to open form');
       setSnackbarSeverity('error');
       setSnackbarOpen(true);
     }
@@ -1055,7 +1104,7 @@ const OrderRequestsList: React.FC = () => {
       setSnackbarOpen(true);
       return;
     }
-    
+
     setCurrentRequest({
       ...request,
       items: request.items || [],
@@ -1063,7 +1112,7 @@ const OrderRequestsList: React.FC = () => {
     });
     setFormOpen(true);
   };
-  
+
   const isEdit = !!currentRequest?.id;
 
   const handleCloseForm = () => {
@@ -1080,7 +1129,7 @@ const OrderRequestsList: React.FC = () => {
       setSnackbarOpen(true);
       return;
     }
-    
+
     setSelectedRequestId(requestId);
     setStatusDialogOpen(true);
   };
@@ -1095,15 +1144,15 @@ const OrderRequestsList: React.FC = () => {
     if (selectedRequestId) {
       try {
         // Use Redux action to change status
-        await dispatch(changeOrderRequestStatus({ 
-          id: selectedRequestId, 
+        await dispatch(changeOrderRequestStatus({
+          id: selectedRequestId,
           status,
           changedBy: 'Admin' // Or use the actual user name/role
         })).unwrap();
-        
+
         // When status is Approved or Rejected, it will be moved to Client Orders and removed from here
         // This is handled in the Redux thunk and backend logic
-        
+
         setSnackbarMessage(`Request status updated to ${status}`);
         setSnackbarSeverity('success');
         setSnackbarOpen(true);
@@ -1125,14 +1174,14 @@ const OrderRequestsList: React.FC = () => {
       if (isClientInactive(client_id)) {
         throw new Error('Cannot create or update order for inactive client');
       }
-      
+
       // Remove product_actual_id from items before sending to the server
       const cleanedItems = items.map((item: OrderRequestItem) => {
         // Create a copy without the product_actual_id property
         const { product_actual_id, ...cleanItem } = item;
         return cleanItem;
       });
-      
+
       if (currentRequest && currentRequest.id) {
         // Update existing request
         await dispatch(updateOrderRequest({
@@ -1140,7 +1189,7 @@ const OrderRequestsList: React.FC = () => {
           orderRequest: { client_id, date, type, status, notes },
           items: cleanedItems
         })).unwrap();
-        
+
         setSnackbarMessage('Request updated successfully');
         setSnackbarSeverity('success');
       } else {
@@ -1157,11 +1206,11 @@ const OrderRequestsList: React.FC = () => {
           },
           items: cleanedItems
         })).unwrap();
-        
+
         setSnackbarMessage('Request created successfully');
         setSnackbarSeverity('success');
       }
-      
+
       setSnackbarOpen(true);
       handleCloseForm();
     } catch (error: any) {
@@ -1238,8 +1287,8 @@ const OrderRequestsList: React.FC = () => {
                         {entry.created_at ? new Date(entry.created_at).toLocaleString() : 'N/A'}
                       </TableCell>
                       <TableCell>
-                        <Chip 
-                          label={entry.status} 
+                        <Chip
+                          label={entry.status}
                           color={getChipColor(entry.status)}
                           size="small"
                         />
@@ -1267,8 +1316,8 @@ const OrderRequestsList: React.FC = () => {
           Order Requests
         </Typography>
         <Box>
-          <Button 
-            variant="outlined" 
+          <Button
+            variant="outlined"
             startIcon={<RefreshIcon />}
             onClick={refreshData}
             disabled={isLoading}
@@ -1276,8 +1325,8 @@ const OrderRequestsList: React.FC = () => {
           >
             Refresh Data
           </Button>
-          <Button 
-            variant="contained" 
+          <Button
+            variant="contained"
             startIcon={<AddIcon />}
             onClick={handleOpenCreateForm}
             disabled={isLoading}
@@ -1335,13 +1384,13 @@ const OrderRequestsList: React.FC = () => {
                 filteredRequests
                   .filter(request => request.status === 'Pending' || request.status === 'New')
                   .map((request) => {
-                    const totalAmount = request.total_amount || (request.items 
+                    const totalAmount = request.total_amount || (request.items
                       ? request.items.reduce((sum, item) => sum + item.total_price, 0)
                       : 0);
-                    
+
                     return (
-                      <TableRow 
-                        key={request.id} 
+                      <TableRow
+                        key={request.id}
                         sx={{
                           opacity: isClientInactive(request.client_id) ? 0.5 : 1,
                           backgroundColor: isClientInactive(request.client_id) ? 'rgba(0, 0, 0, 0.05)' : 'inherit',
@@ -1355,11 +1404,11 @@ const OrderRequestsList: React.FC = () => {
                         <TableCell>
                           {getClientName(request.client_id)}
                           {isClientInactive(request.client_id) && (
-                            <Chip 
-                              label="Inactive" 
-                              size="small" 
-                              color="default" 
-                              sx={{ ml: 1, fontSize: '0.7rem' }} 
+                            <Chip
+                              label="Inactive"
+                              size="small"
+                              color="default"
+                              sx={{ ml: 1, fontSize: '0.7rem' }}
                             />
                           )}
                         </TableCell>
@@ -1370,7 +1419,7 @@ const OrderRequestsList: React.FC = () => {
                           <StatusChip status={request.status} />
                         </TableCell>
                         <TableCell>
-                          <Button 
+                          <Button
                             size="small"
                             onClick={() => handleOpenEditForm(request)}
                             sx={{ mr: 1 }}
@@ -1378,7 +1427,7 @@ const OrderRequestsList: React.FC = () => {
                           >
                             Edit
                           </Button>
-                          <Button 
+                          <Button
                             size="small"
                             onClick={() => handleOpenStatusDialog(request.id)}
                             disabled={isClientInactive(request.client_id)}
@@ -1455,14 +1504,14 @@ const OrderRequestsList: React.FC = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseStatusDialog}>Cancel</Button>
-          <Button 
+          <Button
             onClick={() => {
               const request = orderRequests.find(r => r.id === selectedRequestId);
               if (request) {
                 handleChangeStatus(request.status === 'Pending' ? 'Approved' : 'Pending');
               }
             }}
-            variant="contained" 
+            variant="contained"
             color="primary"
           >
             Apply Status Change

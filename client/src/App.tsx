@@ -1,7 +1,7 @@
 import React, { useEffect, ReactNode, createContext, useState, useContext } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Provider } from 'react-redux';
-import { ThemeProvider, createTheme } from '@mui/material/styles';
+import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import { store } from './redux/store';
 import { useAppDispatch, useAppSelector } from './redux/hooks';
@@ -26,9 +26,9 @@ import Payroll from './pages/Payroll';
 import MachineryList from './pages/Machinery';
 import ReportsList from './pages/Reports';
 import NotFound from './pages/NotFound';
-import LoadingScreen from './components/common/LoadingScreen';
 import AttendanceList from './pages/Attendance';
 import ProtectedRouteComponent from './components/ProtectedRoute';
+import Profile from './pages/Profile';
 interface ProtectedRouteProps {
   children: ReactNode;
 }
@@ -307,6 +307,7 @@ const AppContent: React.FC = () => {
           </ProtectedRoute>
         }>
           <Route index element={<Navigate to="/dashboard" replace />} />
+          <Route path="profile" element={<Profile />} />
           <Route path="dashboard" element={<DashboardHome />} />
           <Route path="clients" element={<ClientsList />} />
           <Route path="orders/requests" element={<OrderRequestsList />} />
@@ -331,7 +332,7 @@ const AppContent: React.FC = () => {
 
 const App: React.FC = () => {
   // Create a dynamic theme using the current theme settings
-  const [muiTheme, setMuiTheme] = useState(defaultTheme);
+  const [muiTheme] = useState(defaultTheme);
   
   return (
     <Provider store={store}>

@@ -1,21 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { 
-  Box, Typography, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, 
-  TextField, InputAdornment, Chip, Dialog, DialogTitle, DialogContent, DialogActions, FormControl, 
+import {
+  Box, Typography, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button,
+  TextField, InputAdornment, Chip, Dialog, DialogTitle, DialogContent, DialogActions, FormControl,
   InputLabel, Select, MenuItem, SelectChangeEvent, Tabs, Tab, Snackbar, Alert, CircularProgress,
-  Grid } from '@mui/material';
+  Grid
+} from '@mui/material';
 import { Search as SearchIcon, Refresh as RefreshIcon, Add as AddIcon, PictureAsPdf as PdfIcon } from '@mui/icons-material';
 import { fetchSuppliers, selectAllSuppliers, selectSuppliersStatus, selectSuppliersError } from '../../redux/slices/suppliersSlice';
-import { fetchInventory,  addInventoryTransaction, selectAllInventoryItems, selectInventoryLoading } from '../../redux/slices/inventorySlice';
-import { 
+import { fetchInventory, addInventoryTransaction, selectAllInventoryItems, selectInventoryLoading } from '../../redux/slices/inventorySlice';
+import {
   fetchSupplierOrders, fetchQuotationRequests, updateSupplierOrder, updateQuotationRequest, addOrderPayment,
   createOrderFromQuotation, createSupplierOrder, createQuotationRequest, deleteSupplierOrder, deleteQuotationRequest,
   selectAllSupplierOrders, selectAllQuotationRequests, selectOrderSupplierLoading, selectOrderSupplierError
 } from '../../redux/slices/orderSupplierSlice';
 import { Supplier } from '../../services/suppliersService';
 import { InventoryItem } from '../../services/inventoryService';
-import { SupplierOrder, SupplierOrderItem, QuotationRequest, QuotationItem, OrderPayment, CreateSupplierOrder,
+import {
+  SupplierOrder, SupplierOrderItem, QuotationRequest, QuotationItem, OrderPayment, CreateSupplierOrder,
   CreateQuotationRequest, UpdateSupplierOrder, UpdateQuotationRequest, Supplier as OrderSupplierServiceSupplier
 } from '../../services/orderSupplierService';
 import { AppDispatch } from '../../redux/store';
@@ -55,22 +57,22 @@ interface OrderDetailsDialogProps {
   onClose: () => void;
   order: SupplierOrder | null;
   onStatusChange: (orderId: number, status: string) => void;
-  onAddPayment: (payment: { 
-    order_id: number; 
-    amount: number; 
-    payment_date: string; 
-    payment_method: string; 
-    notes?: string 
+  onAddPayment: (payment: {
+    order_id: number;
+    amount: number;
+    payment_date: string;
+    payment_method: string;
+    notes?: string
   }) => void;
   suppliers?: Supplier[];
   inventoryItems?: InventoryItem[];
   onGeneratePDF?: (order: SupplierOrder) => void;
 }
 
-const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({ 
-  open, 
-  onClose, 
-  order, 
+const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({
+  open,
+  onClose,
+  order,
   onStatusChange,
   onAddPayment,
   suppliers = [],
@@ -99,7 +101,7 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({
       setPaymentDate(new Date().toISOString().split('T')[0]);
       setPaymentNotes('');
       setPaymentPlan(order.payment_plan || '');
-      
+
       // Generate basic history entries
       const historyEntries = [
         {
@@ -109,10 +111,10 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({
           notes: 'Order created'
         }
       ];
-      
+
       // Add entry for status changes if updated_at is different from created_at
-      if (order.updated_at && order.created_at && 
-          new Date(order.updated_at).getTime() !== new Date(order.created_at).getTime()) {
+      if (order.updated_at && order.created_at &&
+        new Date(order.updated_at).getTime() !== new Date(order.created_at).getTime()) {
         historyEntries.push({
           date: order.updated_at,
           status: order.status,
@@ -120,7 +122,7 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({
           notes: `Status changed to ${order.status}`
         });
       }
-      
+
       // Add entries for payments
       if (order.payments && order.payments.length > 0) {
         order.payments.forEach(payment => {
@@ -132,12 +134,12 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({
           });
         });
       }
-      
+
       // Sort history by date
       historyEntries.sort((a, b) => {
         return new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime();
       });
-      
+
       setOrderHistory(historyEntries);
     }
   }, [order, open]);
@@ -156,22 +158,38 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({
   };
 
   const handleRecordPayment = () => {
-    if (!order || !paymentAmount || parseFloat(paymentAmount) <= 0) {
+    if (!order) return;
+
+    const paymentAmt = parseFloat(paymentAmount);
+
+    if (isNaN(paymentAmt) || paymentAmt <= 0) {
+      alert("Please enter a valid payment amount.");
       return;
     }
-    
+
+    if (typeof order.remaining_amount !== 'number') {
+      alert("Invalid order remaining balance.");
+      return;
+    }
+
+    if (paymentAmt > order.remaining_amount) {
+      alert(`Payment exceeds remaining balance of ₱${order.remaining_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}`);
+      return;
+    }
+
     onAddPayment({
       order_id: order.id!,
-      amount: parseFloat(paymentAmount),
+      amount: paymentAmt,
       payment_date: paymentDate,
       payment_method: paymentMethod,
       notes: paymentNotes || undefined
     });
-    
-    // Clear fields after submission
+
     setPaymentAmount('');
     setPaymentNotes('');
   };
+
+
 
   if (!order) return null;
 
@@ -208,7 +226,7 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({
           }
         })).unwrap();
       }
-      
+
       // Change order status to Received
       onStatusChange(order.id!, 'Received');
       onClose();
@@ -222,51 +240,51 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
       <DialogTitle>
         Purchase Order Details: {order.order_id}
-        <Chip 
-          label={order.status} 
+        <Chip
+          label={order.status}
           color={getChipColor(order.status)}
           size="small"
           sx={{ ml: 2 }}
         />
       </DialogTitle>
-      
+
       <Tabs value={tabValue} onChange={handleTabChange} centered>
         <Tab label="Basic Info" />
         <Tab label="Payment Details" />
         <Tab label="Order History" />
       </Tabs>
-      
+
       <DialogContent>
         <TabPanel value={tabValue} index={0}>
           <Box sx={{ mb: 3 }}>
             <Typography variant="subtitle1" fontWeight="bold">Supplier</Typography>
             <Typography variant="body1">{order.suppliers?.name || (suppliers.find(s => s.id === order.supplier_id)?.name || 'N/A')}</Typography>
           </Box>
-          
+
           <Box sx={{ mb: 3 }}>
             <Typography variant="subtitle1" fontWeight="bold">Contact Person</Typography>
             <Typography variant="body1">{order.suppliers?.contactPerson || (suppliers.find(s => s.id === order.supplier_id)?.contactPerson || 'N/A')}</Typography>
           </Box>
-          
+
           <Box sx={{ mb: 3 }}>
             <Typography variant="subtitle1" fontWeight="bold">Date</Typography>
             <Typography variant="body1">
               {order.date ? new Date(order.date).toLocaleDateString() : 'N/A'}
             </Typography>
           </Box>
-          
+
           <Box sx={{ mb: 3 }}>
             <Typography variant="subtitle1" fontWeight="bold">Amount</Typography>
             <Typography variant="body1">₱{order.total_amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Typography>
           </Box>
-          
+
           {order.paid_amount !== undefined && (
             <Box sx={{ mb: 3 }}>
               <Typography variant="subtitle1" fontWeight="bold">Paid Amount</Typography>
               <Typography variant="body1">₱{order.paid_amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Typography>
             </Box>
           )}
-          
+
           {order.remaining_amount !== undefined && (
             <Box sx={{ mb: 3 }}>
               <Typography variant="subtitle1" fontWeight="bold">Remaining Amount</Typography>
@@ -275,14 +293,14 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({
               </Typography>
             </Box>
           )}
-          
+
           {order.payment_plan && (
             <Box sx={{ mb: 3 }}>
               <Typography variant="subtitle1" fontWeight="bold">Payment Plan</Typography>
               <Typography variant="body1">{order.payment_plan}</Typography>
             </Box>
           )}
-          
+
           <Box sx={{ mb: 3 }}>
             <Typography variant="subtitle1" fontWeight="bold">Status</Typography>
             <FormControl fullWidth margin="normal" size="small">
@@ -303,12 +321,12 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({
               </Select>
             </FormControl>
           </Box>
-          
+
           <Box sx={{ mb: 3 }}>
             <Typography variant="subtitle1" fontWeight="bold">Notes</Typography>
             <Typography variant="body1">{order.notes || 'No notes available'}</Typography>
           </Box>
-          
+
           <Box sx={{ mb: 3 }}>
             <Typography variant="subtitle1" fontWeight="bold">Order Items</Typography>
             <TableContainer component={Paper} variant="outlined">
@@ -330,8 +348,8 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({
                       <TableCell>₱{item.unit_price.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
                       <TableCell>₱{item.total_price.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
                       <TableCell>
-                        {item.expected_delivery_date 
-                          ? new Date(item.expected_delivery_date).toLocaleDateString() 
+                        {item.expected_delivery_date
+                          ? new Date(item.expected_delivery_date).toLocaleDateString()
                           : 'Not specified'}
                       </TableCell>
                     </TableRow>
@@ -346,12 +364,12 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({
               </Table>
             </TableContainer>
           </Box>
-          
+
           {order.status === 'Shipped' && (
             <Box sx={{ mt: 3 }}>
-              <Button 
-                variant="contained" 
-                color="primary" 
+              <Button
+                variant="contained"
+                color="primary"
                 onClick={handleReceiveItems}
                 fullWidth
               >
@@ -363,7 +381,7 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({
             </Box>
           )}
         </TabPanel>
-        
+
         <TabPanel value={tabValue} index={1}>
           <Box sx={{ mb: 3 }}>
             <Typography variant="h6" gutterBottom>Payment Summary</Typography>
@@ -384,7 +402,7 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({
               </Box>
             </Paper>
           </Box>
-            
+
           <Box sx={{ mb: 3 }}>
             <Typography variant="h6" gutterBottom>Payment Plan</Typography>
             <TextField
@@ -399,8 +417,8 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({
               size="small"
               sx={{ mb: 2 }}
             />
-            <Button 
-              variant="outlined" 
+            <Button
+              variant="outlined"
               onClick={() => {
                 if (order.id && paymentPlan !== order.payment_plan) {
                   onStatusChange(order.id, order.status);
@@ -414,7 +432,7 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({
               Update Payment Plan
             </Button>
           </Box>
-            
+
           <Box sx={{ mb: 3 }}>
             <Typography variant="h6" gutterBottom>Record New Payment</Typography>
             <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
@@ -463,16 +481,18 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({
                 size="small"
               />
             </Box>
-            <Button 
-              variant="contained" 
+            <Button
+              variant="contained"
               color="primary"
               onClick={handleRecordPayment}
-              disabled={!paymentAmount || parseFloat(paymentAmount) <= 0}
+              disabled={
+                !paymentAmount || parseFloat(paymentAmount) <= 0
+              }         
             >
               Record Payment
             </Button>
           </Box>
-            
+
           {order.payments && order.payments.length > 0 ? (
             <Box sx={{ mb: 3 }}>
               <Typography variant="h6" gutterBottom>Payment History</Typography>
@@ -507,7 +527,7 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({
             </Typography>
           )}
         </TabPanel>
-        
+
         <TabPanel value={tabValue} index={2}>
           {orderHistory.length === 0 ? (
             <Typography variant="body1" color="text.secondary" sx={{ p: 2, textAlign: 'center' }}>
@@ -531,8 +551,8 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({
                         {entry.date ? new Date(entry.date).toLocaleString() : 'N/A'}
                       </TableCell>
                       <TableCell>
-                        <Chip 
-                          label={entry.status} 
+                        <Chip
+                          label={entry.status}
                           color={getChipColor(entry.status)}
                           size="small"
                         />
@@ -549,9 +569,9 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>Cancel</Button>
-        <Button 
-          onClick={handleSaveStatus} 
-          variant="contained" 
+        <Button
+          onClick={handleSaveStatus}
+          variant="contained"
           color="primary"
           disabled={order.status === selectedStatus}
           sx={{ mr: 1 }}
@@ -639,32 +659,32 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
       <DialogTitle>
         Request for Quotation: {quotation.request_id}
-        <Chip 
-          label={quotation.status} 
+        <Chip
+          label={quotation.status}
           color={getChipColor(quotation.status)}
           size="small"
           sx={{ ml: 2 }}
         />
       </DialogTitle>
-      
+
       <DialogContent>
         <Box sx={{ mb: 3 }}>
           <Typography variant="subtitle1" fontWeight="bold">Supplier</Typography>
           <Typography variant="body1">{quotation.suppliers?.name || (suppliers.find(s => s.id === quotation.supplier_id)?.name || 'N/A')}</Typography>
         </Box>
-        
+
         <Box sx={{ mb: 3 }}>
           <Typography variant="subtitle1" fontWeight="bold">Contact Person</Typography>
           <Typography variant="body1">{quotation.suppliers?.contactPerson || (suppliers.find(s => s.id === quotation.supplier_id)?.contactPerson || 'N/A')}</Typography>
         </Box>
-        
+
         <Box sx={{ mb: 3 }}>
           <Typography variant="subtitle1" fontWeight="bold">Date</Typography>
           <Typography variant="body1">
             {quotation.date ? new Date(quotation.date).toLocaleDateString() : 'N/A'}
           </Typography>
         </Box>
-        
+
         <Box sx={{ mb: 3 }}>
           <Typography variant="subtitle1" fontWeight="bold">Status</Typography>
           <FormControl fullWidth margin="normal" size="small">
@@ -680,16 +700,15 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
               <MenuItem value="Received">Received</MenuItem>
               <MenuItem value="Approved">Approved</MenuItem>
               <MenuItem value="Rejected">Rejected</MenuItem>
-              <MenuItem value="Converted">Converted to Order</MenuItem>
             </Select>
           </FormControl>
         </Box>
-        
+
         <Box sx={{ mb: 3 }}>
           <Typography variant="subtitle1" fontWeight="bold">Notes</Typography>
           <Typography variant="body1">{quotation.notes || 'No notes available'}</Typography>
         </Box>
-        
+
         <Box sx={{ mb: 3 }}>
           <Typography variant="subtitle1" fontWeight="bold">Requested Items</Typography>
           <TableContainer component={Paper} variant="outlined">
@@ -708,7 +727,7 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
                     <TableCell>{item.inventory_name}</TableCell>
                     <TableCell>{item.quantity}</TableCell>
                     <TableCell>
-                      {item.expected_price 
+                      {item.expected_price
                         ? `₱${item.expected_price.toLocaleString(undefined, { minimumFractionDigits: 2 })}`
                         : 'To be quoted'}
                     </TableCell>
@@ -719,12 +738,12 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
             </Table>
           </TableContainer>
         </Box>
-        
+
         {quotation.status === 'Received' && (
           <Box sx={{ mt: 3 }}>
-            <Button 
-              variant="contained" 
-              color="primary" 
+            <Button
+              variant="contained"
+              color="primary"
               onClick={() => onCreateOrderFromQuotation(quotation.id!)}
               fullWidth
             >
@@ -735,9 +754,9 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>Cancel</Button>
-        <Button 
-          onClick={handleSaveStatus} 
-          variant="contained" 
+        <Button
+          onClick={handleSaveStatus}
+          variant="contained"
           color="primary"
           disabled={quotation.status === selectedStatus}
           sx={{ mr: 1 }}
@@ -766,15 +785,15 @@ const OrderSupplier: React.FC = () => {
   const inventoryItems = useSelector(selectAllInventoryItems);
   const supplierOrders = useSelector(selectAllSupplierOrders);
   const quotationRequests = useSelector(selectAllQuotationRequests);
-  
+
   const suppliersLoading = useSelector(selectSuppliersStatus) === 'loading';
   const inventoryLoading = useSelector(selectInventoryLoading);
   const orderSupplierLoading = useSelector(selectOrderSupplierLoading);
   const loading = suppliersLoading || inventoryLoading || orderSupplierLoading;
-  
+
   const [activeTab, setActiveTab] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
-  
+
   const [selectedOrder, setSelectedOrder] = useState<SupplierOrder | null>(null);
   const [selectedQuotation, setSelectedQuotation] = useState<QuotationRequest | null>(null);
   const [orderDialogOpen, setOrderDialogOpen] = useState(false);
@@ -806,26 +825,26 @@ const OrderSupplier: React.FC = () => {
 
   const filterOrders = (orders: SupplierOrder[]) => {
     if (!searchTerm.trim()) return orders;
-    
+
     const searchLower = searchTerm.toLowerCase();
     return orders.filter(order => {
       const orderIdMatch = order.order_id.toLowerCase().includes(searchLower);
       const supplierMatch = suppliers.find(s => s.id === order.supplier_id)?.name.toLowerCase().includes(searchLower) || false;
       const statusMatch = order.status.toLowerCase().includes(searchLower);
-      
+
       return orderIdMatch || supplierMatch || statusMatch;
     });
   };
-  
+
   const filterQuotations = (quotations: QuotationRequest[]) => {
     if (!searchTerm.trim()) return quotations;
-    
+
     const searchLower = searchTerm.toLowerCase();
     return quotations.filter(quotation => {
       const requestIdMatch = quotation.request_id.toLowerCase().includes(searchLower);
       const supplierMatch = suppliers.find(s => s.id === quotation.supplier_id)?.name.toLowerCase().includes(searchLower) || false;
       const statusMatch = quotation.status.toLowerCase().includes(searchLower);
-      
+
       return requestIdMatch || supplierMatch || statusMatch;
     });
   };
@@ -835,37 +854,37 @@ const OrderSupplier: React.FC = () => {
     const supplierData = suppliers.find(s => s.id === order.supplier_id);
     const enrichedOrder = {
       ...order,
-      suppliers: order.suppliers || (supplierData 
+      suppliers: order.suppliers || (supplierData
         ? {
-            id: supplierData?.id || 0,
-            name: supplierData?.name || '',
-            contactPerson: supplierData?.contactPerson,
-            email: supplierData?.email || undefined,
-            phone: supplierData?.phone || undefined,
-            address: supplierData?.address || undefined,
-            paymentTerms: supplierData?.paymentTerms || undefined
-          } as OrderSupplierServiceSupplier
+          id: supplierData?.id || 0,
+          name: supplierData?.name || '',
+          contactPerson: supplierData?.contactPerson,
+          email: supplierData?.email || undefined,
+          phone: supplierData?.phone || undefined,
+          address: supplierData?.address || undefined,
+          paymentTerms: supplierData?.paymentTerms || undefined
+        } as OrderSupplierServiceSupplier
         : undefined)
     };
     setSelectedOrder(enrichedOrder);
     setOrderDialogOpen(true);
   };
-  
+
   const handleViewQuotationDetails = (quotation: QuotationRequest) => {
     // Enrich quotation with supplier details if not already present
     const supplierData = suppliers.find(s => s.id === quotation.supplier_id);
     const enrichedQuotation = {
       ...quotation,
-      suppliers: quotation.suppliers || (supplierData 
+      suppliers: quotation.suppliers || (supplierData
         ? {
-            id: supplierData?.id || 0,
-            name: supplierData?.name || '',
-            contactPerson: supplierData?.contactPerson,
-            email: supplierData?.email || undefined,
-            phone: supplierData?.phone || undefined,
-            address: supplierData?.address || undefined,
-            paymentTerms: supplierData?.paymentTerms || undefined
-          } as OrderSupplierServiceSupplier
+          id: supplierData?.id || 0,
+          name: supplierData?.name || '',
+          contactPerson: supplierData?.contactPerson,
+          email: supplierData?.email || undefined,
+          phone: supplierData?.phone || undefined,
+          address: supplierData?.address || undefined,
+          paymentTerms: supplierData?.paymentTerms || undefined
+        } as OrderSupplierServiceSupplier
         : undefined)
     };
     setSelectedQuotation(enrichedQuotation);
@@ -876,7 +895,7 @@ const OrderSupplier: React.FC = () => {
     setOrderDialogOpen(false);
     setSelectedOrder(null);
   };
-  
+
   const handleCloseQuotationDialog = () => {
     setQuotationDialogOpen(false);
     setSelectedQuotation(null);
@@ -886,11 +905,11 @@ const OrderSupplier: React.FC = () => {
     const updateData: any = {
       status: newStatus
     };
-    
+
     if (paymentPlan !== undefined) {
       updateData.payment_plan = paymentPlan;
     }
-    
+
     dispatch(updateSupplierOrder({ id: orderId, data: updateData }))
       .unwrap()
       .then(() => {
@@ -909,7 +928,7 @@ const OrderSupplier: React.FC = () => {
         });
       });
   };
-  
+
   const handleQuotationStatusChange = (requestId: number, newStatus: string) => {
     dispatch(updateQuotationRequest({ id: requestId, data: { status: newStatus } }))
       .unwrap()
@@ -929,13 +948,13 @@ const OrderSupplier: React.FC = () => {
         });
       });
   };
-  
-  const handleAddOrderPayment = (payment: { 
-    order_id: number; 
-    amount: number; 
-    payment_date: string; 
-    payment_method: string; 
-    notes?: string 
+
+  const handleAddOrderPayment = (payment: {
+    order_id: number;
+    amount: number;
+    payment_date: string;
+    payment_method: string;
+    notes?: string
   }) => {
     dispatch(addOrderPayment(payment))
       .unwrap()
@@ -955,7 +974,7 @@ const OrderSupplier: React.FC = () => {
         });
       });
   };
-  
+
   const handleCreateOrderFromQuotation = (quotationId: number) => {
     dispatch(createOrderFromQuotation(quotationId))
       .unwrap()
@@ -986,7 +1005,7 @@ const OrderSupplier: React.FC = () => {
 
   const handleEditOrder = (order: SupplierOrder) => {
     // Deep copy the order to avoid reference issues
-    setOrderToEdit({...order, items: [...order.items]});
+    setOrderToEdit({ ...order, items: [...order.items] });
     // Open edit dialog with current order data
     setEditOrderDialogOpen(true);
   };
@@ -1012,10 +1031,10 @@ const OrderSupplier: React.FC = () => {
 
   const handleUpdateOrderItem = () => {
     if (!currentEditItem || !orderToEdit) return;
-    
+
     const selectedItem = inventoryItems.find(item => item.id === currentEditItem.inventory_id);
     if (!selectedItem) return;
-    
+
     const updatedItems = [...orderToEdit.items];
     updatedItems[currentEditItem.index] = {
       ...updatedItems[currentEditItem.index],
@@ -1029,14 +1048,14 @@ const OrderSupplier: React.FC = () => {
 
     // Calculate new total amount
     const newTotalAmount = updatedItems.reduce((sum, item) => sum + item.total_price, 0);
-    
+
     setOrderToEdit({
       ...orderToEdit,
       items: updatedItems,
       total_amount: newTotalAmount,
       remaining_amount: orderToEdit.paid_amount ? newTotalAmount - orderToEdit.paid_amount : newTotalAmount
     });
-    
+
     setCurrentEditItem(null);
   };
 
@@ -1046,21 +1065,21 @@ const OrderSupplier: React.FC = () => {
 
   const handleSaveEditedOrder = async (editedOrder: UpdateSupplierOrder) => {
     if (!orderToEdit || !orderToEdit.id) return;
-    
+
     // Prepare updated order data
     const updatedOrder: UpdateSupplierOrder = {
       ...editedOrder,
       total_amount: orderToEdit.total_amount,
       remaining_amount: orderToEdit.remaining_amount
     };
-    
+
     try {
       // First update the order
-      await dispatch(updateSupplierOrder({ 
-        id: orderToEdit.id, 
-        data: updatedOrder 
+      await dispatch(updateSupplierOrder({
+        id: orderToEdit.id,
+        data: updatedOrder
       })).unwrap();
-      
+
       // Then update all the order items if any have changed
       // Note: In a real application, this would be handled in a transaction in the backend
       // For this example, we're just updating each item separately
@@ -1072,13 +1091,13 @@ const OrderSupplier: React.FC = () => {
           // For this example, we'll assume it's handled by the backend when updating the order
         }
       }
-      
+
       setSnackbar({
         open: true,
         message: "Purchase order updated successfully",
         severity: 'success'
       });
-      
+
       // Refresh orders list and close dialog
       dispatch(fetchSupplierOrders());
       setEditOrderDialogOpen(false);
@@ -1100,16 +1119,16 @@ const OrderSupplier: React.FC = () => {
 
   const confirmDeleteOrder = async () => {
     if (!orderIdToDelete) return;
-    
+
     try {
       await dispatch(deleteSupplierOrder(orderIdToDelete)).unwrap();
-      
+
       setSnackbar({
         open: true,
         message: "Purchase order deleted successfully",
         severity: 'success'
       });
-      
+
       // Refresh orders list and close dialog
       dispatch(fetchSupplierOrders());
       setDeleteOrderConfirmOpen(false);
@@ -1132,7 +1151,7 @@ const OrderSupplier: React.FC = () => {
 
   const handleEditQuotation = (quotation: QuotationRequest) => {
     // Deep copy the quotation to avoid reference issues
-    setQuotationToEdit({...quotation, items: [...quotation.items]});
+    setQuotationToEdit({ ...quotation, items: [...quotation.items] });
     // Open edit dialog with current quotation data
     setEditQuotationDialogOpen(true);
   };
@@ -1158,10 +1177,10 @@ const OrderSupplier: React.FC = () => {
 
   const handleUpdateQuotationItem = () => {
     if (!currentEditQuotationItem || !quotationToEdit) return;
-    
+
     const selectedItem = inventoryItems.find(item => item.id === currentEditQuotationItem.inventory_id);
     if (!selectedItem) return;
-    
+
     const updatedItems = [...quotationToEdit.items];
     updatedItems[currentEditQuotationItem.index] = {
       ...updatedItems[currentEditQuotationItem.index],
@@ -1171,12 +1190,12 @@ const OrderSupplier: React.FC = () => {
       expected_price: currentEditQuotationItem.expected_price,
       notes: currentEditQuotationItem.notes
     };
-    
+
     setQuotationToEdit({
       ...quotationToEdit,
       items: updatedItems
     });
-    
+
     setCurrentEditQuotationItem(null);
   };
 
@@ -1186,23 +1205,23 @@ const OrderSupplier: React.FC = () => {
 
   const handleSaveEditedQuotation = async (editedQuotation: UpdateQuotationRequest) => {
     if (!quotationToEdit || !quotationToEdit.id) return;
-    
+
     try {
       // Update the quotation request
-      await dispatch(updateQuotationRequest({ 
-        id: quotationToEdit.id, 
-        data: editedQuotation 
+      await dispatch(updateQuotationRequest({
+        id: quotationToEdit.id,
+        data: editedQuotation
       })).unwrap();
-      
+
       // In a real application, we would also update the items here
       // For this example, we'll assume the backend handles it
-      
+
       setSnackbar({
         open: true,
         message: "Quotation request updated successfully",
         severity: 'success'
       });
-      
+
       // Refresh quotations list and close dialog
       dispatch(fetchQuotationRequests());
       setEditQuotationDialogOpen(false);
@@ -1224,16 +1243,16 @@ const OrderSupplier: React.FC = () => {
 
   const confirmDeleteQuotation = async () => {
     if (!quotationIdToDelete) return;
-    
+
     try {
       await dispatch(deleteQuotationRequest(quotationIdToDelete)).unwrap();
-      
+
       setSnackbar({
         open: true,
         message: "Quotation request deleted successfully",
         severity: 'success'
       });
-      
+
       // Refresh quotations list and close dialog
       dispatch(fetchQuotationRequests());
       setDeleteQuotationConfirmOpen(false);
@@ -1258,12 +1277,12 @@ const OrderSupplier: React.FC = () => {
   const handleCloseSnackbar = () => {
     setSnackbar(prev => ({ ...prev, open: false }));
   };
-  
+
   // Function to generate PDF for Purchase Order
   const handleGeneratePurchaseOrderPDF = (order: SupplierOrder) => {
     // Get supplier details
     const supplier = suppliers.find(s => s.id === order.supplier_id);
-    
+
     try {
       // Create new jsPDF instance (A4 page)
       const doc = new jsPDF({
@@ -1283,23 +1302,23 @@ const OrderSupplier: React.FC = () => {
       doc.setFontSize(24);
       doc.setTextColor(primaryColor);
       doc.text('PURCHASE ORDER', 20, 20);
-      
+
       // Add company name and document ID
       doc.setFontSize(12);
       doc.text("Opzon's Printers", 20, 30);
       doc.setTextColor(textColor);
       doc.text(`Order ID: ${order.order_id}`, 200, 20, { align: 'right' });
       doc.text(`Date: ${new Date(order.date).toLocaleDateString()}`, 200, 25, { align: 'right' });
-      
+
       // Draw a line separator
       doc.setDrawColor(primaryColor);
       doc.setLineWidth(0.5);
       doc.line(10, 35, 200, 35);
-      
+
       // Company and Supplier Information
       const leftColX = 15;
       let yPos = 45;
-      
+
       // Company info
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(11);
@@ -1318,7 +1337,7 @@ const OrderSupplier: React.FC = () => {
       doc.text("Telephone: 2344716", leftColX, yPos);
       yPos += 5;
       doc.text("Email: opzonprinters@yahoo.com.ph", leftColX, yPos);
-      
+
       // Supplier info
       const rightColX = 110;
       yPos = 45;
@@ -1337,7 +1356,7 @@ const OrderSupplier: React.FC = () => {
       doc.text(`Email: ${supplier?.email || 'N/A'}`, rightColX, yPos);
       yPos += 5;
       doc.text(`Address: ${supplier?.address || 'N/A'}`, rightColX, yPos);
-      
+
       // Order information
       yPos = 85;
       doc.setDrawColor(200, 200, 200);
@@ -1354,10 +1373,10 @@ const OrderSupplier: React.FC = () => {
       doc.text(`Payment Terms: ${supplier?.paymentTerms || 'Net 30 days'}`, 100, yPos);
       yPos += 5;
       doc.text(`Notes: ${order.notes || 'N/A'}`, 15, yPos);
-      
+
       // Order items table
       yPos = 115;
-      
+
       // Transform order items array to table format for jspdf-autotable
       const tableHeaders = [
         { header: 'Item Description', dataKey: 'inventory_name' as const },
@@ -1366,22 +1385,22 @@ const OrderSupplier: React.FC = () => {
         { header: 'Total Price', dataKey: 'total_price' as const },
         { header: 'Expected Delivery', dataKey: 'expected_delivery_date' as const }
       ];
-      
+
       const tableRows = order.items.map(item => ({
         inventory_name: item.inventory_name,
         quantity: item.quantity.toString(),
         unit_price: item.unit_price.toLocaleString(undefined, { minimumFractionDigits: 2 }),
         total_price: item.total_price.toLocaleString(undefined, { minimumFractionDigits: 2 }),
-        expected_delivery_date: item.expected_delivery_date 
-          ? new Date(item.expected_delivery_date).toLocaleDateString() 
+        expected_delivery_date: item.expected_delivery_date
+          ? new Date(item.expected_delivery_date).toLocaleDateString()
           : 'Not specified'
       }));
-      
+
       // Draw the table
       autoTable(doc, {
         startY: yPos,
         head: [tableHeaders.map(h => h.header)],
-        body: tableRows.map(row => 
+        body: tableRows.map(row =>
           tableHeaders.map(h => {
             const key = h.dataKey;
             return row[key] || '';
@@ -1396,7 +1415,7 @@ const OrderSupplier: React.FC = () => {
         columnStyles: {
           0: { cellWidth: 60 },
           1: { cellWidth: 20, halign: 'center' },
-          2: { cellWidth: 30, halign: 'right' }, 
+          2: { cellWidth: 30, halign: 'right' },
           3: { cellWidth: 30, halign: 'right' },
           4: { cellWidth: 40 }
         },
@@ -1408,11 +1427,11 @@ const OrderSupplier: React.FC = () => {
           fillColor: [245, 245, 245]
         }
       });
-      
+
       // Get the final Y position after the table
       const finalY = (doc as any).__autoTableLastHookData?.finalY;
       yPos = finalY ? finalY + 10 : yPos + 40;
-      
+
       // Add totals without currency symbols
       doc.setFontSize(10);
       doc.text('Subtotal:', 140, yPos);
@@ -1424,37 +1443,37 @@ const OrderSupplier: React.FC = () => {
       doc.setFont('helvetica', 'bold');
       doc.text('Grand Total:', 140, yPos);
       doc.text(order.total_amount.toLocaleString(undefined, { minimumFractionDigits: 2 }), 190, yPos, { align: 'right' });
-      
+
       if (order.paid_amount !== undefined) {
         yPos += 5;
         doc.setFont('helvetica', 'normal');
         doc.text('Paid Amount:', 140, yPos);
         doc.text(order.paid_amount.toLocaleString(undefined, { minimumFractionDigits: 2 }), 190, yPos, { align: 'right' });
       }
-      
+
       if (order.remaining_amount !== undefined) {
         yPos += 5;
         doc.text('Remaining Balance:', 140, yPos);
         doc.text(order.remaining_amount.toLocaleString(undefined, { minimumFractionDigits: 2 }), 190, yPos, { align: 'right' });
       }
-      
+
       // Signatures
       yPos += 20;
       doc.setDrawColor(100, 100, 100);
       doc.line(30, yPos + 15, 80, yPos + 15);
       doc.line(120, yPos + 15, 170, yPos + 15);
-      
+
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(9);
       doc.text('Approved by:', 30, yPos);
       doc.text('Accepted by:', 120, yPos);
-      
+
       doc.text('Authorized Signature', 55, yPos + 20, { align: 'center' });
       doc.text('Supplier Signature', 145, yPos + 20, { align: 'center' });
-      
+
       doc.text('Purchasing Manager', 55, yPos + 25, { align: 'center' });
       doc.text('Date: ________________', 145, yPos + 25, { align: 'center' });
-      
+
       // Footer
       yPos = 270;
       doc.setDrawColor(180, 180, 180);
@@ -1465,10 +1484,10 @@ const OrderSupplier: React.FC = () => {
       doc.text('This is a computer-generated document. No signature is required.', 105, yPos, { align: 'center' });
       yPos += 4;
       doc.text('For questions regarding this purchase order, please contact our purchasing department.', 105, yPos, { align: 'center' });
-      
+
       // Save the PDF
       doc.save(`PurchaseOrder_${order.order_id}.pdf`);
-      
+
       // Show success message
       setSnackbar({
         open: true,
@@ -1555,7 +1574,7 @@ const OrderSupplier: React.FC = () => {
     }
 
     const selectedItem = inventoryItems.find(item => item.id === currentItem.inventory_id);
-    
+
     if (!selectedItem) {
       setSnackbar({
         open: true,
@@ -1652,12 +1671,12 @@ const OrderSupplier: React.FC = () => {
       });
     }
   };
-  
+
   // Function to generate PDF for RFQ
   const handleGenerateRFQPDF = (quotation: QuotationRequest) => {
     // Get supplier details
     const supplier = suppliers.find(s => s.id === quotation.supplier_id);
-    
+
     try {
       // Create new jsPDF instance (A4 page)
       const doc = new jsPDF({
@@ -1665,35 +1684,35 @@ const OrderSupplier: React.FC = () => {
         unit: 'mm',
         format: 'a4'
       });
-      
+
       // Set some basic styles and colors
       const textColor = '#333333';
       const primaryColor = '#1976d2';
       doc.setTextColor(textColor);
       doc.setFont('helvetica', 'normal');
-      
+
       // Add title - left aligned but balanced
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(24);
       doc.setTextColor(primaryColor);
       doc.text('REQUEST FOR QUOTATION', 20, 20);
-      
+
       // Add company name and document ID
       doc.setFontSize(12);
       doc.text("Opzon's Printers", 20, 30);
       doc.setTextColor(textColor);
       doc.text(`RFQ ID: ${quotation.request_id}`, 200, 20, { align: 'right' });
       doc.text(`Date: ${new Date(quotation.date).toLocaleDateString()}`, 200, 25, { align: 'right' });
-      
+
       // Draw a line separator
       doc.setDrawColor(primaryColor);
       doc.setLineWidth(0.5);
       doc.line(10, 35, 200, 35);
-      
+
       // Company and Supplier Information
       const leftColX = 15;
       let yPos = 45;
-      
+
       // Company info
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(11);
@@ -1712,7 +1731,7 @@ const OrderSupplier: React.FC = () => {
       doc.text("Telephone: 2344716", leftColX, yPos);
       yPos += 5;
       doc.text("Email: opzonprinters@yahoo.com.ph", leftColX, yPos);
-      
+
       // Supplier info
       const rightColX = 110;
       yPos = 45;
@@ -1731,7 +1750,7 @@ const OrderSupplier: React.FC = () => {
       doc.text(`Email: ${supplier?.email || 'N/A'}`, rightColX, yPos);
       yPos += 5;
       doc.text(`Address: ${supplier?.address || 'N/A'}`, rightColX, yPos);
-      
+
       // RFQ Information
       yPos = 85;
       doc.setDrawColor(200, 200, 200);
@@ -1745,16 +1764,16 @@ const OrderSupplier: React.FC = () => {
       doc.setTextColor(textColor);
       yPos += 5;
       doc.text(`Status: ${quotation.status}`, 15, yPos);
-      
+
       // Calculate response date (7 days from quotation date)
       const responseDate = new Date(new Date(quotation.date).getTime() + 7 * 24 * 60 * 60 * 1000);
       doc.text(`Response Required By: ${responseDate.toLocaleDateString()}`, 100, yPos);
-      
+
       yPos += 5;
       doc.text(`Reference: RFQ-${new Date().getFullYear()}-${quotation.id}`, 15, yPos);
       yPos += 5;
       doc.text(`Notes: ${quotation.notes || 'N/A'}`, 15, yPos);
-      
+
       // Terms and Conditions
       yPos = 120;
       doc.setFont('helvetica', 'bold');
@@ -1776,7 +1795,7 @@ const OrderSupplier: React.FC = () => {
       doc.text('5. Opzon\'s Printers reserves the right to accept or reject any quotation either in whole or in part.', 15, yPos);
       yPos += 5;
       doc.text('6. Please attach detailed specifications, brochures, or samples if available.', 15, yPos);
-      
+
       // RFQ Description
       yPos += 10;
       doc.setDrawColor(220, 220, 220);
@@ -1789,10 +1808,10 @@ const OrderSupplier: React.FC = () => {
         'We kindly request your best quotation for the following items. Please complete the pricing information and return this document at your earliest convenience. Your prompt response will be greatly appreciated.',
         105, yPos, { align: 'center', maxWidth: 180 }
       );
-      
+
       // Items table
       yPos = 175;
-      
+
       // Transform quotation items array to table format
       const tableHeaders = [
         { header: 'Item Description', dataKey: 'inventory_name' as const },
@@ -1802,18 +1821,18 @@ const OrderSupplier: React.FC = () => {
         { header: 'Quoted Price', dataKey: 'quoted_price' as const },
         { header: 'Total', dataKey: 'total' as const }
       ];
-      
+
       const tableRows = quotation.items.map(item => ({
         inventory_name: item.inventory_name,
         quantity: item.quantity.toString(),
         unit: 'Pcs',
-        expected_price: item.expected_price 
+        expected_price: item.expected_price
           ? item.expected_price.toLocaleString(undefined, { minimumFractionDigits: 2 })
           : 'To be quoted',
         quoted_price: '________',
         total: '________'
       }));
-      
+
       // Add summary rows
       tableRows.push(
         {
@@ -1841,12 +1860,12 @@ const OrderSupplier: React.FC = () => {
           total: '________'
         }
       );
-      
+
       // Draw the table
       autoTable(doc, {
         startY: yPos,
         head: [tableHeaders.map(h => h.header)],
-        body: tableRows.map(row => 
+        body: tableRows.map(row =>
           tableHeaders.map(h => {
             const key = h.dataKey;
             return row[key] || '';
@@ -1874,17 +1893,17 @@ const OrderSupplier: React.FC = () => {
           fillColor: [245, 245, 245]
         },
         // Special style for the summary rows using didParseCell hook
-        didParseCell: function(data) {
+        didParseCell: function (data) {
           if (data.row.index >= quotation.items.length && data.cell) {
             data.cell.styles.fontStyle = 'bold';
           }
         }
       });
-      
+
       // Get the final Y position after the table
       const finalY = (doc as any).__autoTableLastHookData?.finalY;
       yPos = finalY ? finalY + 15 : yPos + 40;
-      
+
       // Signatures
       // Add a header for the signature section
       doc.setFont('helvetica', 'bold');
@@ -1893,23 +1912,23 @@ const OrderSupplier: React.FC = () => {
       doc.text('Signatures:', 15, yPos);
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(textColor);
-      
+
       // Add more spacing before signature lines
       yPos += 15;
-      
+
       doc.setDrawColor(100, 100, 100);
       doc.line(30, yPos + 15, 80, yPos + 15);
       doc.line(120, yPos + 15, 170, yPos + 15);
-      
+
       doc.setFontSize(9);
       doc.text('Requested by:', 30, yPos);
-      
+
       doc.text('Authorized Signature', 55, yPos + 20, { align: 'center' });
       doc.text('Supplier Signature', 145, yPos + 20, { align: 'center' });
-      
+
       doc.text('Purchasing Officer', 55, yPos + 25, { align: 'center' });
       doc.text('Date: ________________', 145, yPos + 25, { align: 'center' });
-      
+
       // Footer
       yPos = 270;
       doc.setDrawColor(180, 180, 180);
@@ -1920,10 +1939,10 @@ const OrderSupplier: React.FC = () => {
       doc.text('Please send your quotation to: purchasing@opzonsprinters.com', 105, yPos, { align: 'center' });
       yPos += 4;
       doc.text('For inquiries, contact our purchasing department at: 2344716', 105, yPos, { align: 'center' });
-      
+
       // Save the PDF
       doc.save(`QuotationRequest_${quotation.request_id}.pdf`);
-      
+
       // Show success message
       setSnackbar({
         open: true,
@@ -1998,7 +2017,7 @@ const OrderSupplier: React.FC = () => {
     }
 
     const selectedItem = inventoryItems.find(item => item.id === currentRfqItem.inventory_id);
-    
+
     if (!selectedItem) {
       setSnackbar({
         open: true,
@@ -2146,14 +2165,14 @@ const OrderSupplier: React.FC = () => {
                   </TableCell>
                   <TableCell>₱{order.total_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
                   <TableCell>
-                    <Chip 
-                      label={order.status} 
+                    <Chip
+                      label={order.status}
                       color={getChipColor(order.status)}
                       size="small"
                     />
                   </TableCell>
                   <TableCell>
-                    <Button 
+                    <Button
                       size="small"
                       onClick={() => handleViewOrderDetails(order)}
                       sx={{ mr: 1 }}
@@ -2193,7 +2212,7 @@ const OrderSupplier: React.FC = () => {
       </Table>
     </TableContainer>
   );
-  
+
   const renderQuotationsTable = (quotations: QuotationRequest[]) => (
     <TableContainer component={Paper} sx={{ boxShadow: 'none', border: '1px solid rgba(0, 0, 0, 0.08)', mb: 4 }}>
       <Table>
@@ -2226,14 +2245,14 @@ const OrderSupplier: React.FC = () => {
                   </TableCell>
                   <TableCell>{quotation.items.length} items</TableCell>
                   <TableCell>
-                    <Chip 
-                      label={quotation.status} 
+                    <Chip
+                      label={quotation.status}
                       color={getChipColor(quotation.status)}
                       size="small"
                     />
                   </TableCell>
                   <TableCell>
-                    <Button 
+                    <Button
                       size="small"
                       onClick={() => handleViewQuotationDetails(quotation)}
                       sx={{ mr: 1 }}
@@ -2344,7 +2363,7 @@ const OrderSupplier: React.FC = () => {
       )}
 
       {/* Order Details Dialog */}
-      <OrderDetailsDialog 
+      <OrderDetailsDialog
         open={orderDialogOpen}
         onClose={handleCloseOrderDialog}
         order={selectedOrder}
@@ -2354,9 +2373,9 @@ const OrderSupplier: React.FC = () => {
         inventoryItems={inventoryItems}
         onGeneratePDF={handleGeneratePurchaseOrderPDF}
       />
-      
+
       {/* Quotation Details Dialog */}
-      <QuotationDialog 
+      <QuotationDialog
         open={quotationDialogOpen}
         onClose={handleCloseQuotationDialog}
         quotation={selectedQuotation}
@@ -2416,9 +2435,9 @@ const OrderSupplier: React.FC = () => {
             fullWidth
             sx={{ mb: 3 }}
           />
-          
+
           <Typography variant="h6" gutterBottom>Order Items</Typography>
-          
+
           <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
             <Grid container spacing={2} alignItems="center">
               <Grid item xs={12} md={4}>
@@ -2490,9 +2509,9 @@ const OrderSupplier: React.FC = () => {
                 />
               </Grid>
               <Grid item xs={6} md={1} sx={{ display: 'flex', justifyContent: 'flex-end' }}>
-                <Button 
-                  variant="contained" 
-                  color="primary" 
+                <Button
+                  variant="contained"
+                  color="primary"
                   onClick={handleAddOrderItem}
                   size="small"
                 >
@@ -2501,7 +2520,7 @@ const OrderSupplier: React.FC = () => {
               </Grid>
             </Grid>
           </Paper>
-          
+
           {orderItems.length > 0 ? (
             <TableContainer component={Paper} variant="outlined" sx={{ mb: 2 }}>
               <Table size="small">
@@ -2526,9 +2545,9 @@ const OrderSupplier: React.FC = () => {
                         {item.expected_delivery_date ? new Date(item.expected_delivery_date).toLocaleDateString() : 'Not specified'}
                       </TableCell>
                       <TableCell>
-                        <Button 
-                          size="small" 
-                          color="error" 
+                        <Button
+                          size="small"
+                          color="error"
                           onClick={() => handleRemoveOrderItem(index)}
                         >
                           Remove
@@ -2553,9 +2572,9 @@ const OrderSupplier: React.FC = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={handleClosePurchaseOrderDialog}>Cancel</Button>
-          <Button 
-            onClick={handleSubmitPurchaseOrder} 
-            variant="contained" 
+          <Button
+            onClick={handleSubmitPurchaseOrder}
+            variant="contained"
             color="primary"
             disabled={!selectedSupplier || orderItems.length === 0}
           >
@@ -2613,9 +2632,9 @@ const OrderSupplier: React.FC = () => {
             fullWidth
             sx={{ mb: 3 }}
           />
-          
+
           <Typography variant="h6" gutterBottom>Requested Items</Typography>
-          
+
           <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
             <Grid container spacing={2} alignItems="center">
               <Grid item xs={12} md={4}>
@@ -2685,9 +2704,9 @@ const OrderSupplier: React.FC = () => {
                 />
               </Grid>
               <Grid item xs={6} md={1} sx={{ display: 'flex', justifyContent: 'flex-end' }}>
-                <Button 
-                  variant="contained" 
-                  color="primary" 
+                <Button
+                  variant="contained"
+                  color="primary"
                   onClick={handleAddRfqItem}
                   size="small"
                 >
@@ -2696,7 +2715,7 @@ const OrderSupplier: React.FC = () => {
               </Grid>
             </Grid>
           </Paper>
-          
+
           {rfqItems.length > 0 ? (
             <TableContainer component={Paper} variant="outlined" sx={{ mb: 2 }}>
               <Table size="small">
@@ -2715,16 +2734,16 @@ const OrderSupplier: React.FC = () => {
                       <TableCell>{item.inventory_name}</TableCell>
                       <TableCell>{item.quantity}</TableCell>
                       <TableCell>
-                        {item.expected_price 
+                        {item.expected_price
                           ? `₱${item.expected_price.toLocaleString(undefined, { minimumFractionDigits: 2 })}`
                           : 'To be quoted'
                         }
                       </TableCell>
                       <TableCell>{item.notes || '-'}</TableCell>
                       <TableCell>
-                        <Button 
-                          size="small" 
-                          color="error" 
+                        <Button
+                          size="small"
+                          color="error"
                           onClick={() => handleRemoveRfqItem(index)}
                         >
                           Remove
@@ -2743,9 +2762,9 @@ const OrderSupplier: React.FC = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseRfqDialog}>Cancel</Button>
-          <Button 
-            onClick={handleSubmitRfq} 
-            variant="contained" 
+          <Button
+            onClick={handleSubmitRfq}
+            variant="contained"
             color="primary"
             disabled={!rfqSupplier || rfqItems.length === 0}
           >
@@ -2776,7 +2795,7 @@ const OrderSupplier: React.FC = () => {
                     <Select
                       labelId="edit-supplier-label"
                       value={orderToEdit.supplier_id}
-                      onChange={(e) => setOrderToEdit(prev => prev ? {...prev, supplier_id: e.target.value as number} : null)}
+                      onChange={(e) => setOrderToEdit(prev => prev ? { ...prev, supplier_id: e.target.value as number } : null)}
                       label="Supplier"
                       required
                     >
@@ -2793,7 +2812,7 @@ const OrderSupplier: React.FC = () => {
                     label="Order Date"
                     type="date"
                     value={orderToEdit.date}
-                    onChange={(e) => setOrderToEdit(prev => prev ? {...prev, date: e.target.value} : null)}
+                    onChange={(e) => setOrderToEdit(prev => prev ? { ...prev, date: e.target.value } : null)}
                     fullWidth
                     InputLabelProps={{ shrink: true }}
                     required
@@ -2809,7 +2828,7 @@ const OrderSupplier: React.FC = () => {
                     <Select
                       labelId="edit-status-label"
                       value={orderToEdit.status}
-                      onChange={(e) => setOrderToEdit(prev => prev ? {...prev, status: e.target.value} : null)}
+                      onChange={(e) => setOrderToEdit(prev => prev ? { ...prev, status: e.target.value } : null)}
                       label="Status"
                     >
                       <MenuItem value="Pending">Pending</MenuItem>
@@ -2826,7 +2845,7 @@ const OrderSupplier: React.FC = () => {
                   <TextField
                     label="Payment Plan"
                     value={orderToEdit.payment_plan || ''}
-                    onChange={(e) => setOrderToEdit(prev => prev ? {...prev, payment_plan: e.target.value} : null)}
+                    onChange={(e) => setOrderToEdit(prev => prev ? { ...prev, payment_plan: e.target.value } : null)}
                     fullWidth
                     sx={{ mb: 2 }}
                   />
@@ -2838,15 +2857,15 @@ const OrderSupplier: React.FC = () => {
                 multiline
                 rows={3}
                 value={orderToEdit.notes || ''}
-                onChange={(e) => setOrderToEdit(prev => prev ? {...prev, notes: e.target.value} : null)}
+                onChange={(e) => setOrderToEdit(prev => prev ? { ...prev, notes: e.target.value } : null)}
                 fullWidth
                 sx={{ mb: 3 }}
               />
-              
+
               <Typography variant="subtitle1" gutterBottom>
                 Order Items
               </Typography>
-              
+
               {currentEditItem ? (
                 <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
                   <Grid container spacing={2} alignItems="center">
@@ -2916,15 +2935,15 @@ const OrderSupplier: React.FC = () => {
                       />
                     </Grid>
                     <Grid item xs={6} md={2} sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
-                      <Button 
-                        variant="contained" 
-                        color="primary" 
+                      <Button
+                        variant="contained"
+                        color="primary"
                         onClick={handleUpdateOrderItem}
                         size="small"
                       >
                         Update
                       </Button>
-                      <Button 
+                      <Button
                         variant="outlined"
                         onClick={handleCancelEditItem}
                         size="small"
@@ -2935,7 +2954,7 @@ const OrderSupplier: React.FC = () => {
                   </Grid>
                 </Paper>
               ) : null}
-              
+
               <TableContainer component={Paper} variant="outlined" sx={{ mb: 2 }}>
                 <Table size="small">
                   <TableHead>
@@ -2964,8 +2983,8 @@ const OrderSupplier: React.FC = () => {
                             {item.expected_delivery_date ? new Date(item.expected_delivery_date).toLocaleDateString() : 'Not specified'}
                           </TableCell>
                           <TableCell>
-                            <Button 
-                              size="small" 
+                            <Button
+                              size="small"
                               onClick={() => handleEditOrderItem(item, index)}
                               color="primary"
                             >
@@ -2989,15 +3008,15 @@ const OrderSupplier: React.FC = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setEditOrderDialogOpen(false)}>Cancel</Button>
-          <Button 
+          <Button
             onClick={() => orderToEdit && handleSaveEditedOrder({
               supplier_id: orderToEdit.supplier_id,
               date: orderToEdit.date,
               status: orderToEdit.status,
               payment_plan: orderToEdit.payment_plan,
               notes: orderToEdit.notes
-            })} 
-            variant="contained" 
+            })}
+            variant="contained"
             color="primary"
           >
             Save Changes
@@ -3027,7 +3046,7 @@ const OrderSupplier: React.FC = () => {
                     <Select
                       labelId="edit-rfq-supplier-label"
                       value={quotationToEdit.supplier_id}
-                      onChange={(e) => setQuotationToEdit(prev => prev ? {...prev, supplier_id: e.target.value as number} : null)}
+                      onChange={(e) => setQuotationToEdit(prev => prev ? { ...prev, supplier_id: e.target.value as number } : null)}
                       label="Supplier"
                       required
                     >
@@ -3044,7 +3063,7 @@ const OrderSupplier: React.FC = () => {
                     label="Request Date"
                     type="date"
                     value={quotationToEdit.date}
-                    onChange={(e) => setQuotationToEdit(prev => prev ? {...prev, date: e.target.value} : null)}
+                    onChange={(e) => setQuotationToEdit(prev => prev ? { ...prev, date: e.target.value } : null)}
                     fullWidth
                     InputLabelProps={{ shrink: true }}
                     required
@@ -3058,7 +3077,7 @@ const OrderSupplier: React.FC = () => {
                 <Select
                   labelId="edit-quotation-status-label"
                   value={quotationToEdit.status}
-                  onChange={(e) => setQuotationToEdit(prev => prev ? {...prev, status: e.target.value} : null)}
+                  onChange={(e) => setQuotationToEdit(prev => prev ? { ...prev, status: e.target.value } : null)}
                   label="Status"
                 >
                   <MenuItem value="Draft">Draft</MenuItem>
@@ -3066,7 +3085,6 @@ const OrderSupplier: React.FC = () => {
                   <MenuItem value="Received">Received</MenuItem>
                   <MenuItem value="Approved">Approved</MenuItem>
                   <MenuItem value="Rejected">Rejected</MenuItem>
-                  <MenuItem value="Converted">Converted to Order</MenuItem>
                 </Select>
               </FormControl>
 
@@ -3075,15 +3093,15 @@ const OrderSupplier: React.FC = () => {
                 multiline
                 rows={3}
                 value={quotationToEdit.notes || ''}
-                onChange={(e) => setQuotationToEdit(prev => prev ? {...prev, notes: e.target.value} : null)}
+                onChange={(e) => setQuotationToEdit(prev => prev ? { ...prev, notes: e.target.value } : null)}
                 fullWidth
                 sx={{ mb: 3 }}
               />
-              
+
               <Typography variant="subtitle1" gutterBottom>
                 Requested Items
               </Typography>
-              
+
               {currentEditQuotationItem ? (
                 <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
                   <Grid container spacing={2} alignItems="center">
@@ -3151,15 +3169,15 @@ const OrderSupplier: React.FC = () => {
                       />
                     </Grid>
                     <Grid item xs={6} md={2} sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
-                      <Button 
-                        variant="contained" 
-                        color="primary" 
+                      <Button
+                        variant="contained"
+                        color="primary"
                         onClick={handleUpdateQuotationItem}
                         size="small"
                       >
                         Update
                       </Button>
-                      <Button 
+                      <Button
                         variant="outlined"
                         onClick={handleCancelEditQuotationItem}
                         size="small"
@@ -3170,7 +3188,7 @@ const OrderSupplier: React.FC = () => {
                   </Grid>
                 </Paper>
               ) : null}
-              
+
               <TableContainer component={Paper} variant="outlined" sx={{ mb: 2 }}>
                 <Table size="small">
                   <TableHead>
@@ -3193,15 +3211,15 @@ const OrderSupplier: React.FC = () => {
                           <TableCell>{item.inventory_name}</TableCell>
                           <TableCell>{item.quantity}</TableCell>
                           <TableCell>
-                            {item.expected_price 
+                            {item.expected_price
                               ? `₱${item.expected_price.toLocaleString(undefined, { minimumFractionDigits: 2 })}`
                               : 'To be quoted'
                             }
                           </TableCell>
                           <TableCell>{item.notes || '-'}</TableCell>
                           <TableCell>
-                            <Button 
-                              size="small" 
+                            <Button
+                              size="small"
                               onClick={() => handleEditQuotationItem(item, index)}
                               color="primary"
                             >
@@ -3219,14 +3237,14 @@ const OrderSupplier: React.FC = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setEditQuotationDialogOpen(false)}>Cancel</Button>
-          <Button 
+          <Button
             onClick={() => quotationToEdit && handleSaveEditedQuotation({
               supplier_id: quotationToEdit.supplier_id,
               date: quotationToEdit.date,
               status: quotationToEdit.status,
               notes: quotationToEdit.notes
-            })} 
-            variant="contained" 
+            })}
+            variant="contained"
             color="primary"
           >
             Save Changes

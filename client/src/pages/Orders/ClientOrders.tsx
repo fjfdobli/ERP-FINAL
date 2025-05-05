@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { Box, Typography, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, TextField, InputAdornment, Chip, Dialog, DialogTitle, DialogContent, DialogActions, FormControl, InputLabel, Select, MenuItem, SelectChangeEvent, Tabs, Tab, Snackbar, Alert, CircularProgress } from '@mui/material';
 import { Search as SearchIcon, Refresh as RefreshIcon } from '@mui/icons-material';
-import { 
+import {
   fetchClientOrders, changeClientOrderStatus, addOrderPayment, updateOrderPaymentPlan, selectAllClientOrders,
   selectApprovedOrders, selectPartiallyPaidOrders, selectCompletedOrders, selectRejectedOrders,
-  selectClientOrdersLoading, selectClientOrdersError } from '../../redux/slices/clientOrdersSlice';
+  selectClientOrdersLoading, selectClientOrdersError
+} from '../../redux/slices/clientOrdersSlice';
 import { ClientOrder } from '../../services/clientOrdersService';
 import { clientOrdersService } from '../../services/clientOrdersService';
 import { OrderRequestItem } from '../../services/orderRequestsService';
@@ -73,13 +74,13 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({ open, onClose, 
       setPaymentDate(new Date().toISOString().split('T')[0]);
       setPaymentNotes('');
       setPaymentPlan(order.payment_plan || '');
-      
+
       // Fetch complete order history from the database
       const fetchOrderHistory = async () => {
         try {
           const history = await clientOrdersService.getOrderHistory(undefined, order.id);
           setCompleteOrderHistory(history);
-          
+
           if (history.length === 0) {
             // Generate basic history entries if no database history found
             const historyEntries = [
@@ -90,11 +91,11 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({ open, onClose, 
                 notes: 'Order created'
               }
             ];
-            
+
             // Add entry for status changes if updated_at is different from created_at
             // Make sure to handle potential undefined values
-            if (order.updated_at && order.created_at && 
-                new Date(order.updated_at).getTime() !== new Date(order.created_at).getTime()) {
+            if (order.updated_at && order.created_at &&
+              new Date(order.updated_at).getTime() !== new Date(order.created_at).getTime()) {
               historyEntries.push({
                 date: order.updated_at,
                 status: order.status,
@@ -102,7 +103,7 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({ open, onClose, 
                 notes: `Status changed to ${order.status}`
               });
             }
-            
+
             setOrderHistory(historyEntries);
           } else {
             // Format database history for display
@@ -112,7 +113,7 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({ open, onClose, 
               updatedBy: entry.changed_by,
               notes: entry.notes
             }));
-            
+
             // Add the initial creation event if not in history
             if (!history.some(h => h.status === 'Created')) {
               formattedHistory.push({
@@ -122,17 +123,17 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({ open, onClose, 
                 notes: 'Order created'
               });
             }
-            
+
             // Sort by date (newest to oldest)
-            formattedHistory.sort((a, b) => 
+            formattedHistory.sort((a, b) =>
               new Date(b.date).getTime() - new Date(a.date).getTime()
             );
-            
+
             setOrderHistory(formattedHistory);
           }
         } catch (error) {
           console.error('Error fetching order history:', error);
-          
+
           // Fallback to generated history
           const historyEntries = [
             {
@@ -142,9 +143,9 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({ open, onClose, 
               notes: 'Order created'
             }
           ];
-          
-          if (order.updated_at && order.created_at && 
-              new Date(order.updated_at).getTime() !== new Date(order.created_at).getTime()) {
+
+          if (order.updated_at && order.created_at &&
+            new Date(order.updated_at).getTime() !== new Date(order.created_at).getTime()) {
             historyEntries.push({
               date: order.updated_at,
               status: order.status,
@@ -152,18 +153,18 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({ open, onClose, 
               notes: `Status changed to ${order.status}`
             });
           }
-          
+
           setOrderHistory(historyEntries);
         }
       };
-      
+
       fetchOrderHistory();
     }
   }, [order, open]);
 
   const handleStatusChange = (event: SelectChangeEvent<string>) => {
     const newStatus = event.target.value;
-    
+
     // If changing to Pending, show a confirmation dialog
     if (newStatus === 'Pending' && order?.status !== 'Pending') {
       if (window.confirm('This will move the order back to Order Requests for further modifications. The order will be removed from Client Orders. Continue?')) {
@@ -172,7 +173,7 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({ open, onClose, 
         // User cancelled, revert to current status
         setSelectedStatus(order?.status || '');
       }
-    } 
+    }
     // If changing to Completed, show a confirmation dialog
     else if (newStatus === 'Completed' && order?.status !== 'Completed') {
       if (window.confirm('Marking this order as Completed will finalize it and allow the client to place new orders. Continue?')) {
@@ -195,6 +196,22 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({ open, onClose, 
       onClose();
     }
   };
+
+  const getAllowedStatuses = (currentStatus: string) => {
+    switch (currentStatus) {
+      case 'Approved':
+        return ['Pending', 'Approved', 'Partially Paid', 'Completed']; // no Rejected
+      case 'Partially Paid':
+        return ['Partially Paid', 'Completed']; // no Pending, Approved, Rejected
+      case 'Completed':
+        return ['Completed']; // Only Completed
+      case 'Rejected':
+        return ['Rejected']; // Only Rejected
+      default:
+        return ['Pending', 'Approved', 'Partially Paid', 'Completed', 'Rejected'];
+    }
+  };
+  
 
   if (!order) return null;
 
@@ -223,56 +240,56 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({ open, onClose, 
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
       <DialogTitle>
         Order Details: {order.order_id}
-        <Chip 
-          label={order.status} 
+        <Chip
+          label={order.status}
           color={getChipColor(order.status)}
           size="small"
           sx={{ ml: 2 }}
         />
       </DialogTitle>
-      
+
       <Tabs value={tabValue} onChange={handleTabChange} centered>
         <Tab label="Basic Info" />
         <Tab label="Payment Details" />
         <Tab label="Order History" />
       </Tabs>
-      
+
       <DialogContent>
         <TabPanel value={tabValue} index={0}>
           <Box sx={{ mb: 3 }}>
             <Typography variant="subtitle1" fontWeight="bold">Client</Typography>
             <Typography variant="body1">{order.clients?.name || 'N/A'}</Typography>
           </Box>
-          
+
           <Box sx={{ mb: 3 }}>
             <Typography variant="subtitle1" fontWeight="bold">Contact Person</Typography>
             <Typography variant="body1">{order.clients?.contactPerson || 'N/A'}</Typography>
           </Box>
-          
+
           <Box sx={{ mb: 3 }}>
             <Typography variant="subtitle1" fontWeight="bold">Date</Typography>
             <Typography variant="body1">
               {order.date ? new Date(order.date).toLocaleDateString() : 'N/A'}
             </Typography>
           </Box>
-          
+
           <Box sx={{ mb: 3 }}>
             <Typography variant="subtitle1" fontWeight="bold">Order Type</Typography>
             <Typography variant="body1">{order.order_type || 'General Order'}</Typography>
           </Box>
-          
+
           <Box sx={{ mb: 3 }}>
             <Typography variant="subtitle1" fontWeight="bold">Amount</Typography>
             <Typography variant="body1">₱{order.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Typography>
           </Box>
-          
+
           {order.paid_amount !== undefined && (
             <Box sx={{ mb: 3 }}>
               <Typography variant="subtitle1" fontWeight="bold">Paid Amount</Typography>
               <Typography variant="body1">₱{order.paid_amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Typography>
             </Box>
           )}
-          
+
           {order.remaining_amount !== undefined && (
             <Box sx={{ mb: 3 }}>
               <Typography variant="subtitle1" fontWeight="bold">Remaining Amount</Typography>
@@ -281,22 +298,14 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({ open, onClose, 
               </Typography>
             </Box>
           )}
-          
+
           {order.payment_plan && (
             <Box sx={{ mb: 3 }}>
               <Typography variant="subtitle1" fontWeight="bold">Payment Plan</Typography>
               <Typography variant="body1">{order.payment_plan}</Typography>
             </Box>
           )}
-          
-          <Box sx={{ mb: 3 }}>
-            <Typography variant="body2" color="text.secondary">
-              Changing status to "Pending" will move this order back to Order Requests for modification.
-              Changing to "Completed" will mark the order as fulfilled and allow the client to place new orders.
-              Changing to "Rejected" will cancel the order and allow the client to place new orders.
-              Orders with "Approved" or "Partially Paid" status indicate ongoing transactions and prevent the client from creating new orders.
-            </Typography>
-          </Box>
+
           
           <Box sx={{ mb: 3 }}>
             <Typography variant="subtitle1" fontWeight="bold">Status</Typography>
@@ -308,21 +317,21 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({ open, onClose, 
                 onChange={handleStatusChange}
                 label="Order Status"
               >
-                <MenuItem value="Pending">Pending (Move to Order Requests)</MenuItem>
-                <MenuItem value="Approved">Approved</MenuItem>
-                <MenuItem value="Partially Paid">Partially Paid</MenuItem>
-                <MenuItem value="Completed">Completed</MenuItem>
-                <MenuItem value="Rejected">Rejected</MenuItem>
+                {getAllowedStatuses(order.status).map((statusOption) => (
+                  <MenuItem key={statusOption} value={statusOption}>
+                    {statusOption === 'Pending' ? 'Pending (Move to Order Requests)' : statusOption}
+                  </MenuItem>
+                ))}
               </Select>
             </FormControl>
           </Box>
-          
+
           <Box sx={{ mb: 3 }}>
             <Typography variant="subtitle1" fontWeight="bold">Notes</Typography>
             <Typography variant="body1">{order.notes || 'No notes available'}</Typography>
           </Box>
         </TabPanel>
-        
+
         <TabPanel value={tabValue} index={1}>
           <Box sx={{ mb: 3 }}>
             <Typography variant="h6" gutterBottom>Payment Summary</Typography>
@@ -343,7 +352,7 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({ open, onClose, 
               </Box>
             </Paper>
           </Box>
-            
+
           <Box sx={{ mb: 3 }}>
             <Typography variant="h6" gutterBottom>Payment Plan</Typography>
             <TextField
@@ -358,12 +367,12 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({ open, onClose, 
               size="small"
               sx={{ mb: 2 }}
             />
-            <Button 
-              variant="outlined" 
+            <Button
+              variant="outlined"
               onClick={() => {
-                dispatch(updateOrderPaymentPlan({ 
-                  orderId: order.id, 
-                  paymentPlan: paymentPlan 
+                dispatch(updateOrderPaymentPlan({
+                  orderId: order.id,
+                  paymentPlan: paymentPlan
                 }));
               }}
               disabled={!paymentPlan || paymentPlan === order.payment_plan}
@@ -371,7 +380,7 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({ open, onClose, 
               Update Payment Plan
             </Button>
           </Box>
-            
+
           <Box sx={{ mb: 3 }}>
             <Typography variant="h6" gutterBottom>Record New Payment</Typography>
             <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
@@ -420,23 +429,31 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({ open, onClose, 
                 size="small"
               />
             </Box>
-            <Button 
-              variant="contained" 
+            <Button
+              variant="contained"
               color="primary"
               onClick={() => {
                 if (!paymentAmount || parseFloat(paymentAmount) <= 0) {
                   alert('Please enter a valid payment amount');
                   return;
                 }
+              
+                const payment = parseFloat(paymentAmount);
+                const remaining = order.remaining_amount ?? order.amount; // fallback just in case
+              
+                if (payment > remaining) {
+                  alert(`Payment amount cannot exceed remaining balance of ₱${remaining.toLocaleString(undefined, { minimumFractionDigits: 2 })}`);
+                  return;
+                }
                 
                 dispatch(addOrderPayment({
                   order_id: order.id,
-                  amount: parseFloat(paymentAmount),
+                  amount: payment,
                   payment_date: paymentDate,
                   payment_method: paymentMethod,
                   notes: paymentNotes
                 }));
-                
+              
                 // Clear fields after submission
                 setPaymentAmount('');
                 setPaymentNotes('');
@@ -446,7 +463,7 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({ open, onClose, 
               Record Payment
             </Button>
           </Box>
-            
+
           {order.payments && order.payments.length > 0 ? (
             <Box sx={{ mb: 3 }}>
               <Typography variant="h6" gutterBottom>Payment History</Typography>
@@ -481,7 +498,7 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({ open, onClose, 
             </Typography>
           )}
         </TabPanel>
-        
+
         <TabPanel value={tabValue} index={2}>
           {orderHistory.length === 0 ? (
             <Typography variant="body1" color="text.secondary" sx={{ p: 2, textAlign: 'center' }}>
@@ -505,8 +522,8 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({ open, onClose, 
                         {entry.date ? new Date(entry.date).toLocaleString() : 'N/A'}
                       </TableCell>
                       <TableCell>
-                        <Chip 
-                          label={entry.status} 
+                        <Chip
+                          label={entry.status}
                           color={getChipColor(entry.status)}
                           size="small"
                         />
@@ -520,7 +537,7 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({ open, onClose, 
             </TableContainer>
           )}
         </TabPanel>
-        
+
         <TabPanel value={tabValue} index={2}>
           {order.items && order.items.length > 0 ? (
             <TableContainer component={Paper} variant="outlined">
@@ -542,7 +559,7 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({ open, onClose, 
                       <TableCell>₱{item.unit_price.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
                       <TableCell>₱{item.total_price.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
                       <TableCell>
-                        {item.serial_start && item.serial_end 
+                        {item.serial_start && item.serial_end
                           ? `${item.serial_start} - ${item.serial_end}`
                           : 'N/A'}
                       </TableCell>
@@ -565,9 +582,9 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({ open, onClose, 
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>Cancel</Button>
-        <Button 
-          onClick={handleSaveStatus} 
-          variant="contained" 
+        <Button
+          onClick={handleSaveStatus}
+          variant="contained"
           color="primary"
           disabled={order.status === selectedStatus}
         >
@@ -618,13 +635,13 @@ const ClientOrdersList: React.FC = () => {
 
   const filterOrders = (orders: ExtendedClientOrder[]) => {
     if (!searchTerm.trim()) return orders;
-    
+
     const searchLower = searchTerm.toLowerCase();
     return orders.filter(order => {
       const orderIdMatch = order.order_id.toLowerCase().includes(searchLower);
       const clientNameMatch = order.clients?.name?.toLowerCase().includes(searchLower) || false;
       const statusMatch = order.status.toLowerCase().includes(searchLower);
-      
+
       return orderIdMatch || clientNameMatch || statusMatch;
     });
   };
@@ -641,15 +658,15 @@ const ClientOrdersList: React.FC = () => {
 
   const handleStatusChange = async (orderId: number, newStatus: string) => {
     if (!selectedOrder) return;
-    
+
     try {
       // Use Redux action to update status
-      await dispatch(changeClientOrderStatus({ 
-        id: orderId, 
+      await dispatch(changeClientOrderStatus({
+        id: orderId,
         status: newStatus,
         changedBy: 'Admin' // Or use actual user name/role
       })).unwrap();
-      
+
       // If the status is changed to Pending, the order will be moved to Order Requests
       // and removed from client orders list
       if (newStatus === 'Pending') {
@@ -691,6 +708,7 @@ const ClientOrdersList: React.FC = () => {
     dispatch(fetchClientOrders());
   };
 
+  
   const handleCloseSnackbar = () => {
     setSnackbar(prev => ({ ...prev, open: false }));
   };
@@ -725,19 +743,19 @@ const ClientOrdersList: React.FC = () => {
                 </TableCell>
                 <TableCell>₱{order.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
                 <TableCell>
-                  <Chip 
-                    label={order.status} 
+                  <Chip
+                    label={order.status}
                     color={
-                      order.status === 'Approved' ? 'success' : 
-                      order.status === 'Partially Paid' ? 'warning' : 
-                      order.status === 'Completed' ? 'info' : 
-                      order.status === 'Rejected' ? 'error' : 'default'
+                      order.status === 'Approved' ? 'success' :
+                        order.status === 'Partially Paid' ? 'warning' :
+                          order.status === 'Completed' ? 'info' :
+                            order.status === 'Rejected' ? 'error' : 'default'
                     }
                     size="small"
                   />
                 </TableCell>
                 <TableCell>
-                  <Button 
+                  <Button
                     size="small"
                     onClick={() => handleViewDetails(order)}
                   >
@@ -819,7 +837,7 @@ const ClientOrdersList: React.FC = () => {
         </>
       )}
 
-      <OrderDetailsDialog 
+      <OrderDetailsDialog
         open={detailsDialogOpen}
         onClose={handleCloseDetailsDialog}
         order={selectedOrder}

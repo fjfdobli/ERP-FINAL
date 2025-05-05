@@ -1,94 +1,99 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Box, Typography, Paper, Button, TextField, InputAdornment, Dialog, DialogTitle, DialogContent, DialogActions, 
-  FormControl, InputLabel, Select, MenuItem, CircularProgress, Snackbar, Alert, Grid, Table, TableBody, TableCell,
-  TableContainer, TableHead, TableRow, Card, CardContent, CardActions, Chip, IconButton, Tooltip,
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import {
+  Box, Typography, Button, TextField, InputAdornment, Dialog, DialogTitle, DialogContent, DialogActions,
+  FormControl, InputLabel, Select, MenuItem, CircularProgress, Snackbar, Alert, Grid, Card, CardContent, CardActions,
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, IconButton, Tooltip
 } from '@mui/material';
-import { 
-  Add as AddIcon, Search as SearchIcon, Delete as DeleteIcon, Visibility as ViewIcon, Edit as EditIcon,
-  InventoryOutlined as InventoryIcon, PhotoCamera as PhotoCameraIcon, CloudUpload as CloudUploadIcon,
+import {
+  Add as AddIcon, Search as SearchIcon, Delete as DeleteIcon, Edit as EditIcon,
+  Visibility as ViewIcon, PhotoCamera as PhotoCameraIcon, CloudUpload as CloudUploadIcon,
+  InventoryOutlined as InventoryIcon
 } from '@mui/icons-material';
 import { useDispatch, useSelector } from 'react-redux';
 import { AppDispatch, RootState } from '../../redux/store';
-import { 
-  fetchProducts, createProduct, updateProduct, deleteProduct, uploadProductImage, uploadMultipleProductImages,
+import {
+  fetchProducts, createProduct, updateProduct, deleteProduct,
+  uploadMultipleProductImages,
   selectAllProducts, selectProductLoading, selectProductError
 } from '../../redux/slices/productProfileSlice';
-import { 
-  ProductMaterial, 
-  ExtendedProduct 
-} from '../../services/productProfileService';
-import { 
-  fetchInventory,
-  selectAllInventoryItems
-} from '../../redux/slices/inventorySlice';
+import { fetchInventory, selectAllInventoryItems } from '../../redux/slices/inventorySlice';
+import { ExtendedProduct } from '../../services/productProfileService';
 import { InventoryItem } from '../../services/inventoryService';
+
+const ProductCard = React.memo(({ product, onView, onEdit, onDelete }: {
+  product: ExtendedProduct;
+  onView: (product: ExtendedProduct) => void;
+  onEdit: (product: ExtendedProduct) => void;
+  onDelete: (product: ExtendedProduct) => void;
+}) => (
+  <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column', '&:hover': { boxShadow: 4 } }}>
+    <Box sx={{ position: 'relative', paddingTop: '60%', bgcolor: 'grey.100' }}>
+      {product.imageUrl ? (
+        <Box
+          component="img"
+          src={product.imageUrl}
+          alt={product.name}
+          sx={{ position: 'absolute', top: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+        />
+      ) : (
+        <Box sx={{ position: 'absolute', top: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <PhotoCameraIcon color="disabled" sx={{ fontSize: 40 }} />
+        </Box>
+      )}
+    </Box>
+    <CardContent sx={{ flexGrow: 1 }}>
+      <Typography variant="h6" fontWeight="bold">{product.name}</Typography>
+      <Typography variant="subtitle1" color="primary">₱{product.price.toLocaleString()}</Typography>
+      <Typography variant="body2" color="text.secondary" noWrap>
+        {product.description || 'No description provided'}
+      </Typography>
+    </CardContent>
+    <CardActions sx={{ justifyContent: 'flex-end', gap: 1, pr: 2 }}>
+      <Button size="small" onClick={() => onView(product)}>View</Button>
+      <Button size="small" onClick={() => onEdit(product)}>Edit</Button>
+      <Button size="small" color="error" onClick={() => onDelete(product)}>Delete</Button>
+    </CardActions>
+  </Card>
+));
 
 const ProductProfile: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
-  
-  // Redux state
   const products = useSelector(selectAllProducts);
   const rawMaterials = useSelector(selectAllInventoryItems);
   const isLoading = useSelector(selectProductLoading);
   const error = useSelector(selectProductError);
-  
-  // Local state for UI
-  const [filteredProducts, setFilteredProducts] = useState<ExtendedProduct[]>([]);
+
   const [searchTerm, setSearchTerm] = useState('');
-  
-  // State for dialog
   const [dialogOpen, setDialogOpen] = useState(false);
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [currentProduct, setCurrentProduct] = useState<ExtendedProduct | null>(null);
   const [isEdit, setIsEdit] = useState(false);
-  
-  // State for image upload
+  const [currentProduct, setCurrentProduct] = useState<ExtendedProduct | null>(null);
   const [imageFiles, setImageFiles] = useState<File[]>([]);
-  const [imageUploading, setImageUploading] = useState<boolean>(false);
+  const [imageUploading, setImageUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
-  // State for snackbar
+
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [snackbarSeverity, setSnackbarSeverity] = useState<'success' | 'error' | 'info'>('success');
 
-  // Fetch products and raw materials on component mount
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        await dispatch(fetchInventory()).unwrap();
-        await dispatch(fetchProducts()).unwrap();
-      } catch (error) {
-        console.error('Error loading data:', error);
-        setSnackbarMessage('Failed to load data. Please refresh the page.');
-        setSnackbarSeverity('error');
-        setSnackbarOpen(true);
-      }
-    };
-    
-    loadData();
+    dispatch(fetchInventory());
+    dispatch(fetchProducts());
   }, [dispatch]);
 
-  // Update filtered products when products or search term changes
-  useEffect(() => {
-    if (!searchTerm.trim()) {
-      setFilteredProducts(products);
-      return;
-    }
-    
-    const filtered = products.filter(product => 
-      product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.description?.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-    
-    setFilteredProducts(filtered);
-  }, [searchTerm, products]);
-
-  const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(e.target.value);
   };
+
+  const filteredProducts = useMemo(() => {
+    if (!searchTerm.trim()) return products;
+    return products.filter(product =>
+      product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (product.description || '').toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [products, searchTerm]);
+
 
   const handleOpenCreateDialog = () => {
     setCurrentProduct({
@@ -111,254 +116,156 @@ const ProductProfile: React.FC = () => {
     setImageFiles([]);
     setDialogOpen(true);
   };
-  
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      // Convert FileList to array and add to existing files
-      const newFiles = Array.from(e.target.files);
-      setImageFiles(prev => [...prev, ...newFiles]);
-      
-      // Create preview URLs for the new images
-      const newImageUrls = newFiles.map(file => URL.createObjectURL(file));
-      
-      // Update the form with new image URLs
-      setCurrentProduct(prev => {
-        if (!prev) return null;
-        const updatedImageUrls = [...(prev.imageUrls || []), ...newImageUrls];
-        return {
-          ...prev,
-          // Set the first image as the main imageUrl for backward compatibility
-          imageUrl: updatedImageUrls[0] || null,
-          imageUrls: updatedImageUrls
-        };
-      });
-    }
+
+  const handleOpenViewDialog = (product: ExtendedProduct) => {
+    setCurrentProduct({ ...product });
+    setViewDialogOpen(true);
   };
-  
-  const handleRemoveImage = (index: number) => {
-    // Remove the image file
-    setImageFiles(prev => {
-      const newFiles = [...prev];
-      newFiles.splice(index, 1);
-      return newFiles;
-    });
-    
-    // Remove the image URL from the form
-    setCurrentProduct(prev => {
-      if (!prev) return null;
-      const newImageUrls = [...(prev.imageUrls || [])];
-      newImageUrls.splice(index, 1);
-      return {
-        ...prev,
-        // Update the main imageUrl if needed
-        imageUrl: newImageUrls[0] || null,
-        imageUrls: newImageUrls
-      };
-    });
-  };
-  
-  const handleUploadImages = async (productId: number) => {
-    if (imageFiles.length === 0) return null;
-    
-    setImageUploading(true);
-    try {
-      // Use the multiple image upload function
-      const imageUrls = await dispatch(uploadMultipleProductImages({
-        files: imageFiles,
-        productId
-      })).unwrap();
-      
-      setImageUploading(false);
-      setSnackbarMessage(`${imageUrls.length} images uploaded successfully`);
-      setSnackbarSeverity('success');
-      setSnackbarOpen(true);
-      return imageUrls;
-    } catch (error: any) {
-      setImageUploading(false);
-      setSnackbarMessage(error.message || 'Failed to upload images');
-      setSnackbarSeverity('error');
-      setSnackbarOpen(true);
-      return null;
-    }
+
+  const handleOpenDeleteDialog = (product: ExtendedProduct) => {
+    setCurrentProduct(product);
+    setDeleteDialogOpen(true);
   };
 
   const handleCloseDialog = () => {
     setDialogOpen(false);
     setCurrentProduct(null);
   };
-  
-  const handleOpenViewDialog = (product: ExtendedProduct) => {
-    setCurrentProduct({ ...product });
-    setViewDialogOpen(true);
-  };
-  
+
   const handleCloseViewDialog = () => {
     setViewDialogOpen(false);
     setCurrentProduct(null);
   };
-  
-  const handleOpenDeleteDialog = (product: ExtendedProduct) => {
-    setCurrentProduct(product);
-    setDeleteDialogOpen(true);
-  };
-  
+
   const handleCloseDeleteDialog = () => {
     setDeleteDialogOpen(false);
     setCurrentProduct(null);
   };
-  
-  const handleDeleteProduct = async () => {
+
+  const handleSnackbarClose = () => {
+    setSnackbarOpen(false);
+  };
+
+  const handleRemoveImage = (index: number) => {
     if (!currentProduct) return;
-    
-    try {
-      await dispatch(deleteProduct(currentProduct.id)).unwrap();
-      setSnackbarMessage('Product deleted successfully');
-      setSnackbarSeverity('success');
-      setSnackbarOpen(true);
-      handleCloseDeleteDialog();
-    } catch (error) {
-      console.error('Failed to delete product:', error);
-      setSnackbarMessage('Failed to delete product');
-      setSnackbarSeverity('error');
-      setSnackbarOpen(true);
-    }
+    const updatedUrls = [...(currentProduct.imageUrls || [])];
+    updatedUrls.splice(index, 1);
+    setCurrentProduct({
+      ...currentProduct,
+      imageUrls: updatedUrls,
+      imageUrl: updatedUrls[0] || null,
+    });
+    const newFiles = [...imageFiles];
+    newFiles.splice(index, 1);
+    setImageFiles(newFiles);
+  };
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files) return;
+    const newFiles = Array.from(e.target.files);
+    setImageFiles(prev => [...prev, ...newFiles]);
+
+    const newImageUrls = newFiles.map(file => URL.createObjectURL(file));
+    setCurrentProduct(prev => {
+      if (!prev) return null;
+      const updatedUrls = [...(prev.imageUrls || []), ...newImageUrls];
+      return {
+        ...prev,
+        imageUrl: updatedUrls[0],
+        imageUrls: updatedUrls,
+      };
+    });
   };
 
   const handleAddMaterial = () => {
     if (!currentProduct) return;
-    
-    const updatedProduct = { 
-      ...currentProduct,
-      materials: [
-        ...currentProduct.materials,
-        { 
-          productId: currentProduct.id,
-          materialId: 0,
-          materialName: '',
-          quantityRequired: 1
-        }
-      ]
-    };
-    
-    setCurrentProduct(updatedProduct);
+    setCurrentProduct(prev => ({
+      ...prev!,
+      materials: [...prev!.materials, {
+        productId: prev!.id,
+        materialId: 0,
+        materialName: '',
+        quantityRequired: 1,
+      }]
+    }));
   };
 
   const handleRemoveMaterial = (index: number) => {
     if (!currentProduct) return;
-    
-    const updatedMaterials = [...currentProduct.materials];
-    updatedMaterials.splice(index, 1);
-    
-    setCurrentProduct({
-      ...currentProduct,
-      materials: updatedMaterials
-    });
+    const updated = [...currentProduct.materials];
+    updated.splice(index, 1);
+    setCurrentProduct({ ...currentProduct, materials: updated });
   };
 
   const handleMaterialChange = (index: number, field: string, value: any) => {
     if (!currentProduct) return;
-    
-    const updatedMaterials = [...currentProduct.materials];
-    
-    if (field === 'materialId') {
-      const selectedMaterial = rawMaterials.find(m => m.id === value);
-      if (selectedMaterial) {
-        updatedMaterials[index] = {
-          ...updatedMaterials[index],
-          materialId: value,
-          materialName: selectedMaterial.itemName
+
+    const updatedMaterials = currentProduct.materials.map((material, idx) => {
+      if (idx !== index) return material;
+
+      if (field === 'materialId') {
+        const selected = rawMaterials.find(m => m.id === value);
+        if (selected) {
+          return {
+            ...material,
+            materialId: value,
+            materialName: selected.itemName,
+          };
+        }
+      } else if (field === 'quantityRequired') {
+        // Find current selected material
+        const selectedMaterial = rawMaterials.find(m => m.id === material.materialId);
+        const maxStock = selectedMaterial?.quantity ?? Infinity;
+
+        // Prevent exceeding stock
+        const adjustedQuantity = Math.min(Number(value), maxStock);
+
+        return {
+          ...material,
+          quantityRequired: adjustedQuantity,
         };
       }
-    } else if (field === 'quantityRequired') {
-      updatedMaterials[index] = {
-        ...updatedMaterials[index],
-        quantityRequired: value
-      };
-    }
-    
+
+      return material;
+    });
+
     setCurrentProduct({
       ...currentProduct,
-      materials: updatedMaterials
+      materials: updatedMaterials,
     });
   };
 
-  const handleProductChange = (field: string, value: any) => {
-    if (!currentProduct) return;
-    
-    setCurrentProduct({
-      ...currentProduct,
-      [field]: value
-    });
-  };
+
 
   const handleSaveProduct = async () => {
     if (!currentProduct) return;
-    
-    // Validate form
     if (!currentProduct.name || currentProduct.price <= 0 || currentProduct.materials.length === 0) {
-      setSnackbarMessage('Please fill in all required fields and add at least one material');
+      setSnackbarMessage('Please fill required fields and add at least one material');
       setSnackbarSeverity('error');
       setSnackbarOpen(true);
       return;
     }
-    
-    // Check if all materials are properly selected
-    const invalidMaterials = currentProduct.materials.some(m => m.materialId === 0);
-    if (invalidMaterials) {
-      setSnackbarMessage('Please select valid materials for the product');
-      setSnackbarSeverity('error');
-      setSnackbarOpen(true);
-      return;
-    }
-    
     try {
       if (isEdit) {
-        // For existing product, check if we need to upload new images
-        let finalImageUrls = currentProduct.imageUrls || [];
-        let finalMainImageUrl = finalImageUrls[0] || null;
-        
+        let finalImageUrls = (currentProduct.imageUrls || []).filter(url => !url.startsWith('blob:'));
         if (imageFiles.length > 0) {
-          const newImageUrls = await handleUploadImages(currentProduct.id);
-          if (newImageUrls && newImageUrls.length > 0) {
-            // Combine existing persisted images with new uploaded ones
-            const existingPersistedImages = (currentProduct.imageUrls || [])
-              .filter(url => !url.startsWith('blob:')); // Filter out any blob URLs
-            
-            finalImageUrls = [...existingPersistedImages, ...newImageUrls];
-            finalMainImageUrl = finalImageUrls[0];
-          }
-        } else {
-          // No new images to upload, keep existing persisted images
-          finalImageUrls = (currentProduct.imageUrls || [])
-            .filter(url => !url.startsWith('blob:'));
-          
-          if (currentProduct.imageUrl && !currentProduct.imageUrl.startsWith('blob:')) {
-            // Make sure the main image is included if it's not a blob URL
-            if (!finalImageUrls.includes(currentProduct.imageUrl)) {
-              finalImageUrls = [currentProduct.imageUrl, ...finalImageUrls];
-            }
-          }
-          
-          finalMainImageUrl = finalImageUrls[0] || null;
+          const newUploaded = await dispatch(uploadMultipleProductImages({ files: imageFiles, productId: currentProduct.id })).unwrap();
+          finalImageUrls = [...finalImageUrls, ...newUploaded];
         }
-        
-        // Update existing product
         await dispatch(updateProduct({
           id: currentProduct.id,
           updates: {
             name: currentProduct.name,
             price: currentProduct.price,
             description: currentProduct.description,
-            imageUrl: finalMainImageUrl,
+            imageUrl: finalImageUrls[0] || null,
             imageUrls: finalImageUrls
           },
           materials: currentProduct.materials
         })).unwrap();
-        
         setSnackbarMessage('Product updated successfully');
       } else {
-        // Create new product first without images
-        const createdProduct = await dispatch(createProduct({
+        const created = await dispatch(createProduct({
           product: {
             name: currentProduct.name,
             price: currentProduct.price,
@@ -372,489 +279,95 @@ const ProductProfile: React.FC = () => {
             quantityRequired: m.quantityRequired
           }))
         })).unwrap();
-        
-        // Now upload the images if available
-        if (imageFiles.length > 0 && createdProduct.id) {
-          const imageUrls = await handleUploadImages(createdProduct.id) || [];
-          const mainImageUrl = imageUrls[0] || null;
-          
-          // Update the newly created product with the image URLs
-          if (imageUrls.length > 0) {
-            await dispatch(updateProduct({ 
-              id: createdProduct.id, 
-              updates: { 
-                imageUrl: mainImageUrl,
-                imageUrls: imageUrls
-              },
-              materials: createdProduct.materials
-            })).unwrap();
-          }
+        if (imageFiles.length > 0 && created.id) {
+          const newUploaded = await dispatch(uploadMultipleProductImages({ files: imageFiles, productId: created.id })).unwrap();
+          await dispatch(updateProduct({
+            id: created.id,
+            updates: {
+              imageUrl: newUploaded[0] || null,
+              imageUrls: newUploaded
+            },
+            materials: created.materials
+          })).unwrap();
         }
-        
         setSnackbarMessage('Product created successfully');
       }
-      
       setSnackbarSeverity('success');
       setSnackbarOpen(true);
       handleCloseDialog();
-    } catch (error) {
-      console.error('Failed to save product:', error);
+    } catch (err) {
+      console.error('Save error:', err);
       setSnackbarMessage('Failed to save product');
       setSnackbarSeverity('error');
       setSnackbarOpen(true);
     }
   };
 
-  const handleCloseSnackbar = () => {
-    setSnackbarOpen(false);
-  };
-
-  // ProductCard component
-  const ProductCard = ({ product }: { product: ExtendedProduct }) => {
-    return (
-      <Card 
-        sx={{ 
-          height: '100%', 
-          display: 'flex', 
-          flexDirection: 'column',
-          transition: 'transform 0.2s, box-shadow 0.2s',
-          '&:hover': {
-            transform: 'translateY(-4px)',
-            boxShadow: 4,
-          },
-        }}
-      >
-        {/* Product Image */}
-        <Box sx={{ 
-          position: 'relative',
-          paddingTop: '60%', // 60% aspect ratio
-          backgroundColor: 'grey.100',
-          overflow: 'hidden'
-        }}>
-          {product.imageUrl ? (
-            <Box
-              component="img"
-              src={product.imageUrl}
-              alt={product.name}
-              sx={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                width: '100%',
-                height: '100%',
-                objectFit: 'cover',
-              }}
-            />
-          ) : (
-            <Box sx={{ 
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              width: '100%',
-              height: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}>
-              <PhotoCameraIcon color="disabled" sx={{ fontSize: 40 }} />
-            </Box>
-          )}
-        </Box>
-        
-        <CardContent sx={{ flexGrow: 1 }}>
-          <Typography variant="h6" gutterBottom fontWeight="bold">
-            {product.name}
-          </Typography>
-          
-          <Box sx={{ mb: 2 }}>
-            <Typography variant="subtitle1" color="primary" gutterBottom>
-              ₱{product.price.toLocaleString()}
-            </Typography>
-            
-            <Typography 
-              variant="body2" 
-              color="text.secondary" 
-              sx={{ 
-                overflow: 'hidden', 
-                textOverflow: 'ellipsis', 
-                display: '-webkit-box', 
-                WebkitLineClamp: 2,
-                WebkitBoxOrient: 'vertical',
-                minHeight: '40px',
-              }}
-            >
-              {product.description || 'No description provided'}
-            </Typography>
-          </Box>
-          
-          <Box sx={{ display: 'flex', alignItems: 'center', mt: 2 }}>
-            <InventoryIcon sx={{ mr: 1, color: 'text.secondary', fontSize: 20 }} />
-            <Typography variant="body2" color="text.secondary">
-              {product.materials.length} material{product.materials.length !== 1 ? 's' : ''} required
-            </Typography>
-          </Box>
-        </CardContent>
-        
-        <CardActions sx={{ justifyContent: 'flex-end', p: 2, pt: 0 }}>
-          <Button 
-            size="small" 
-            color="info"
-            onClick={() => handleOpenViewDialog(product)}
-          >
-            View
-          </Button>
-          
-          <Button 
-            size="small" 
-            color="primary"
-            onClick={() => handleOpenEditDialog(product)}
-          >
-            Edit
-          </Button>
-          
-          <Button 
-            size="small" 
-            color="error"
-            onClick={() => handleOpenDeleteDialog(product)}
-          >
-            Delete
-          </Button>
-        </CardActions>
-      </Card>
-    );
-  };
-
-  // ProductForm component for creating/editing products
-  const ProductForm = () => {
-    if (!currentProduct) return null;
-    
-    return (
-      <Box>
-        <Grid container spacing={2} sx={{ mt: 1 }}>
-          {/* Product Images Section */}
-          <Grid item xs={12}>
-            <Typography variant="subtitle1" gutterBottom>
-              Product Images
-            </Typography>
-            
-            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 2 }}>
-              {/* Image Gallery */}
-              <Box sx={{ 
-                display: 'flex', 
-                flexWrap: 'wrap', 
-                gap: 2, 
-                justifyContent: 'center',
-                mb: 2,
-                width: '100%'
-              }}>
-                {(currentProduct.imageUrls && currentProduct.imageUrls.length > 0) ? (
-                  currentProduct.imageUrls.map((imageUrl, index) => (
-                    <Box key={index} sx={{ position: 'relative' }}>
-                      <Box 
-                        component="img" 
-                        src={imageUrl} 
-                        alt={`${currentProduct.name} image ${index + 1}`}
-                        sx={{ width: 120, height: 120, border: '1px solid #eee', objectFit: 'cover' }}
-                      />
-                      <IconButton 
-                        size="small" 
-                        color="error" 
-                        onClick={() => handleRemoveImage(index)}
-                        sx={{ 
-                          position: 'absolute', 
-                          top: -10, 
-                          right: -10,
-                          bgcolor: 'background.paper',
-                          boxShadow: 1,
-                          '&:hover': { bgcolor: 'error.light', color: 'white' }
-                        }}
-                      >
-                        <DeleteIcon fontSize="small" />
-                      </IconButton>
-                    </Box>
-                  ))
-                ) : (
-                  <Box 
-                    sx={{ 
-                      width: 120, 
-                      height: 120, 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      justifyContent: 'center',
-                      border: '1px dashed #ccc',
-                      borderRadius: 1
-                    }}
-                  >
-                    <PhotoCameraIcon color="disabled" sx={{ fontSize: 40 }} />
-                  </Box>
-                )}
-                
-                {/* Add New Image Box */}
-                <Box 
-                  component="label" 
-                  htmlFor="image-upload"
-                  sx={{ 
-                    width: 120, 
-                    height: 120, 
-                    display: 'flex', 
-                    flexDirection: 'column',
-                    alignItems: 'center', 
-                    justifyContent: 'center',
-                    border: '1px dashed #ccc',
-                    borderRadius: 1,
-                    cursor: 'pointer',
-                    '&:hover': {
-                      bgcolor: 'action.hover'
-                    }
-                  }}
-                >
-                  <AddIcon sx={{ fontSize: 30, mb: 1, color: 'text.secondary' }} />
-                  <Typography variant="caption" color="text.secondary">
-                    Add Image
-                  </Typography>
-                </Box>
-              </Box>
-              
-              <input
-                type="file"
-                accept="image/*"
-                multiple
-                style={{ display: 'none' }}
-                id="image-upload"
-                ref={fileInputRef}
-                onChange={handleImageChange}
-                title="Upload product images"
-                aria-label="Upload product images"
-              />
-              
-              <Button 
-                variant="outlined" 
-                component="label" 
-                htmlFor="image-upload"
-                startIcon={<CloudUploadIcon />}
-                disabled={imageUploading}
-              >
-                {imageUploading ? 'Uploading...' : 'Add Images'}
-              </Button>
-              
-              {imageUploading && (
-                <Box sx={{ display: 'flex', alignItems: 'center', mt: 1 }}>
-                  <CircularProgress size={16} sx={{ mr: 1 }} />
-                  <Typography variant="caption" color="text.secondary">
-                    Uploading images...
-                  </Typography>
-                </Box>
-              )}
-              
-              <Typography variant="caption" color="text.secondary" mt={1}>
-                Add images of your product to make it more appealing to customers.
-              </Typography>
-            </Box>
-          </Grid>
-          
-          <Grid item xs={12} md={6}>
-            <TextField
-              label="Product Name"
-              fullWidth
-              required
-              value={currentProduct.name}
-              onChange={(e) => handleProductChange('name', e.target.value)}
-            />
-          </Grid>
-          
-          <Grid item xs={12} md={6}>
-            <TextField
-              label="Price"
-              type="number"
-              fullWidth
-              required
-              value={currentProduct.price}
-              onChange={(e) => handleProductChange('price', Number(e.target.value))}
-              InputProps={{
-                startAdornment: <InputAdornment position="start">₱</InputAdornment>,
-                inputProps: { min: 0 }
-              }}
-            />
-          </Grid>
-          
-          <Grid item xs={12}>
-            <TextField
-              label="Description"
-              fullWidth
-              multiline
-              rows={2}
-              value={currentProduct.description || ''}
-              onChange={(e) => handleProductChange('description', e.target.value)}
-            />
-          </Grid>
-          
-          <Grid item xs={12}>
-            <Typography variant="subtitle1" sx={{ mt: 2, mb: 1 }}>
-              Raw Materials Required
-            </Typography>
-            
-            {currentProduct.materials.length === 0 ? (
-              <Typography color="text.secondary" sx={{ mb: 2 }}>
-                No materials added. Click "Add Material" to add raw materials required for this product.
-              </Typography>
-            ) : (
-              <TableContainer component={Paper} variant="outlined" sx={{ mb: 2 }}>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell><strong>Material</strong></TableCell>
-                      <TableCell><strong>Quantity Required</strong></TableCell>
-                      <TableCell><strong>Actions</strong></TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {currentProduct.materials.map((material, index) => (
-                      <TableRow key={index}>
-                        <TableCell>
-                          <FormControl fullWidth size="small">
-                            <InputLabel>Material</InputLabel>
-                            <Select
-                              value={material.materialId || ''}
-                              label="Material"
-                              onChange={(e) => 
-                                handleMaterialChange(index, 'materialId', Number(e.target.value))
-                              }
-                              MenuProps={{
-                                PaperProps: {
-                                  style: {
-                                    maxHeight: 300
-                                  }
-                                }
-                              }}
-                            >
-                              {rawMaterials && rawMaterials.length > 0 ? (
-                                rawMaterials
-                                  // Only allow raw materials to be selected
-                                  .filter(item => item.itemType !== 'product')
-                                  .map((rawMaterial) => (
-                                    <MenuItem key={rawMaterial.id} value={rawMaterial.id}>
-                                      {rawMaterial.itemName} ({rawMaterial.quantity} in stock)
-                                    </MenuItem>
-                                  ))
-                              ) : (
-                                <MenuItem disabled>No materials available</MenuItem>
-                              )}
-                            </Select>
-                          </FormControl>
-                        </TableCell>
-                        <TableCell>
-                          <TextField
-                            type="number"
-                            size="small"
-                            value={material.quantityRequired}
-                            onChange={(e) => handleMaterialChange(
-                              index, 
-                              'quantityRequired', 
-                              Number(e.target.value)
-                            )}
-                            InputProps={{
-                              inputProps: { min: 0.1, step: 0.1 }
-                            }}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Button
-                            startIcon={<DeleteIcon />}
-                            color="error"
-                            onClick={() => handleRemoveMaterial(index)}
-                            size="small"
-                          >
-                            Remove
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            )}
-            
-            <Button
-              variant="outlined"
-              startIcon={<AddIcon />}
-              onClick={handleAddMaterial}
-            >
-              Add Material
-            </Button>
-          </Grid>
-        </Grid>
-      </Box>
-    );
+  const handleDeleteProduct = async () => {
+    if (!currentProduct) return;
+    try {
+      await dispatch(deleteProduct(currentProduct.id)).unwrap();
+      setSnackbarMessage('Product deleted successfully');
+      setSnackbarSeverity('success');
+      setSnackbarOpen(true);
+      handleCloseDeleteDialog();
+    } catch (err) {
+      console.error('Delete error:', err);
+      setSnackbarMessage('Failed to delete product');
+      setSnackbarSeverity('error');
+      setSnackbarOpen(true);
+    }
   };
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3, alignItems: 'center' }}>
-        <Typography variant="h4" component="h1" fontWeight="bold">
-          Product Profiles
-        </Typography>
-        <Button 
-          variant="contained" 
-          startIcon={<AddIcon />}
-          onClick={handleOpenCreateDialog}
-        >
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
+        <Typography variant="h4">Product Profiles</Typography>
+        <Button variant="contained" startIcon={<AddIcon />} onClick={handleOpenCreateDialog}>
           Create Product
         </Button>
       </Box>
 
-      <Box sx={{ mb: 3, display: 'flex', alignItems: 'center' }}>
-        <TextField
-          placeholder="Search products..."
-          variant="outlined"
-          size="small"
-          value={searchTerm}
-          onChange={handleSearch}
-          sx={{ width: 300, mr: 2 }}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <SearchIcon />
-              </InputAdornment>
-            ),
-          }}
-        />
-      </Box>
+      <TextField
+        placeholder="Search products..."
+        variant="outlined"
+        size="small"
+        fullWidth
+        value={searchTerm}
+        onChange={handleSearchChange}
+        sx={{ mb: 3 }}
+        InputProps={{
+          startAdornment: (
+            <InputAdornment position="start">
+              <SearchIcon />
+            </InputAdornment>
+          )
+        }}
+      />
 
-      {isLoading && products.length === 0 ? (
+      {isLoading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
           <CircularProgress />
         </Box>
       ) : error ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', my: 4, flexDirection: 'column', alignItems: 'center' }}>
-          <Typography color="error" gutterBottom>Failed to load products</Typography>
-          <Button 
-            variant="contained" 
-            color="primary" 
-            onClick={() => {
-              dispatch(fetchProducts());
-              dispatch(fetchInventory());
-            }}
-          >
-            Retry
-          </Button>
-        </Box>
+        <Alert severity="error">Failed to load products</Alert>
       ) : (
-        <Grid container spacing={3}>
+        <Grid container spacing={2}>
           {filteredProducts.length === 0 ? (
             <Grid item xs={12}>
-              <Box sx={{ textAlign: 'center', py: 4 }}>
-                <Typography variant="h6" color="text.secondary">
-                  No products found
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                  {searchTerm ? 'Try adjusting your search term' : 'Click "Create Product" to add your first product'}
-                </Typography>
-              </Box>
+              <Typography textAlign="center" color="textSecondary">
+                No products found
+              </Typography>
             </Grid>
           ) : (
-            filteredProducts.map((product) => (
+            filteredProducts.map(product => (
               <Grid item xs={12} sm={6} md={4} key={product.id}>
-                <ProductCard product={product} />
+                <ProductCard
+                  product={product}
+                  onView={handleOpenViewDialog}
+                  onEdit={handleOpenEditDialog}
+                  onDelete={handleOpenDeleteDialog}
+                />
               </Grid>
             ))
           )}
@@ -863,110 +376,219 @@ const ProductProfile: React.FC = () => {
 
       {/* Create/Edit Dialog */}
       <Dialog open={dialogOpen} onClose={handleCloseDialog} maxWidth="md" fullWidth>
-        <DialogTitle>
-          {isEdit ? 'Edit Product' : 'Create New Product'}
-        </DialogTitle>
-        <DialogContent>
-          <ProductForm />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseDialog}>Cancel</Button>
-          <Button 
-            onClick={handleSaveProduct} 
-            variant="contained" 
-            color="primary"
-            disabled={isLoading}
-          >
-            {isLoading ? <CircularProgress size={24} /> : (isEdit ? 'Save Changes' : 'Create Product')}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* View Dialog */}
-      <Dialog open={viewDialogOpen} onClose={handleCloseViewDialog} maxWidth="md" fullWidth>
-        <DialogTitle>
-          Product Details
-        </DialogTitle>
+        <DialogTitle>{isEdit ? 'Edit Product' : 'Create New Product'}</DialogTitle>
         <DialogContent>
           {currentProduct && (
             <Box sx={{ py: 2 }}>
-              <Grid container spacing={3}>
-                {/* Product Images Gallery */}
-                {(currentProduct.imageUrls && currentProduct.imageUrls.length > 0) && (
-                  <Grid item xs={12}>
-                    <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 2 }}>Product Images</Typography>
-                    <Box sx={{ 
-                      display: 'flex', 
-                      flexWrap: 'wrap', 
-                      gap: 2, 
-                      justifyContent: 'flex-start' 
-                    }}>
-                      {currentProduct.imageUrls.map((imageUrl, index) => (
-                        <Box 
-                          key={index}
+              <Grid container spacing={2}>
+                {/* Upload Images */}
+                <Grid item xs={12}>
+                  <Typography variant="subtitle1" gutterBottom>Product Images</Typography>
+                  <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                    {(currentProduct.imageUrls || []).map((url, index) => (
+                      <Box key={index} sx={{ position: 'relative' }}>
+                        <Box
                           component="img"
-                          src={imageUrl}
-                          alt={`${currentProduct.name} image ${index + 1}`}
-                          sx={{ 
-                            width: 150, 
-                            height: 150,
-                            objectFit: 'cover',
-                            borderRadius: 1,
-                            boxShadow: 1,
-                            cursor: 'pointer',
-                            transition: 'transform 0.2s',
-                            '&:hover': {
-                              transform: 'scale(1.05)'
-                            }
-                          }}
+                          src={url}
+                          alt="Product"
+                          sx={{ width: 100, height: 100, objectFit: 'cover', borderRadius: 1 }}
                         />
-                      ))}
+                        <IconButton
+                          size="small"
+                          sx={{ position: 'absolute', top: -10, right: -10, bgcolor: 'background.paper' }}
+                          onClick={() => handleRemoveImage(index)}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Box>
+                    ))}
+                    <Box
+                      component="label"
+                      sx={{
+                        width: 100,
+                        height: 100,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        border: '1px dashed grey',
+                        borderRadius: 1,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <AddIcon />
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        hidden
+                        ref={fileInputRef}
+                        onChange={handleImageChange}
+                      />
                     </Box>
-                  </Grid>
-                )}
-                
-                <Grid item xs={12} md={6}>
-                  <Typography variant="subtitle2" color="text.secondary">Product Name</Typography>
-                  <Typography variant="body1" sx={{ mt: 1, fontWeight: 500 }}>{currentProduct.name}</Typography>
+                  </Box>
                 </Grid>
-                
-                <Grid item xs={12} md={6}>
-                  <Typography variant="subtitle2" color="text.secondary">Price</Typography>
-                  <Typography variant="body1" sx={{ mt: 1, fontWeight: 500 }}>₱{currentProduct.price.toLocaleString()}</Typography>
+
+                {/* Product Fields */}
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    label="Product Name"
+                    fullWidth
+                    required
+                    value={currentProduct.name}
+                    onChange={e => setCurrentProduct({ ...currentProduct, name: e.target.value })}
+                  />
                 </Grid>
-                
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    label="Price"
+                    type="number"
+                    fullWidth
+                    required
+                    value={currentProduct.price}
+                    onChange={e => setCurrentProduct({ ...currentProduct, price: Number(e.target.value) })}
+                    InputProps={{ startAdornment: <InputAdornment position="start">₱</InputAdornment> }}
+                  />
+                </Grid>
                 <Grid item xs={12}>
-                  <Typography variant="subtitle2" color="text.secondary">Description</Typography>
-                  <Typography variant="body1" sx={{ mt: 1 }}>{currentProduct.description || 'No description provided'}</Typography>
+                  <TextField
+                    label="Description"
+                    fullWidth
+                    multiline
+                    minRows={2}
+                    value={currentProduct.description || ''}
+                    onChange={e => setCurrentProduct({ ...currentProduct, description: e.target.value })}
+                  />
                 </Grid>
-                
+
+                {/* Materials */}
                 <Grid item xs={12}>
-                  <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 2 }}>Required Materials</Typography>
-                  
+                  <Typography variant="subtitle1" gutterBottom>Required Materials</Typography>
                   {currentProduct.materials.length === 0 ? (
-                    <Typography variant="body2" color="text.secondary">No materials defined for this product</Typography>
+                    <Typography variant="body2" color="textSecondary">
+                      No materials added. Click \"Add Material\" below.
+                    </Typography>
                   ) : (
-                    <TableContainer component={Paper} variant="outlined">
+                    <TableContainer component={Paper} sx={{ mb: 2 }}>
                       <Table size="small">
                         <TableHead>
                           <TableRow>
-                            <TableCell><strong>Material</strong></TableCell>
-                            <TableCell><strong>Quantity Required</strong></TableCell>
+                            <TableCell>Material</TableCell>
+                            <TableCell>Quantity Required</TableCell>
+                            <TableCell>Actions</TableCell>
                           </TableRow>
                         </TableHead>
                         <TableBody>
-                          {currentProduct.materials.map((material, index) => (
-                            <TableRow key={index}>
-                              <TableCell>{material.materialName}</TableCell>
-                              <TableCell>{material.quantityRequired}</TableCell>
+                          {currentProduct.materials.map((mat, idx) => (
+                            <TableRow key={idx}>
+                              <TableCell>
+                                <FormControl fullWidth size="small">
+                                  <InputLabel>Material</InputLabel>
+                                  <Select
+                                    label="Material"
+                                    value={mat.materialId || ''}
+                                    onChange={e => handleMaterialChange(idx, 'materialId', Number(e.target.value))}
+                                  >
+                                    {rawMaterials
+                                      .filter(item => {
+                                        const selectedIds = currentProduct.materials
+                                          .filter((_, i) => i !== idx) // exclude current editing row
+                                          .map(mat => mat.materialId);
+                                        return !selectedIds.includes(item.id) || item.id === mat.materialId;
+                                      })
+                                      .map(item => (
+                                        <MenuItem key={item.id} value={item.id}>
+                                          {item.itemName} ({item.quantity} in stock)
+                                        </MenuItem>
+                                      ))}
+                                  </Select>
+                                </FormControl>
+                              </TableCell>
+                              <TableCell>
+                                <TextField
+                                  type="number"
+                                  size="small"
+                                  value={mat.quantityRequired}
+                                  onChange={e => handleMaterialChange(idx, 'quantityRequired', Number(e.target.value))}
+                                  inputProps={{ min: 0.1, step: 0.1 }}
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <Button size="small" color="error" onClick={() => handleRemoveMaterial(idx)}>
+                                  Remove
+                                </Button>
+                              </TableCell>
                             </TableRow>
                           ))}
                         </TableBody>
                       </Table>
                     </TableContainer>
                   )}
+                  <Button
+                    variant="outlined"
+                    startIcon={<AddIcon />}
+                    onClick={handleAddMaterial}
+                  >
+                    Add Material
+                  </Button>
                 </Grid>
               </Grid>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseDialog}>Cancel</Button>
+          <Button onClick={handleSaveProduct} variant="contained" disabled={isLoading}>
+            {isEdit ? 'Save Changes' : 'Create Product'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* View Dialog */}
+      <Dialog open={viewDialogOpen} onClose={handleCloseViewDialog} maxWidth="md" fullWidth>
+        <DialogTitle>Product Details</DialogTitle>
+        <DialogContent>
+          {currentProduct && (
+            <Box sx={{ py: 2 }}>
+              <Typography variant="h6">{currentProduct.name}</Typography>
+              <Typography variant="subtitle1" color="primary" gutterBottom>₱{currentProduct.price.toLocaleString()}</Typography>
+              <Typography variant="body2" sx={{ mb: 2 }}>{currentProduct.description || 'No description provided.'}</Typography>
+
+              <Grid container spacing={2}>
+                {(currentProduct.imageUrls || []).map((url, idx) => (
+                  <Grid item xs={4} sm={3} md={2} key={idx}>
+                    <Box
+                      component="img"
+                      src={url}
+                      alt="Preview"
+                      sx={{ width: '100%', height: 'auto', borderRadius: 1 }}
+                    />
+                  </Grid>
+                ))}
+              </Grid>
+
+              <Typography variant="subtitle2" sx={{ mt: 3, mb: 1 }}>Required Materials</Typography>
+              {currentProduct.materials.length > 0 ? (
+                <TableContainer component={Paper}>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Material</TableCell>
+                        <TableCell>Quantity</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {currentProduct.materials.map((mat, idx) => (
+                        <TableRow key={idx}>
+                          <TableCell>{mat.materialName}</TableCell>
+                          <TableCell>{mat.quantityRequired}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              ) : (
+                <Typography variant="body2" color="textSecondary">No materials added</Typography>
+              )}
             </Box>
           )}
         </DialogContent>
@@ -975,43 +597,31 @@ const ProductProfile: React.FC = () => {
         </DialogActions>
       </Dialog>
 
-      {/* Delete Confirmation Dialog */}
-      <Dialog open={deleteDialogOpen} onClose={handleCloseDeleteDialog} maxWidth="sm" fullWidth>
-        <DialogTitle>
-          Delete Product
-        </DialogTitle>
+      {/* Delete Dialog */}
+      <Dialog open={deleteDialogOpen} onClose={handleCloseDeleteDialog}>
+        <DialogTitle>Delete Product</DialogTitle>
         <DialogContent>
-          <Typography variant="body1">
-            Are you sure you want to delete the product <strong>{currentProduct?.name}</strong>?
-          </Typography>
+          <Typography>Are you sure you want to delete <strong>{currentProduct?.name}</strong>?</Typography>
           <Typography variant="body2" color="error" sx={{ mt: 2 }}>
-            This action cannot be undone. This will permanently delete the product and remove it from all systems.
+            This action cannot be undone.
           </Typography>
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseDeleteDialog}>Cancel</Button>
-          <Button 
-            onClick={handleDeleteProduct} 
-            variant="contained" 
-            color="error"
-            disabled={isLoading}
-          >
-            {isLoading ? <CircularProgress size={24} /> : 'Delete'}
+          <Button onClick={handleDeleteProduct} color="error" variant="contained" disabled={isLoading}>
+            Delete
           </Button>
         </DialogActions>
       </Dialog>
 
+      {/* Snackbar */}
       <Snackbar
         open={snackbarOpen}
         autoHideDuration={6000}
-        onClose={handleCloseSnackbar}
+        onClose={handleSnackbarClose}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
       >
-        <Alert
-          onClose={handleCloseSnackbar}
-          severity={snackbarSeverity}
-          sx={{ width: '100%' }}
-        >
+        <Alert onClose={handleSnackbarClose} severity={snackbarSeverity} sx={{ width: '100%' }}>
           {snackbarMessage}
         </Alert>
       </Snackbar>

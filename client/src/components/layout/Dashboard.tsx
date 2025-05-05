@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Outlet, useLocation } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '../../redux/hooks';
-import { logout } from '../../redux/slices/authSlice';
+import { logout, getCurrentUser } from '../../redux/slices/authSlice';
 import { useThemeContext } from '../../App';
 import { 
   AppBar, Box, CssBaseline, Divider, Drawer, IconButton, List, ListItem, 
@@ -12,19 +12,18 @@ import {
   Menu as MenuIcon, Dashboard as DashboardIcon, People as ClientsIcon, 
   ShoppingCart as OrdersIcon, Inventory as InventoryIcon, Group as EmployeesIcon, 
   LocalShipping as SuppliersIcon, HowToReg as AttendanceIcon, Build as MachineryIcon, 
-  BarChart as ReportsIcon, AccountCircle, Settings, ExitToApp, ChevronLeft, 
+  BarChart as ReportsIcon, AccountCircle, ExitToApp, ChevronLeft, 
   ExpandLess, ExpandMore, RequestQuote as RequestIcon, ImportContacts as ClientRequestIcon, 
   Source as SupplierRequestIcon, Payments as PayrollIcon, KeyboardArrowDown
 } from '@mui/icons-material';
 import PrintIcon from '@mui/icons-material/Print';
 
-// Drawer width responsive to screen size
 const getDrawerWidth = () => {
   if (typeof window !== 'undefined') {
     if (window.innerWidth < 600) return 240;
     return 280;
   }
-  return 280; // Default for SSR
+  return 280; 
 };
 
 const drawerWidth = getDrawerWidth();
@@ -63,12 +62,20 @@ const DashboardLayout: React.FC = () => {
   const location = useLocation();
   const { user } = useAppSelector(state => state.auth);
   
+  // Simple effect just to ensure we have user data
+  useEffect(() => {
+    if (!user) {
+      console.log('Dashboard loading initial user data');
+      dispatch(getCurrentUser());
+    }
+  // eslint-disable-next-line
+  }, [dispatch]);
+  
   // Access theme context to use settings
   const { darkMode, themeColor, compactView } = useThemeContext();
   
   const isXsScreen = useMediaQuery(theme.breakpoints.down('sm'));
   const isSmallScreen = useMediaQuery(theme.breakpoints.down('md'));
-  const isMediumScreen = useMediaQuery(theme.breakpoints.between('md', 'lg'));
 
   // Update drawer width on resize
   useEffect(() => {
@@ -111,11 +118,6 @@ const DashboardLayout: React.FC = () => {
   const handleProfileClick = () => {
     setUserMenuAnchor(null);
     navigate('/profile');
-  };
-
-  const handleSettingsClick = () => {
-    setUserMenuAnchor(null);
-    navigate('/settings');
   };
 
   const handleLogout = () => {
@@ -210,10 +212,32 @@ const DashboardLayout: React.FC = () => {
             bgcolor: darkMode ? 'rgba(255, 255, 255, 0.03)' : 'rgba(25, 118, 210, 0.04)'
           }}
         >
+          <Avatar
+            src={user.avatar || undefined}
+            alt={user.firstName || user.email}
+            sx={{ 
+              width: { xs: 60, md: 70 }, 
+              height: { xs: 60, md: 70 },
+              fontSize: { xs: '1.5rem', md: '1.8rem' },
+              fontWeight: 'bold',
+              bgcolor: 'primary.main',
+              color: 'white',
+              mb: 1.5,
+              boxShadow: '0 4px 8px rgba(0,0,0,0.1)',
+              cursor: 'pointer',
+              '&:hover': {
+                transform: 'scale(1.05)',
+                transition: 'transform 0.2s'
+              }
+            }}
+            onClick={handleProfileClick}
+          >
+            {!user.avatar && getInitial(user.firstName || user.email || 'U')}
+          </Avatar>
+          
           <Typography 
             variant="subtitle1" 
             sx={{ 
-              mt: 1.5, 
               fontWeight: 'medium',
               fontSize: { xs: '0.95rem', md: '1.1rem' }
             }}
@@ -429,7 +453,6 @@ const DashboardLayout: React.FC = () => {
   const getPageTitle = () => {
     if (location.pathname.includes('/orders/requests')) return 'Order Requests';
     if (location.pathname.includes('/orders/clients')) return 'Client Orders';
-    if (location.pathname.includes('/orders/products')) return 'Product Profiles';
     if (location.pathname.includes('/orders/suppliers')) return 'Supplier Orders';
     if (location.pathname.includes('/dashboard')) return 'Dashboard'
     
@@ -510,23 +533,41 @@ const DashboardLayout: React.FC = () => {
               textTransform: 'none',
               bgcolor: Boolean(userMenuAnchor) ? 'rgba(0,0,0,0.04)' : 'transparent',
               '&:hover': { bgcolor: 'rgba(0,0,0,0.08)' },
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1
             }}
             endIcon={isXsScreen ? undefined : <KeyboardArrowDown />}
           >
+            <Avatar
+              src={user?.avatar || undefined}
+              alt={user?.firstName || user?.email}
+              sx={{ 
+                width: 34, 
+                height: 34,
+                fontSize: '0.875rem',
+                fontWeight: 'bold',
+                bgcolor: 'primary.main',
+                color: 'white'
+              }}
+            >
+              {getInitial(user?.firstName || user?.email || 'U')}
+            </Avatar>
+            
             {!isXsScreen && (
               <Box sx={{ textAlign: 'left' }}>
-                <Typography 
-                  variant="body2" 
-                  sx={{ 
-                    fontWeight: 'medium', 
-                    lineHeight: 1.2,
-                    color: 'text.primary'
-                  }}
-                >
-                  {user?.firstName 
-                    ? `${user.firstName} ${user.lastName || ''}`
-                    : user?.email}
-                </Typography>
+              <Typography 
+                variant="body2" 
+                sx={{ 
+                fontWeight: 'medium', 
+                lineHeight: 1.2,
+                color: 'text.primary'
+                }}
+              >
+                {user?.firstName 
+                ? `${user.firstName} ${user.lastName || ''}`
+                : 'User'}
+              </Typography>
                 <Typography 
                   variant="caption" 
                   sx={{ 
@@ -570,16 +611,40 @@ const DashboardLayout: React.FC = () => {
             TransitionComponent={Fade}
             transitionDuration={200}
           >
-            <Box sx={{ pt: 2, pb: 1.5, px: 2, mb: 1 }}>
-              <Typography variant="subtitle2" fontWeight="bold">
-                {user?.firstName 
-                  ? `${user.firstName} ${user.lastName || ''}`
-                  : user?.email}
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ wordBreak: 'break-all' }}>
-                {user?.email}
-              </Typography>
+            <Box sx={{ pt: 2, pb: 1.5, px: 2, mb: 1, display: 'flex', alignItems: 'center' }}>
+              <Avatar
+                src={user?.avatar || undefined}
+                alt={user?.firstName || user?.email}
+                sx={{ 
+                  width: 40, 
+                  height: 40,
+                  mr: 1.5,
+                  fontSize: '1rem',
+                  fontWeight: 'bold',
+                  bgcolor: 'primary.main',
+                  color: 'white'
+                }}
+              >
+                {getInitial(user?.firstName || user?.email || 'U')}
+              </Avatar>
+              
+              <Box>
+                <Typography variant="subtitle2" fontWeight="bold">
+                  {user?.firstName 
+                    ? `${user.firstName} ${user.lastName || ''}`
+                    : 'User'}
+                </Typography>
+              </Box>
             </Box>
+            
+            <MenuItem onClick={handleProfileClick} sx={{ py: 1.5 }}>
+              <ListItemIcon>
+                <AccountCircle fontSize="small" color="primary" />
+              </ListItemIcon>
+              <ListItemText primary="My Profile" />
+            </MenuItem>
+            
+            <Divider sx={{ my: 1 }} />
             
             <MenuItem onClick={handleLogout} sx={{ py: 1.5 }}>
               <ListItemIcon>
