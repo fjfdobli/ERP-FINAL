@@ -11,7 +11,10 @@ export interface Payroll {
   baseSalary: number;
   overtimePay: number;
   bonus: number;
-  deductions: number;
+  sssContribution: number; // SSS Premium
+  sssLoan: number; // SSS Loan
+  pagibigContribution: number; // PAG-IBIG
+  deductions: number; // Other deductions
   taxWithholding: number;
   netSalary: number;
   status: 'Draft' | 'Pending' | 'Approved' | 'Paid';
@@ -31,7 +34,10 @@ export interface InsertPayroll {
   baseSalary: number;
   overtimePay: number;
   bonus: number;
-  deductions: number;
+  sssContribution: number; // SSS Premium
+  sssLoan: number; // SSS Loan
+  pagibigContribution: number; // PAG-IBIG
+  deductions: number; // Other deductions
   taxWithholding: number;
   netSalary: number;
   status: string;

@@ -67,7 +67,9 @@ interface PayrollFormData {
   baseSalary: number;
   overtimePay: number;
   bonus: number;
-  deductions: number;
+  sssContribution: number; // SSS Premium
+  sssLoan: number; // SSS Loan
+  pagibigContribution: number; // PAG-IBIG
   taxWithholding: number;
   status: 'Draft' | 'Pending' | 'Approved' | 'Paid';
   notes: string;
@@ -82,10 +84,107 @@ interface BulkPayrollRow {
   baseSalary: number;
   overtimePay: number;
   bonus: number;
-  deductions: number;
+  sssContribution: number; // SSS Premium
+  sssLoan: number; // SSS Loan
+  pagibigContribution: number; // PAG-IBIG
   taxWithholding: number;
   include: boolean;
 }
+
+// Function to calculate SSS contribution based on salary bracket
+const calculateSSSContribution = (salary: number): number => {
+  if (salary <= 3250) {
+    return 135; // Minimum contribution
+  } else if (salary <= 3750) {
+    return 157.50;
+  } else if (salary <= 4250) {
+    return 180;
+  } else if (salary <= 4750) {
+    return 202.50;
+  } else if (salary <= 5250) {
+    return 225;
+  } else if (salary <= 5750) {
+    return 247.50;
+  } else if (salary <= 6250) {
+    return 270;
+  } else if (salary <= 6750) {
+    return 292.50;
+  } else if (salary <= 7250) {
+    return 315;
+  } else if (salary <= 7750) {
+    return 337.50;
+  } else if (salary <= 8250) {
+    return 360;
+  } else if (salary <= 8750) {
+    return 382.50;
+  } else if (salary <= 9250) {
+    return 405;
+  } else if (salary <= 9750) {
+    return 427.50;
+  } else if (salary <= 10250) {
+    return 450;
+  } else if (salary <= 10750) {
+    return 472.50;
+  } else if (salary <= 11250) {
+    return 495;
+  } else if (salary <= 11750) {
+    return 517.50;
+  } else if (salary <= 12250) {
+    return 540;
+  } else if (salary <= 12750) {
+    return 562.50;
+  } else if (salary <= 13250) {
+    return 585;
+  } else if (salary <= 13750) {
+    return 607.50;
+  } else if (salary <= 14250) {
+    return 630;
+  } else if (salary <= 14750) {
+    return 652.50;
+  } else if (salary <= 15250) {
+    return 675;
+  } else if (salary <= 15750) {
+    return 697.50;
+  } else if (salary <= 16250) {
+    return 720;
+  } else if (salary <= 16750) {
+    return 742.50;
+  } else if (salary <= 17250) {
+    return 765;
+  } else if (salary <= 17750) {
+    return 787.50;
+  } else if (salary <= 18250) {
+    return 810;
+  } else if (salary <= 18750) {
+    return 832.50;
+  } else if (salary <= 19250) {
+    return 855;
+  } else if (salary <= 19750) {
+    return 877.50;
+  } else if (salary <= 20250) {
+    return 900;
+  } else if (salary <= 20750) {
+    return 922.50;
+  } else if (salary <= 21250) {
+    return 945;
+  } else if (salary <= 21750) {
+    return 967.50;
+  } else if (salary <= 22250) {
+    return 990;
+  } else if (salary <= 22750) {
+    return 1012.50;
+  } else if (salary <= 23250) {
+    return 1035;
+  } else if (salary <= 23750) {
+    return 1057.50;
+  } else if (salary <= 24250) {
+    return 1080;
+  } else if (salary <= 24750) {
+    return 1102.50;
+  } else {
+    return 1125; // Maximum contribution for salaries over 24,750
+  }
+};
 
 const PayrollPage: React.FC = () => {
   const dispatch = useAppDispatch();
@@ -115,7 +214,9 @@ const PayrollPage: React.FC = () => {
     baseSalary: 0,
     overtimePay: 0,
     bonus: 0,
-    deductions: 0,
+    sssContribution: 0,
+    sssLoan: 0,
+    pagibigContribution: 0,
     taxWithholding: 0,
     status: 'Draft',
     notes: '',
@@ -176,6 +277,32 @@ const PayrollPage: React.FC = () => {
     if (payroll) {
       setSelectedPayroll(payroll);
       
+      // Extract SSS and PAG-IBIG values from notes if available
+      let sssContribution = 0;
+      let sssLoan = 0;
+      let pagibigContribution = 0;
+
+      // Parse deduction breakdown from notes if available
+      if (payroll.notes && payroll.notes.includes('SSS Premium')) {
+        try {
+          const sssMatch = payroll.notes.match(/SSS Premium: ₱(\d+(\.\d+)?)/);
+          const sssLoanMatch = payroll.notes.match(/SSS Loan: ₱(\d+(\.\d+)?)/);
+          const pagibigMatch = payroll.notes.match(/PAG-IBIG: ₱(\d+(\.\d+)?)/);
+
+          if (sssMatch) sssContribution = parseFloat(sssMatch[1]);
+          if (sssLoanMatch) sssLoan = parseFloat(sssLoanMatch[1]);
+          if (pagibigMatch) pagibigContribution = parseFloat(pagibigMatch[1]);
+        } catch (e) {
+          console.error('Error parsing deductions from notes:', e);
+        }
+      }
+
+      // Clean up notes to remove deduction details
+      let cleanNotes = payroll.notes || '';
+      if (cleanNotes.includes('SSS Premium')) {
+        cleanNotes = cleanNotes.split(/SSS Premium:/)[0].trim();
+      }
+
       setFormData({
         employeeId: payroll.employeeId,
         period: payroll.period,
@@ -184,10 +311,12 @@ const PayrollPage: React.FC = () => {
         baseSalary: payroll.baseSalary,
         overtimePay: payroll.overtimePay,
         bonus: payroll.bonus,
-        deductions: payroll.deductions,
+        sssContribution: sssContribution,
+        sssLoan: sssLoan,
+        pagibigContribution: pagibigContribution,
         taxWithholding: payroll.taxWithholding,
         status: payroll.status as any,
-        notes: payroll.notes || '',
+        notes: cleanNotes,
         bankTransferRef: payroll.bankTransferRef || '',
         paymentDate: payroll.paymentDate ? parseISO(payroll.paymentDate) : null,
         paymentCycle: payroll.paymentCycle || '30'
@@ -202,7 +331,9 @@ const PayrollPage: React.FC = () => {
         baseSalary: 0,
         overtimePay: 0,
         bonus: 0,
-        deductions: 0,
+        sssContribution: 0,
+        sssLoan: 0,
+        pagibigContribution: 0,
         taxWithholding: 0,
         status: 'Draft',
         notes: '',
@@ -241,13 +372,20 @@ const PayrollPage: React.FC = () => {
             filters.endDate || format(endOfMonth(new Date()), 'yyyy-MM-dd')
           );
           
+          // Calculate SSS contribution based on salary bracket from image
+          const sssContribution = calculateSSSContribution(salary);
+          // Calculate PAG-IBIG contribution (100 pesos based on image)
+          const pagibigContribution = 100;
+
           return {
             employeeId,
             employeeName: `${emp.firstName} ${emp.lastName}`,
             baseSalary: Math.round(baseSalary * 100) / 100,
             overtimePay: Math.round(overtimePay * 100) / 100,
             bonus: 0,
-            deductions: Math.round(salary * 0.045 * 100) / 100, // 4.5% SSS
+            sssContribution,
+            sssLoan: 0, // Default to 0, can be updated by user
+            pagibigContribution,
             taxWithholding: Math.round(salary * 0.1 * 100) / 100, // 10% tax
             include: true
           };
@@ -271,12 +409,13 @@ const PayrollPage: React.FC = () => {
     const { name, value } = e.target;
     setFormData(prev => ({
       ...prev,
-      [name]: name.includes('Salary') || 
-              name.includes('Pay') || 
-              name.includes('bonus') || 
-              name.includes('deductions') || 
-              name.includes('tax') 
-              ? Number(value) 
+      [name]: name.includes('Salary') ||
+              name.includes('Pay') ||
+              name.includes('bonus') ||
+              name.includes('tax') ||
+              name.includes('sss') ||
+              name.includes('pagibig')
+              ? Number(value)
               : value
     }));
   };
@@ -307,12 +446,17 @@ const PayrollPage: React.FC = () => {
             format(prev.endDate, 'yyyy-MM-dd')
           );
           
+          const sssContribution = calculateSSSContribution(salary);
+          const pagibigContribution = 100; // Fixed PAG-IBIG contribution based on image
+
           return {
             ...prev,
             [name]: value,
             baseSalary: Math.round(baseSalary * 100) / 100,
             overtimePay: Math.round(overtimePay * 100) / 100,
-            deductions: Math.round(salary * 0.045 * 100) / 100, // 4.5% SSS
+            sssContribution,
+            sssLoan: 0, // Default to 0, can be set by user
+            pagibigContribution,
             taxWithholding: Math.round(salary * 0.1 * 100) / 100 // 10% tax
           };
         }
@@ -526,8 +670,14 @@ const PayrollPage: React.FC = () => {
     }
   };
 
-  const getNetSalary = (baseSalary: number, overtimePay: number, bonus: number, deductions: number, taxWithholding: number) => {
-    return baseSalary + overtimePay + bonus - deductions - taxWithholding;
+  // Calculate net salary considering all deductions
+  const getNetSalary = (baseSalary: number, overtimePay: number, bonus: number, sssContribution: number, sssLoan: number, pagibigContribution: number, taxWithholding: number) => {
+    return baseSalary + overtimePay + bonus - sssContribution - sssLoan - pagibigContribution - taxWithholding;
+  };
+
+  // For database compatibility - combines SSS and PAG-IBIG
+  const getCombinedDeductions = (sssContribution: number, sssLoan: number, pagibigContribution: number) => {
+    return sssContribution + sssLoan + pagibigContribution;
   };
 
   const handleSubmit = async () => {
@@ -540,13 +690,22 @@ const PayrollPage: React.FC = () => {
           .filter(row => row.include)
           .map(row => {
             const netSalary = getNetSalary(
-              row.baseSalary, 
-              row.overtimePay, 
+              row.baseSalary,
+              row.overtimePay,
               row.bonus,
-              row.deductions,
+              row.sssContribution,
+              row.sssLoan,
+              row.pagibigContribution,
               row.taxWithholding
             );
             
+            // Calculate the combined deductions (SSS and PAG-IBIG) to work with existing database schema
+            const combinedDeductions = row.sssContribution + row.sssLoan + row.pagibigContribution;
+
+            // Store the breakdown in notes for reference
+            const deductionBreakdown = `SSS Premium: ₱${row.sssContribution}, SSS Loan: ₱${row.sssLoan}, PAG-IBIG: ₱${row.pagibigContribution}`;
+            const notes = `Payroll for ${format(bulkPayrollDate, 'MMMM yyyy')}\n\n${deductionBreakdown}`;
+
             return {
               employeeId: row.employeeId,
               period: format(bulkPayrollDate, 'yyyy-MM'),
@@ -555,11 +714,11 @@ const PayrollPage: React.FC = () => {
               baseSalary: row.baseSalary,
               overtimePay: row.overtimePay,
               bonus: row.bonus,
-              deductions: row.deductions,
+              deductions: combinedDeductions, // Combined deductions for database compatibility
               taxWithholding: row.taxWithholding,
               netSalary,
               status: 'Draft' as const,
-              notes: `Payroll for ${format(bulkPayrollDate, 'MMMM yyyy')}`,
+              notes,
               bankTransferRef: null,
               paymentDate: null
             };
@@ -569,26 +728,36 @@ const PayrollPage: React.FC = () => {
         showSnackbar(`Successfully created payroll for ${payrollRecords.length} employees`, 'success');
       } else {
         // Handle single payroll record
-        const { 
-          employeeId, period, startDate, endDate, baseSalary, 
-          overtimePay, bonus, deductions, taxWithholding,
-          status, notes, bankTransferRef, paymentDate
+        const {
+          employeeId, period, startDate, endDate, baseSalary,
+          overtimePay, bonus, sssContribution, sssLoan, pagibigContribution,
+          taxWithholding, status, notes, bankTransferRef, paymentDate
         } = formData;
-        
+
         if (!employeeId) {
           showSnackbar('Please select an employee', 'error');
           setLoading(false);
           return;
         }
-        
+
         const netSalary = getNetSalary(
-          baseSalary, 
-          overtimePay, 
+          baseSalary,
+          overtimePay,
           bonus,
-          deductions,
+          sssContribution,
+          sssLoan,
+          pagibigContribution,
           taxWithholding
         );
         
+        // Calculate the combined deductions (SSS and PAG-IBIG) to work with existing database schema
+        const combinedDeductions = sssContribution + sssLoan + pagibigContribution;
+
+        // Store the breakdown in notes for reference
+        const deductionBreakdown = `SSS Premium: ₱${sssContribution}, SSS Loan: ₱${sssLoan}, PAG-IBIG: ₱${pagibigContribution}`;
+        const updatedNotes = notes ? `${notes}\n\n${deductionBreakdown}` : deductionBreakdown;
+
+        // Compatible with existing database schema
         const payrollData = {
           employeeId: Number(employeeId),
           period,
@@ -597,11 +766,11 @@ const PayrollPage: React.FC = () => {
           baseSalary,
           overtimePay,
           bonus,
-          deductions,
+          deductions: combinedDeductions, // Combined deductions for database compatibility
           taxWithholding,
           netSalary,
           status,
-          notes: notes || null,
+          notes: updatedNotes,
           bankTransferRef: bankTransferRef || null,
           paymentDate: paymentDate ? format(paymentDate, 'yyyy-MM-dd') : null,
           paymentCycle: formData.paymentCycle
@@ -773,8 +942,8 @@ const PayrollPage: React.FC = () => {
     
       // Employee Information Section
       doc.setFillColor(240, 240, 240);
-      doc.rect(margin, yPos, pageWidth - 2 * margin, 40, 'F');
-      
+      doc.rect(margin, yPos, pageWidth - 2 * margin, 35, 'F'); // Reduced height
+
       doc.setFontSize(11);
       doc.setFont('helvetica', 'bold');
       doc.text("EMPLOYEE DETAILS", margin + 5, yPos + 8);
@@ -786,9 +955,8 @@ const PayrollPage: React.FC = () => {
 
       const empdata = [
         [`Employee Name:`, `${employee.firstName} ${employee.lastName}`, `Pay Period:`, `${format(parseISO(payroll.startDate), 'MM/dd/yyyy')} - ${format(parseISO(payroll.endDate), 'MM/dd/yyyy')}`],
-        [`Employee ID:`, formatCurrency(payroll.deductions), `Payment Cycle:`, paymentCycleText],
-        [`Position:`, formatCurrency(payroll.taxWithholding), `Payroll Date:`, `${payroll.paymentDate ? format(parseISO(payroll.paymentDate), 'MM/dd/yyyy') : '---'}`],
-        [`Status:`, `${payroll.status}`, ``, ``]
+        [`Position:`, `${employee.position || '---'}`, `Payment Cycle:`, paymentCycleText],
+        [`Status:`, `${payroll.status}`, `Payroll Date:`, `${payroll.paymentDate ? format(parseISO(payroll.paymentDate), 'MM/dd/yyyy') : '---'}`]
       ];
       
 
@@ -812,10 +980,10 @@ const PayrollPage: React.FC = () => {
           cellWidth: 'auto',
         },
         columnStyles: {
-          0: { cellWidth: 35 },
-          1: { cellWidth: 45, halign: 'center', align: 'center' },
-          2: { cellWidth: 25},
-          3: { cellWidth: 55, halign: 'center', align: 'center' },
+          0: { cellWidth: 40 },
+          1: { cellWidth: 50, halign: 'center', align: 'center' },
+          2: { cellWidth: 30 },
+          3: { cellWidth: 42, halign: 'center', align: 'center' },
         }
       });
 
@@ -893,7 +1061,7 @@ const PayrollPage: React.FC = () => {
       
       // Get the last position of the table using a safer approach
       const lastAutoTable = (doc as any).lastAutoTable;
-      yPos = lastAutoTable?.finalY + 10 || yPos + 50;
+      yPos = lastAutoTable?.finalY + 10 || yPos + 45; // Adjusted to account for shorter employee section
       
       // Deductions Section Header
       doc.setFillColor(220, 230, 240);
@@ -903,12 +1071,40 @@ const PayrollPage: React.FC = () => {
       doc.text("DEDUCTIONS", pageWidth / 2, yPos, { align: 'center' });
       yPos += 10;
       
+      // Extract SSS and PAG-IBIG values from notes if available
+      let sssContribution = 0;
+      let sssLoan = 0;
+      let pagibigContribution = 0;
+
+      // If deductions exist in the database, assume they're combined SSS/PAG-IBIG
+      // This is for backward compatibility with existing data
+      const totalDeductions = payroll.deductions || 0;
+
+      // Parse deduction breakdown from notes if available
+      if (payroll.notes && payroll.notes.includes('SSS Premium')) {
+        try {
+          const sssMatch = payroll.notes.match(/SSS Premium: ₱(\d+(\.\d+)?)/);
+          const sssLoanMatch = payroll.notes.match(/SSS Loan: ₱(\d+(\.\d+)?)/);
+          const pagibigMatch = payroll.notes.match(/PAG-IBIG: ₱(\d+(\.\d+)?)/);
+
+          if (sssMatch) sssContribution = parseFloat(sssMatch[1]);
+          if (sssLoanMatch) sssLoan = parseFloat(sssLoanMatch[1]);
+          if (pagibigMatch) pagibigContribution = parseFloat(pagibigMatch[1]);
+        } catch (e) {
+          console.error('Error parsing deductions from notes:', e);
+        }
+      }
+
       // Deductions Table
       const deductionsData = [
         ["Description", "Amount"],
-        ["Standard Deductions", formatCurrency(payroll.deductions)],
+        ["SSS Premium", formatCurrency(sssContribution)],
+        ["SSS Loan", formatCurrency(sssLoan)],
+        ["PAG-IBIG Contribution", formatCurrency(pagibigContribution)],
         ["Tax Withholding", formatCurrency(payroll.taxWithholding)],
-        ["Total Deductions", formatCurrency(payroll.deductions + payroll.taxWithholding)]
+        ["Total Deductions", formatCurrency(
+          sssContribution + sssLoan + pagibigContribution + payroll.taxWithholding
+        )]
       ];
       
       autoTableFunc(doc, {
@@ -954,30 +1150,6 @@ const PayrollPage: React.FC = () => {
       doc.setTextColor(0, 0, 0);
       yPos += 30;
       
-      // Additional Information section if needed
-      if (payroll.bankTransferRef || payroll.notes) {
-        doc.setFillColor(245, 245, 245);
-        doc.rect(margin, yPos, pageWidth - 2 * margin, 25, 'F');
-        
-        doc.setFontSize(10);
-        doc.setFont('helvetica', 'bold');
-        doc.text("ADDITIONAL INFORMATION", margin + 5, yPos + 6);
-        
-        doc.setFont('helvetica', 'normal');
-        let infoYPos = yPos + 15;
-        
-        if (payroll.bankTransferRef) {
-          doc.text(`Bank Transfer Reference: ${payroll.bankTransferRef}`, margin + 10, infoYPos);
-          infoYPos += 6;
-        }
-        
-        if (payroll.notes) {
-          doc.text(`Notes: ${payroll.notes}`, margin + 10, infoYPos);
-        }
-        
-        yPos += 30;
-      }
-      
       // Footer with signatures
       doc.setLineWidth(0.5);
       doc.line(margin + 20, yPos, margin + 80, yPos);
@@ -985,8 +1157,8 @@ const PayrollPage: React.FC = () => {
       
       doc.setFontSize(9);
       doc.setFont('helvetica', 'normal');
-      doc.text("Prepared by", margin + 20, yPos + 5, { align: 'left' });
-      doc.text("Received by", pageWidth - margin - 80, yPos + 5, { align: 'left' });
+      doc.text("Prepared by", margin + 20, yPos + 4, { align: 'left' });
+      doc.text("Received by", pageWidth - margin - 80, yPos + 4, { align: 'left' });
       
       // // Disclaimer at bottom
       // doc.setFontSize(8);
@@ -1096,13 +1268,12 @@ const PayrollPage: React.FC = () => {
       yPos += 60;
       
       // Employee Details Table uses the periodPayrolls variable that was declared earlier
-      const tableHeaders = ["Employee", "Base Salary", "Overtime", "Bonus", "Deductions", "Tax", "Net Salary", "Status"];
+      const tableHeaders = ["Employee", "Base Salary", "Overtime", "Bonus", "Tax", "Net Salary", "Status"];
       const tableData = periodPayrolls.map((record: PayrollType) => [
         getEmployeeName(record.employeeId),
         formatCurrency(record.baseSalary),
         formatCurrency(record.overtimePay),
         formatCurrency(record.bonus),
-        formatCurrency(record.deductions),
         formatCurrency(record.taxWithholding),
         formatCurrency(record.netSalary),
         record.status
@@ -1134,8 +1305,7 @@ const PayrollPage: React.FC = () => {
           3: { halign: 'right' },
           4: { halign: 'right' },
           5: { halign: 'right' },
-          6: { halign: 'right' },
-          7: { cellWidth: 20 }
+          6: { cellWidth: 20 }
         }
       });
       
@@ -1371,7 +1541,6 @@ const PayrollPage: React.FC = () => {
                     <TableCell><strong>Base Salary</strong></TableCell>
                     <TableCell><strong>Overtime</strong></TableCell>
                     <TableCell><strong>Bonus</strong></TableCell>
-                    <TableCell><strong>Deductions</strong></TableCell>
                     <TableCell><strong>Tax</strong></TableCell>
                     <TableCell><strong>Net Salary</strong></TableCell>
                     <TableCell><strong>Status</strong></TableCell>
@@ -1393,7 +1562,6 @@ const PayrollPage: React.FC = () => {
                         <TableCell>{formatCurrency(record.baseSalary)}</TableCell>
                         <TableCell>{formatCurrency(record.overtimePay)}</TableCell>
                         <TableCell>{formatCurrency(record.bonus)}</TableCell>
-                        <TableCell>{formatCurrency(record.deductions)}</TableCell>
                         <TableCell>{formatCurrency(record.taxWithholding)}</TableCell>
                         <TableCell sx={{ fontWeight: 'bold' }}>
                           {formatCurrency(record.netSalary)}
@@ -1684,7 +1852,9 @@ const PayrollPage: React.FC = () => {
                         <TableCell><strong>Base Salary</strong></TableCell>
                         <TableCell><strong>Overtime Pay</strong></TableCell>
                         <TableCell><strong>Bonus</strong></TableCell>
-                        <TableCell><strong>Deductions</strong></TableCell>
+                        <TableCell><strong>SSS Premium</strong></TableCell>
+                        <TableCell><strong>SSS Loan</strong></TableCell>
+                        <TableCell><strong>PAG-IBIG</strong></TableCell>
                         <TableCell><strong>Tax</strong></TableCell>
                         <TableCell><strong>Net</strong></TableCell>
                       </TableRow>
@@ -1741,8 +1911,32 @@ const PayrollPage: React.FC = () => {
                           <TableCell>
                             <TextField
                               type="number"
-                              value={row.deductions}
-                              onChange={(e) => handleBulkInputChange(index, 'deductions', e.target.value)}
+                              value={row.sssContribution}
+                              onChange={(e) => handleBulkInputChange(index, 'sssContribution', e.target.value)}
+                              disabled={!row.include}
+                              size="small"
+                              InputProps={{
+                                startAdornment: <InputAdornment position="start">₱</InputAdornment>,
+                              }}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <TextField
+                              type="number"
+                              value={row.sssLoan}
+                              onChange={(e) => handleBulkInputChange(index, 'sssLoan', e.target.value)}
+                              disabled={!row.include}
+                              size="small"
+                              InputProps={{
+                                startAdornment: <InputAdornment position="start">₱</InputAdornment>,
+                              }}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <TextField
+                              type="number"
+                              value={row.pagibigContribution}
+                              onChange={(e) => handleBulkInputChange(index, 'pagibigContribution', e.target.value)}
                               disabled={!row.include}
                               size="small"
                               InputProps={{
@@ -1765,7 +1959,9 @@ const PayrollPage: React.FC = () => {
                           <TableCell>
                             <Typography variant="body2" fontWeight="bold">
                               {formatCurrency(
-                                row.baseSalary + row.overtimePay + row.bonus - row.deductions - row.taxWithholding
+                                row.baseSalary + row.overtimePay + row.bonus -
+                                row.sssContribution - row.sssLoan - row.pagibigContribution -
+                                row.taxWithholding
                               )}
                             </Typography>
                           </TableCell>
@@ -1883,21 +2079,57 @@ const PayrollPage: React.FC = () => {
                 />
               </Grid>
               
-              <Grid item xs={12} md={6}>
+              <Grid item xs={12}>
+                <Divider sx={{ my: 1 }} />
+                <Typography variant="subtitle1" gutterBottom>
+                  Contributions & Deductions
+                </Typography>
+              </Grid>
+
+              <Grid item xs={12} md={4}>
                 <TextField
-                  name="deductions"
-                  label="Deductions"
+                  name="sssContribution"
+                  label="SSS Premium"
                   type="number"
                   fullWidth
-                  value={formData.deductions}
+                  value={formData.sssContribution}
                   onChange={handleInputChange}
                   InputProps={{
                     startAdornment: <InputAdornment position="start">₱</InputAdornment>,
                   }}
                 />
               </Grid>
-              
-              <Grid item xs={12} md={6}>
+
+              <Grid item xs={12} md={4}>
+                <TextField
+                  name="sssLoan"
+                  label="SSS Loan"
+                  type="number"
+                  fullWidth
+                  value={formData.sssLoan}
+                  onChange={handleInputChange}
+                  InputProps={{
+                    startAdornment: <InputAdornment position="start">₱</InputAdornment>,
+                  }}
+                />
+              </Grid>
+
+              <Grid item xs={12} md={4}>
+                <TextField
+                  name="pagibigContribution"
+                  label="PAG-IBIG Contribution"
+                  type="number"
+                  fullWidth
+                  value={formData.pagibigContribution}
+                  onChange={handleInputChange}
+                  InputProps={{
+                    startAdornment: <InputAdornment position="start">₱</InputAdornment>,
+                  }}
+                />
+              </Grid>
+
+
+              <Grid item xs={12} md={12}>
                 <TextField
                   name="taxWithholding"
                   label="Tax Withholding"
@@ -1919,10 +2151,12 @@ const PayrollPage: React.FC = () => {
                   <Typography variant="h5" fontWeight="bold" color="primary">
                     {formatCurrency(
                       getNetSalary(
-                        formData.baseSalary, 
-                        formData.overtimePay, 
+                        formData.baseSalary,
+                        formData.overtimePay,
                         formData.bonus,
-                        formData.deductions,
+                        formData.sssContribution,
+                        formData.sssLoan,
+                        formData.pagibigContribution,
                         formData.taxWithholding
                       )
                     )}
