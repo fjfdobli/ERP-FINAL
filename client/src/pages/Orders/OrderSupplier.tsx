@@ -7,17 +7,16 @@ import {
   Grid
 } from '@mui/material';
 import { Search as SearchIcon, Refresh as RefreshIcon, Add as AddIcon, PictureAsPdf as PdfIcon } from '@mui/icons-material';
-import { fetchSuppliers, selectAllSuppliers, selectSuppliersStatus, selectSuppliersError } from '../../redux/slices/suppliersSlice';
+import { fetchSuppliers, selectAllSuppliers, selectSuppliersStatus } from '../../redux/slices/suppliersSlice';
 import { fetchInventory, addInventoryTransaction, selectAllInventoryItems, selectInventoryLoading } from '../../redux/slices/inventorySlice';
 import {
   fetchSupplierOrders, fetchQuotationRequests, updateSupplierOrder, updateQuotationRequest, addOrderPayment,
   createOrderFromQuotation, createSupplierOrder, createQuotationRequest, deleteSupplierOrder, deleteQuotationRequest,
-  selectAllSupplierOrders, selectAllQuotationRequests, selectOrderSupplierLoading, selectOrderSupplierError
-} from '../../redux/slices/orderSupplierSlice';
+  selectAllSupplierOrders, selectAllQuotationRequests, selectOrderSupplierLoading } from '../../redux/slices/orderSupplierSlice';
 import { Supplier } from '../../services/suppliersService';
 import { InventoryItem } from '../../services/inventoryService';
 import {
-  SupplierOrder, SupplierOrderItem, QuotationRequest, QuotationItem, OrderPayment, CreateSupplierOrder,
+  SupplierOrder, SupplierOrderItem, QuotationRequest, QuotationItem, CreateSupplierOrder,
   CreateQuotationRequest, UpdateSupplierOrder, UpdateQuotationRequest, Supplier as OrderSupplierServiceSupplier
 } from '../../services/orderSupplierService';
 import { AppDispatch } from '../../redux/store';
@@ -209,7 +208,7 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({
         return 'default';
     }
   };
-
+  
   // Helper function to handle stock in when order is received
   const handleReceiveItems = async () => {
     try {
@@ -337,7 +336,6 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({
                     <TableCell><strong>Quantity</strong></TableCell>
                     <TableCell><strong>Unit Price</strong></TableCell>
                     <TableCell><strong>Total Price</strong></TableCell>
-                    <TableCell><strong>Expected Delivery</strong></TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -422,8 +420,6 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({
               onClick={() => {
                 if (order.id && paymentPlan !== order.payment_plan) {
                   onStatusChange(order.id, order.status);
-                  // Update payment plan through a different mechanism
-                  // For now, we'll just refresh the orders which will update the UI
                   dispatch(fetchSupplierOrders());
                 }
               }}
@@ -1383,7 +1379,6 @@ const OrderSupplier: React.FC = () => {
         { header: 'Quantity', dataKey: 'quantity' as const },
         { header: 'Unit Price', dataKey: 'unit_price' as const },
         { header: 'Total Price', dataKey: 'total_price' as const },
-        { header: 'Expected Delivery', dataKey: 'expected_delivery_date' as const }
       ];
 
       const tableRows = order.items.map(item => ({
@@ -2494,20 +2489,6 @@ const OrderSupplier: React.FC = () => {
                   }}
                 />
               </Grid>
-              <Grid item xs={6} md={3}>
-                <TextField
-                  label="Expected Delivery Date"
-                  type="date"
-                  InputLabelProps={{ shrink: true }}
-                  size="small"
-                  fullWidth
-                  value={currentItem.expected_delivery_date || ''}
-                  onChange={(e) => setCurrentItem({
-                    ...currentItem,
-                    expected_delivery_date: e.target.value
-                  })}
-                />
-              </Grid>
               <Grid item xs={6} md={1} sx={{ display: 'flex', justifyContent: 'flex-end' }}>
                 <Button
                   variant="contained"
@@ -2530,7 +2511,6 @@ const OrderSupplier: React.FC = () => {
                     <TableCell><strong>Quantity</strong></TableCell>
                     <TableCell><strong>Unit Price</strong></TableCell>
                     <TableCell><strong>Total Price</strong></TableCell>
-                    <TableCell><strong>Expected Delivery</strong></TableCell>
                     <TableCell><strong>Actions</strong></TableCell>
                   </TableRow>
                 </TableHead>
@@ -2920,20 +2900,6 @@ const OrderSupplier: React.FC = () => {
                         }}
                       />
                     </Grid>
-                    <Grid item xs={6} md={2}>
-                      <TextField
-                        label="Expected Delivery Date"
-                        type="date"
-                        InputLabelProps={{ shrink: true }}
-                        size="small"
-                        fullWidth
-                        value={currentEditItem.expected_delivery_date || ''}
-                        onChange={(e) => setCurrentEditItem({
-                          ...currentEditItem,
-                          expected_delivery_date: e.target.value
-                        })}
-                      />
-                    </Grid>
                     <Grid item xs={6} md={2} sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
                       <Button
                         variant="contained"
@@ -2963,7 +2929,6 @@ const OrderSupplier: React.FC = () => {
                       <TableCell><strong>Quantity</strong></TableCell>
                       <TableCell><strong>Unit Price</strong></TableCell>
                       <TableCell><strong>Total Price</strong></TableCell>
-                      <TableCell><strong>Expected Delivery</strong></TableCell>
                       <TableCell><strong>Actions</strong></TableCell>
                     </TableRow>
                   </TableHead>

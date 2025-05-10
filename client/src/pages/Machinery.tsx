@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Box, Typography, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, TextField, InputAdornment, CircularProgress, Dialog, DialogTitle, DialogContent, DialogActions, Grid, Snackbar, Alert, FormControl, InputLabel, Select, MenuItem, Chip, IconButton, Tooltip, Tabs, Tab, Divider, Card, CardContent, List, ListItem, ListItemText, ListItemIcon, Link, LinearProgress, Avatar, ImageList, ImageListItem } from '@mui/material';
+import { Box, Typography, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, TextField, InputAdornment, CircularProgress, Dialog, DialogTitle, DialogContent, DialogActions, Grid, Snackbar, Alert, FormControl, InputLabel, Select, SelectChangeEvent, MenuItem, Chip, IconButton, Tooltip, Tabs, Tab, Divider, Card, CardContent, List, ListItem, ListItemText, ListItemIcon, Link, LinearProgress, Avatar, ImageList, ImageListItem } from '@mui/material';
 import { Add as AddIcon, Search as SearchIcon, Refresh as RefreshIcon, History as HistoryIcon, ConstructionOutlined as ConstructionIcon, ReceiptLong as ReceiptLongIcon, Build as BuildIcon, Edit as EditIcon, Delete as DeleteIcon, CheckCircle as CheckCircleIcon, Warning as WarningIcon, Error as ErrorIcon, Info as InfoIcon, DoDisturb as DoDisturbIcon, EventNote as EventNoteIcon, Engineering as EngineeringIcon, Handyman as HandymanIcon, PhotoCamera as PhotoCameraIcon, CloudUpload as CloudUploadIcon, SwapHoriz as SwapHorizIcon, Timer as TimerIcon, Person as PersonIcon } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { useAppDispatch, useAppSelector } from '../redux/hooks';
 import { fetchMachinery, createMachinery, updateMachinery, deleteMachinery, fetchMaintenanceRecords, createMaintenanceRecord, updateMaintenanceRecord, deleteMaintenanceRecord, fetchMachineryStats, fetchMaintenanceCostSummary, uploadMachineryImage, uploadMultipleMachineryImages, fetchStatusHistory, createStatusHistory, updateStatusHistory, deleteStatusHistory } from '../redux/slices/machinerySlice';
+import { selectAllTechnicians, fetchTechnicians } from '../redux/slices/techniciansSlice';
+import { selectAllEmployees, fetchEmployees } from '../redux/slices/employeesSlice';
 import { Machinery as MachineryType, MachineryFilters, MaintenanceRecord, StatusHistoryRecord } from '../services/machineryService';
 import { format, parseISO, addMonths, isBefore, isAfter, formatDistance } from 'date-fns';
 
@@ -81,13 +83,17 @@ const MachineryList: React.FC = () => {
     machinery, currentMachinery, maintenanceRecords, statusHistory,
     machineryStats, isLoading 
   } = useAppSelector((state: any) => state.machinery || {
-    machinery: [], 
-    currentMachinery: null, 
+    machinery: [],
+    currentMachinery: null,
     maintenanceRecords: [],
     statusHistory: [],
     machineryStats: null,
     isLoading: false
   });
+
+  // Get technicians and employees data for dropdown selections
+  const technicians = useAppSelector(selectAllTechnicians);
+  const employees = useAppSelector(selectAllEmployees);
   
   const [loading, setLoading] = useState<boolean>(false);
   const [tabValue, setTabValue] = useState(0);
@@ -220,6 +226,11 @@ const MachineryList: React.FC = () => {
       await dispatch(fetchMachinery(filters)).unwrap();
       await dispatch(fetchMachineryStats()).unwrap();
       await dispatch(fetchMaintenanceCostSummary()).unwrap();
+
+      // Fetch technicians and employees data for records
+      await dispatch(fetchTechnicians({})).unwrap();
+      await dispatch(fetchEmployees()).unwrap();
+
       setLoading(false);
     } catch (error: any) {
       console.error('Error fetching data:', error);
@@ -538,7 +549,9 @@ const MachineryList: React.FC = () => {
     setSelectedMaintenance(null);
   };
 
-  const handleMaintenanceInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleMaintenanceInputChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement> | SelectChangeEvent<string>
+  ) => {
     const { name, value } = e.target;
     setMaintenanceForm(prev => ({
       ...prev,
@@ -607,7 +620,9 @@ const MachineryList: React.FC = () => {
     setSelectedStatusHistory(null);
   };
 
-  const handleStatusHistoryInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleStatusHistoryInputChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement> | SelectChangeEvent<string>
+  ) => {
     const { name, value } = e.target;
     setStatusHistoryForm(prev => ({
       ...prev,
@@ -1784,12 +1799,11 @@ const MachineryList: React.FC = () => {
                   type="file"
                   accept="image/*"
                   multiple
+                  aria-label="Upload machinery images"
                   style={{ display: 'none' }}
                   id="image-upload"
                   ref={fileInputRef}
                   onChange={handleImageChange}
-                  title="Upload machinery images"
-                  aria-label="Upload machinery images"
                 />
                 
                 <Button 
@@ -2072,15 +2086,25 @@ const MachineryList: React.FC = () => {
             </Grid>
             
             <Grid item xs={12} md={6}>
-              <TextField
-                name="performedBy"
-                label="Performed By"
-                fullWidth
-                required
-                value={maintenanceForm.performedBy}
-                onChange={handleMaintenanceInputChange}
-                placeholder="Technician or service provider name"
-              />
+              <FormControl fullWidth required>
+                <InputLabel id="performed-by-label">Performed By</InputLabel>
+                <Select
+                  labelId="performed-by-label"
+                  name="performedBy"
+                  value={maintenanceForm.performedBy}
+                  onChange={handleMaintenanceInputChange}
+                  label="Performed By"
+                >
+                  {technicians.map((technician) => (
+                    <MenuItem
+                      key={technician.id}
+                      value={`${technician.firstName || technician.first_name} ${technician.lastName || technician.last_name}`}
+                    >
+                      {technician.firstName || technician.first_name} {technician.lastName || technician.last_name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
             </Grid>
             
             <Grid item xs={12} md={6}>
@@ -2164,6 +2188,7 @@ const MachineryList: React.FC = () => {
                   type="file"
                   accept="image/*"
                   id="maintenance-image-upload"
+                  aria-label="Upload maintenance images"
                   style={{ display: 'none' }}
                   onChange={async (e) => {
                     if (e.target.files && e.target.files.length > 0) {
@@ -2254,18 +2279,26 @@ const MachineryList: React.FC = () => {
             </Grid>
             
             <Grid item xs={12} md={6}>
-              <TextField
-                name="changedBy"
-                label="Changed By"
-                fullWidth
-                required
-                value={statusHistoryForm.changedBy}
-                onChange={handleStatusHistoryInputChange}
-                placeholder="Person who changed the status"
-                InputProps={{
-                  startAdornment: <InputAdornment position="start"><PersonIcon fontSize="small" /></InputAdornment>
-                }}
-              />
+              <FormControl fullWidth required>
+                <InputLabel id="changed-by-label">Changed By</InputLabel>
+                <Select
+                  labelId="changed-by-label"
+                  name="changedBy"
+                  value={statusHistoryForm.changedBy}
+                  onChange={handleStatusHistoryInputChange}
+                  label="Changed By"
+                  startAdornment={<InputAdornment position="start"><PersonIcon fontSize="small" /></InputAdornment>}
+                >
+                  {employees.map((employee) => (
+                    <MenuItem
+                      key={employee.id}
+                      value={`${employee.firstName} ${employee.lastName}`}
+                    >
+                      {employee.firstName} {employee.lastName}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
             </Grid>
             
             <Grid item xs={12} md={6}>
@@ -2393,6 +2426,7 @@ const MachineryList: React.FC = () => {
                   type="file"
                   accept="image/*"
                   id="status-image-upload"
+                  aria-label="Upload status change images"
                   style={{ display: 'none' }}
                   onChange={async (e) => {
                     if (e.target.files && e.target.files.length > 0) {

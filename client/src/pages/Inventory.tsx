@@ -546,17 +546,6 @@ const InventoryList: React.FC = () => {
                           >
                             Edit
                           </Button>
-                          <Button 
-                            size="small" 
-                            variant="outlined"
-                            color="error"
-                            onClick={() => {
-                              setSelectedItem(item);
-                              setDeleteConfirmOpen(true);
-                            }}
-                          >
-                            Delete
-                          </Button>
                         </Box>
                       </TableCell>
                     </TableRow>

@@ -29,6 +29,8 @@ import NotFound from './pages/NotFound';
 import AttendanceList from './pages/Attendance';
 import ProtectedRouteComponent from './components/ProtectedRoute';
 import Profile from './pages/Profile';
+import TechnicianProfile from './pages/TechnicianProfile';
+
 interface ProtectedRouteProps {
   children: ReactNode;
 }
@@ -319,6 +321,7 @@ const AppContent: React.FC = () => {
           <Route path="payroll" element={<Payroll />} />
           <Route path="suppliers" element={<SuppliersList />} />
           <Route path="machinery" element={<MachineryList />} />
+          <Route path="technicians" element={<TechnicianProfile />} />
           <Route path="reports" element={<ReportsList />} />
           <Route path="attendance" element={<AttendanceList />} />
         </Route>

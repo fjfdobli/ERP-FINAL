@@ -14,7 +14,8 @@ import {
   LocalShipping as SuppliersIcon, HowToReg as AttendanceIcon, Build as MachineryIcon, 
   BarChart as ReportsIcon, AccountCircle, ExitToApp, ChevronLeft, 
   ExpandLess, ExpandMore, RequestQuote as RequestIcon, ImportContacts as ClientRequestIcon, 
-  Source as SupplierRequestIcon, Payments as PayrollIcon, KeyboardArrowDown
+  Source as SupplierRequestIcon, Payments as PayrollIcon, KeyboardArrowDown,
+  Engineering as EngineeringIcon, BuildCircle as BuildIcon
 } from '@mui/icons-material';
 import PrintIcon from '@mui/icons-material/Print';
 
@@ -45,7 +46,13 @@ const menuItems = [
   { text: 'Employees', icon: <EmployeesIcon />, path: '/employees' },
   { text: 'Attendance', icon: <AttendanceIcon />, path: '/attendance' },
   { text: 'Payroll', icon: <PayrollIcon />, path: '/payroll' },
-  { text: 'Machinery', icon: <MachineryIcon />, path: '/machinery' },
+  { text: 'Machine Operations', 
+    icon: <MachineryIcon />, 
+    children: [
+      { text: 'Technicians', icon: <EngineeringIcon />, path: '/technicians' },
+      { text: 'Machinery', icon: <BuildIcon />, path: '/machinery' },
+    ]
+  },
   { text: 'Reports', icon: <ReportsIcon />, path: '/reports' },
 ];
 

@@ -202,7 +202,7 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({ open, onClose, 
       case 'Approved':
         return ['Pending', 'Approved', 'Partially Paid', 'Completed']; // no Rejected
       case 'Partially Paid':
-        return ['Partially Paid', 'Completed']; // no Pending, Approved, Rejected
+        return ['Pending','Partially Paid', 'Completed']; // no Pending, Approved, Rejected
       case 'Completed':
         return ['Completed']; // Only Completed
       case 'Rejected':

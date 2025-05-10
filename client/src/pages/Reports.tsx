@@ -5,7 +5,27 @@ import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { useAppDispatch, useAppSelector } from '../redux/hooks';
-import { format as formatDate, parseISO, startOfMonth, endOfMonth, addMonths, subMonths, formatDistance, isWithinInterval, isAfter, isBefore } from 'date-fns';
+import {
+  format as formatDate,
+  parseISO,
+  startOfMonth,
+  endOfMonth,
+  addMonths,
+  subMonths,
+  formatDistance,
+  isWithinInterval,
+  isAfter,
+  isBefore,
+  startOfDay,
+  endOfDay,
+  startOfWeek,
+  endOfWeek,
+  startOfYear,
+  endOfYear,
+  subDays,
+  subWeeks,
+  subYears
+} from 'date-fns';
 import { fetchPayrolls } from '../redux/slices/payrollSlice';
 import { fetchEmployees } from '../redux/slices/employeesSlice';
 import { fetchInventory } from '../redux/slices/inventorySlice';
@@ -55,6 +75,7 @@ interface ReportFilter {
   clientId?: number | 'all';
   supplierId?: number | 'all';
   status?: string | 'all';
+  dateRangeType: 'custom' | 'today' | 'yesterday' | 'thisWeek' | 'lastWeek' | 'thisMonth' | 'lastMonth' | 'thisYear' | 'lastYear';
 }
 
 // Create a wrapper for format function to avoid collision with 'format' property 
@@ -119,7 +140,8 @@ const ReportsList: React.FC = () => {
     employeeId: 'all',
     clientId: 'all',
     supplierId: 'all',
-    status: 'all'
+    status: 'all',
+    dateRangeType: 'thisMonth'
   });
   
   const [snackbar, setSnackbar] = useState<{
@@ -199,12 +221,29 @@ const ReportsList: React.FC = () => {
     // Add date range in a box
     doc.setFillColor(240, 240, 240);
     doc.roundedRect(pageWidth / 2 - 50, 48, 100, 10, 2, 2, 'F');
-    
+
     const dateRange = `Period: ${formatDate(reportFilters.startDate, 'MMM dd, yyyy')} - ${formatDate(reportFilters.endDate, 'MMM dd, yyyy')}`;
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
     doc.setTextColor(80, 80, 80);
     doc.text(dateRange, pageWidth / 2, 54, { align: 'center' });
+
+    // Add filter information
+    let filterInfo = '';
+    if (reportFilters.dateRangeType === 'lastMonth') {
+      filterInfo = 'Last Month Data';
+    } else if (reportFilters.dateRangeType === 'thisMonth') {
+      filterInfo = 'Current Month Data';
+    } else if (reportFilters.dateRangeType === 'custom') {
+      filterInfo = 'Custom Date Range';
+    } else {
+      filterInfo = `${reportFilters.dateRangeType} Filter`;
+    }
+
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(7);
+    doc.setTextColor(100, 100, 100);
+    doc.text(filterInfo, pageWidth / 2, 59, { align: 'center' });
     
     // Add report generation info
     doc.setFont('helvetica', 'italic');
@@ -490,16 +529,23 @@ const ReportsList: React.FC = () => {
     filters: any = {}
   ): void => {
     const clientOrders = data.clientOrders || [];
-    
+
+    // Log the date range being used for debugging
+    console.log(`Generating sales report for date range: ${formatDate(startDate, 'yyyy-MM-dd')} to ${formatDate(endDate, 'yyyy-MM-dd')}`);
+
     // Filter orders in the date range
     let filteredOrders = clientOrders.filter((order: any) => {
       if (!order.date && !order.created_at && !order.orderDate) return false;
-      
-      const orderDate = order.date ? parseISO(order.date) : 
-                       (order.created_at ? parseISO(order.created_at) : 
+
+      const orderDate = order.date ? parseISO(order.date) :
+                       (order.created_at ? parseISO(order.created_at) :
                        parseISO(order.orderDate));
-      
-      return isWithinInterval(orderDate, { start: startDate, end: endDate });
+
+      // Make end of day comparison to include the full end date
+      const adjustedEndDate = endOfDay(endDate);
+      const isInRange = isWithinInterval(orderDate, { start: startDate, end: adjustedEndDate });
+
+      return isInRange;
     });
     
     // Apply additional filters if provided
@@ -661,11 +707,17 @@ const ReportsList: React.FC = () => {
   ): void => {
     const attendance = data.attendance || data.attendanceRecords || [];
     const employees = data.employees || [];
-    
+
+    // Log the date range being used for debugging
+    console.log(`Generating attendance report for date range: ${formatDate(startDate, 'yyyy-MM-dd')} to ${formatDate(endDate, 'yyyy-MM-dd')}`);
+
     // Filter attendance records in the date range
     let filteredAttendance = attendance.filter((record: any) => {
+      if (!record.date) return false;
       const recordDate = parseISO(record.date);
-      return isWithinInterval(recordDate, { start: startDate, end: endDate });
+      // Make end of day comparison to include the full end date
+      const adjustedEndDate = endOfDay(endDate);
+      return isWithinInterval(recordDate, { start: startDate, end: adjustedEndDate });
     });
     
     // Apply additional filters
@@ -754,12 +806,17 @@ const ReportsList: React.FC = () => {
   ): void => {
     const machinery = data.machinery || [];
     const maintenanceRecords = data.machineryStats?.maintenanceRecords || data.maintenanceRecords || [];
-    
+
+    // Log the date range being used for debugging
+    console.log(`Generating machinery report for date range: ${formatDate(startDate, 'yyyy-MM-dd')} to ${formatDate(endDate, 'yyyy-MM-dd')}`);
+
     // Filter maintenance records in the date range
     let filteredMaintenance = maintenanceRecords.filter((record: any) => {
       if (!record.date) return false;
       const recordDate = parseISO(record.date);
-      return isWithinInterval(recordDate, { start: startDate, end: endDate });
+      // Make end of day comparison to include the full end date
+      const adjustedEndDate = endOfDay(endDate);
+      return isWithinInterval(recordDate, { start: startDate, end: adjustedEndDate });
     });
     
     // Apply additional filters
@@ -873,13 +930,18 @@ const ReportsList: React.FC = () => {
  ): void => {
    const payrollRecords = data.payrollRecords || [];
    const employees = data.employees || [];
-   
+
+   // Log the date range being used for debugging
+   console.log(`Generating payroll report for date range: ${formatDate(startDate, 'yyyy-MM-dd')} to ${formatDate(endDate, 'yyyy-MM-dd')}`);
+
    // Filter payroll records in the date range
    let filteredPayroll = payrollRecords.filter((record: any) => {
      if (!record.startDate || !record.endDate) return false;
-     
+
      const payPeriodEnd = parseISO(record.endDate);
-     return isWithinInterval(payPeriodEnd, { start: startDate, end: endDate });
+     // Make end of day comparison to include the full end date
+     const adjustedEndDate = endOfDay(endDate);
+     return isWithinInterval(payPeriodEnd, { start: startDate, end: adjustedEndDate });
    });
    
    // Apply additional filters
@@ -979,21 +1041,26 @@ const ReportsList: React.FC = () => {
  ): void => {
    const attendance = data.attendance || data.attendanceRecords || [];
    const employees = data.employees || [];
-   
+
+   // Log the date range being used for debugging
+   console.log(`Generating DTR for date range: ${formatDate(startDate, 'yyyy-MM-dd')} to ${formatDate(endDate, 'yyyy-MM-dd')}`);
+
    // Filter by employee if specified
    let filteredEmployees = [...employees];
    if (filters.employeeId && filters.employeeId !== 'all') {
      filteredEmployees = filteredEmployees.filter(employee => employee.id === filters.employeeId);
    }
-   
+
    // Group attendance by employee
    const attendanceByEmployee: { [key: string]: any[] } = {};
-   
+
    attendance.forEach((record: any) => {
      if (!record.date) return;
-     
+
      const recordDate = parseISO(record.date);
-     if (isWithinInterval(recordDate, { start: startDate, end: endDate })) {
+     // Make end of day comparison to include the full end date
+     const adjustedEndDate = endOfDay(endDate);
+     if (isWithinInterval(recordDate, { start: startDate, end: adjustedEndDate })) {
        if (!attendanceByEmployee[record.employeeId]) {
          attendanceByEmployee[record.employeeId] = [];
        }
@@ -1120,16 +1187,21 @@ const ReportsList: React.FC = () => {
    filters: any = {}
  ): void => {
    const clientOrders = data.clientOrders || [];
-   
+
+   // Log the date range being used for debugging
+   console.log(`Generating printing jobs report for date range: ${formatDate(startDate, 'yyyy-MM-dd')} to ${formatDate(endDate, 'yyyy-MM-dd')}`);
+
    // Filter orders in the date range
    let filteredOrders = clientOrders.filter((order: any) => {
      if (!order.date && !order.created_at && !order.orderDate) return false;
-     
-     const orderDate = order.date ? parseISO(order.date) : 
-                      (order.created_at ? parseISO(order.created_at) : 
+
+     const orderDate = order.date ? parseISO(order.date) :
+                      (order.created_at ? parseISO(order.created_at) :
                       parseISO(order.orderDate));
-     
-     return isWithinInterval(orderDate, { start: startDate, end: endDate });
+
+     // Make end of day comparison to include the full end date
+     const adjustedEndDate = endOfDay(endDate);
+     return isWithinInterval(orderDate, { start: startDate, end: adjustedEndDate });
    });
    
    // Apply additional filters if provided
@@ -1454,11 +1526,88 @@ const ReportsList: React.FC = () => {
     });
   };
  
+  // Helper function to get date range based on dateRangeType
+  const getDateRangeFromType = (dateRangeType: string): { startDate: Date, endDate: Date } => {
+    const today = new Date();
+
+    switch (dateRangeType) {
+      case 'today':
+        return {
+          startDate: startOfDay(today),
+          endDate: endOfDay(today)
+        };
+      case 'yesterday':
+        const yesterday = subDays(today, 1);
+        return {
+          startDate: startOfDay(yesterday),
+          endDate: endOfDay(yesterday)
+        };
+      case 'thisWeek':
+        return {
+          startDate: startOfWeek(today, { weekStartsOn: 1 }),
+          endDate: endOfWeek(today, { weekStartsOn: 1 })
+        };
+      case 'lastWeek':
+        const lastWeek = subWeeks(today, 1);
+        return {
+          startDate: startOfWeek(lastWeek, { weekStartsOn: 1 }),
+          endDate: endOfWeek(lastWeek, { weekStartsOn: 1 })
+        };
+      case 'thisMonth':
+        return {
+          startDate: startOfMonth(today),
+          endDate: endOfMonth(today)
+        };
+      case 'lastMonth':
+        const lastMonth = subMonths(today, 1);
+        return {
+          startDate: startOfMonth(lastMonth),
+          endDate: endOfMonth(lastMonth)
+        };
+      case 'thisYear':
+        return {
+          startDate: startOfYear(today),
+          endDate: endOfYear(today)
+        };
+      case 'lastYear':
+        const lastYear = subYears(today, 1);
+        return {
+          startDate: startOfYear(lastYear),
+          endDate: endOfYear(lastYear)
+        };
+      default:
+        return {
+          startDate: reportFilters.startDate,
+          endDate: reportFilters.endDate
+        };
+    }
+  };
+
   const handleDateChange = (field: 'startDate' | 'endDate') => (date: Date | null) => {
     if (date) {
       setReportFilters({
         ...reportFilters,
+        dateRangeType: 'custom', // Switch to custom when manually selecting dates
         [field]: date
+      });
+    }
+  };
+
+  const handleDateRangeTypeChange = (newRangeType: string) => {
+    if (newRangeType === 'custom') {
+      // Just set the dateRangeType to custom but leave dates unchanged
+      setReportFilters({
+        ...reportFilters,
+        dateRangeType: 'custom'
+      });
+    } else {
+      // For preset ranges, update both the type and the date range
+      const dateRange = getDateRangeFromType(newRangeType);
+      setReportFilters({
+        ...reportFilters,
+        dateRangeType: newRangeType as ReportFilter['dateRangeType'],
+        startDate: dateRange.startDate,
+        endDate: dateRange.endDate
       });
     }
   };
@@ -1802,28 +1951,119 @@ const ReportsList: React.FC = () => {
                 <Typography variant="h6" gutterBottom>
                   Report Generation
                 </Typography>
+                <Box sx={{ mb: 2, p: 1, bgcolor: 'info.lighter', borderRadius: 1 }}>
+                  <Typography variant="body2" color="info.dark">
+                    <strong>Tip:</strong> Use the Date Range filter to select specific time periods. For historical data, try "Last Month" or select a custom date range.
+                  </Typography>
+                </Box>
                 
                 <Grid container spacing={3}>
+                  <Grid item xs={12}>
+                    <FormControl fullWidth>
+                      <InputLabel id="date-range-label">Date Range</InputLabel>
+                      <Select
+                        labelId="date-range-label"
+                        value={reportFilters.dateRangeType}
+                        label="Date Range"
+                        onChange={(e) => handleDateRangeTypeChange(e.target.value)}
+                      >
+                        <MenuItem value="custom">Custom Range</MenuItem>
+                        <MenuItem value="today">Today</MenuItem>
+                        <MenuItem value="yesterday">Yesterday</MenuItem>
+                        <MenuItem value="thisWeek">This Week</MenuItem>
+                        <MenuItem value="lastWeek">Last Week</MenuItem>
+                        <MenuItem value="thisMonth">This Month</MenuItem>
+                        <MenuItem value="lastMonth">Last Month</MenuItem>
+                        <MenuItem value="thisYear">This Year</MenuItem>
+                        <MenuItem value="lastYear">Last Year</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
+
                   <Grid item xs={12} md={3}>
                     <LocalizationProvider dateAdapter={AdapterDateFns}>
                       <DatePicker
                         label="Start Date"
                         value={reportFilters.startDate}
                         onChange={handleDateChange('startDate')}
-                        slotProps={{ textField: { fullWidth: true } }}
+                        slotProps={{
+                          textField: {
+                            fullWidth: true,
+                            helperText: reportFilters.dateRangeType !== 'custom' ? "Select 'Custom Range' to edit dates" : ""
+                          }
+                        }}
+                        disabled={reportFilters.dateRangeType !== 'custom'}
                       />
                     </LocalizationProvider>
                   </Grid>
-                  
+
                   <Grid item xs={12} md={3}>
                     <LocalizationProvider dateAdapter={AdapterDateFns}>
                       <DatePicker
                         label="End Date"
                         value={reportFilters.endDate}
                         onChange={handleDateChange('endDate')}
-                        slotProps={{ textField: { fullWidth: true } }}
+                        slotProps={{
+                          textField: {
+                            fullWidth: true,
+                            helperText: reportFilters.dateRangeType !== 'custom' ? "Select 'Custom Range' to edit dates" : ""
+                          }
+                        }}
+                        disabled={reportFilters.dateRangeType !== 'custom'}
                       />
                     </LocalizationProvider>
+                  </Grid>
+
+                  <Grid item xs={12} md={6}>
+                    <Paper sx={{ p: 2, bgcolor: 'background.default' }}>
+                      <Typography variant="body2" sx={{ mb: 1 }}>
+                        <strong>Date Range:</strong> {formatDate(reportFilters.startDate, 'MMM dd, yyyy')} - {formatDate(reportFilters.endDate, 'MMM dd, yyyy')}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {reportFilters.dateRangeType === 'custom' ? 'Custom date range selected' :
+                          reportFilters.dateRangeType === 'lastMonth' ? 'Data from last month will be included' :
+                          reportFilters.dateRangeType === 'thisMonth' ? 'Data from current month will be included' :
+                          `${reportFilters.dateRangeType} filter applied`}
+                      </Typography>
+                      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                        <Chip
+                          size="small"
+                          label="Today"
+                          onClick={() => handleDateRangeTypeChange('today')}
+                          color={reportFilters.dateRangeType === 'today' ? 'primary' : 'default'}
+                        />
+                        <Chip
+                          size="small"
+                          label="Yesterday"
+                          onClick={() => handleDateRangeTypeChange('yesterday')}
+                          color={reportFilters.dateRangeType === 'yesterday' ? 'primary' : 'default'}
+                        />
+                        <Chip
+                          size="small"
+                          label="This Week"
+                          onClick={() => handleDateRangeTypeChange('thisWeek')}
+                          color={reportFilters.dateRangeType === 'thisWeek' ? 'primary' : 'default'}
+                        />
+                        <Chip
+                          size="small"
+                          label="Last Week"
+                          onClick={() => handleDateRangeTypeChange('lastWeek')}
+                          color={reportFilters.dateRangeType === 'lastWeek' ? 'primary' : 'default'}
+                        />
+                        <Chip
+                          size="small"
+                          label="This Month"
+                          onClick={() => handleDateRangeTypeChange('thisMonth')}
+                          color={reportFilters.dateRangeType === 'thisMonth' ? 'primary' : 'default'}
+                        />
+                        <Chip
+                          size="small"
+                          label="Last Month"
+                          onClick={() => handleDateRangeTypeChange('lastMonth')}
+                          color={reportFilters.dateRangeType === 'lastMonth' ? 'primary' : 'default'}
+                        />
+                      </Box>
+                    </Paper>
                   </Grid>
                   
                   <Grid item xs={12} md={3}>

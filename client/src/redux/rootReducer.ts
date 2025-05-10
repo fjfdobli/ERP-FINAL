@@ -11,6 +11,7 @@ import machineryReducer from './slices/machinerySlice';
 import suppliersReducer from './slices/suppliersSlice';
 import productProfileReducer from './slices/productProfileSlice';
 import orderSupplierReducer from './slices/orderSupplierSlice';
+import techniciansReducer from './slices/techniciansSlice';
 
 const rootReducer = combineReducers({
   auth: authReducer,
@@ -24,7 +25,8 @@ const rootReducer = combineReducers({
   machinery: machineryReducer,
   suppliers: suppliersReducer,
   productProfile: productProfileReducer,
-  orderSupplier: orderSupplierReducer
+  orderSupplier: orderSupplierReducer,
+  technicians: techniciansReducer
 });
 
 export default rootReducer;
