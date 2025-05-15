@@ -676,8 +676,8 @@ const SuppliersList: React.FC = () => {
                 <TableCell><strong>Supplier Name</strong></TableCell>
                 <TableCell><strong>Contact Person</strong></TableCell>
                 <TableCell><strong>Phone</strong></TableCell>
-                <TableCell><strong>Status</strong></TableCell>
-                <TableCell><strong>Actions</strong></TableCell>
+                <TableCell align='center'><strong>Status</strong></TableCell>
+                <TableCell align='center'><strong>Actions</strong></TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -710,14 +710,14 @@ const SuppliersList: React.FC = () => {
                     </TableCell>
                     <TableCell>{supplier.contactPerson}</TableCell>
                     <TableCell>{supplier.phone}</TableCell>
-                    <TableCell>
+                    <TableCell align='center'>
                       <Chip 
                         label={supplier.status === 'Inactive' ? 'Inactive' : 'Active'} 
                         color={supplier.status === 'Inactive' ? 'default' : 'primary'}
                         size="small"
                       />
                     </TableCell>
-                    <TableCell>
+                    <TableCell align='center'>
                       <Button 
                         size="small" 
                         onClick={() => handleOpenViewDialog(supplier)}

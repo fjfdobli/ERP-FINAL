@@ -1,4 +1,8 @@
 import { supabase } from '../supabaseClient';
+import { productProfileService } from '../services/productProfileService';
+import { inventoryService } from '../services/inventoryService';
+import { clientOrdersService } from '../services/clientOrdersService';
+
 
 export interface OrderRequestItem {
   id?: number;
@@ -142,14 +146,14 @@ export const orderRequestsService = {
         .select();
 
       if (itemsError) throw itemsError;
-      
+
       console.log(`Created order request with ${createdItems?.length} items`);
-      
+
       // Add history record for the creation
       await this.addOrderRequestHistory(
-        createdRequest.id, 
-        'Created', 
-        'New order request created', 
+        createdRequest.id,
+        'Created',
+        'New order request created',
         'System'
       );
 
@@ -173,6 +177,51 @@ export const orderRequestsService = {
       // Calculate total amount from items if not provided
       if (!orderRequest.total_amount) {
         orderRequest.total_amount = items.reduce((sum, item) => sum + item.total_price, 0);
+      }
+
+      // If status is being set to Rejected, restore inventory
+      if (orderRequest.status === 'Rejected') {
+        const { data: existingItems, error: itemsError } = await supabase
+          .from('order_request_items')
+          .select('*')
+          .eq('request_id', id);
+
+        if (itemsError) throw itemsError;
+
+        const { data: requestData, error: requestError } = await supabase
+          .from('order_requests')
+          .select('*')
+          .eq('id', id)
+          .single();
+
+        if (requestError) throw requestError;
+
+        for (const item of existingItems || []) {
+          const productProfile = await productProfileService.getProductById(item.product_id);
+          if (!productProfile || !productProfile.materials) continue;
+
+          for (const material of productProfile.materials) {
+            const materialId = material.materialId;
+            const returnQty = material.quantityRequired * item.quantity;
+
+            const inventoryItem = await inventoryService.getInventoryItemById(materialId);
+            const currentQty = inventoryItem?.quantity || 0;
+
+            await inventoryService.updateInventoryItem(materialId, {
+              quantity: currentQty + returnQty
+            });
+
+            await inventoryService.addTransaction({
+              inventoryId: materialId,
+              transactionType: 'stock_in',
+              quantity: returnQty,
+              createdBy: requestData.client_id,
+              isSupplier: false,
+              notes: `Restocked due to order request ${requestData.request_id} being rejected`,
+              transactionDate: new Date().toISOString()
+            });
+          }
+        }
       }
 
       // Update order request
@@ -205,14 +254,14 @@ export const orderRequestsService = {
         .select();
 
       if (itemsError) throw itemsError;
-      
+
       console.log(`Updated order request ${id} with ${updatedItems?.length} items`);
-      
+
       // Add history record for the update
       await this.addOrderRequestHistory(
-        id, 
-        'Updated', 
-        'Order request updated with new items', 
+        id,
+        'Updated',
+        'Order request updated with new items',
         'System'
       );
 
@@ -224,8 +273,9 @@ export const orderRequestsService = {
       console.error(`Error updating order request with ID ${id}:`, error);
       throw error;
     }
-  },
-  
+  }
+  ,
+
   // Add history tracking
   async addOrderRequestHistory(requestId: number, status: string, notes?: string, changedBy?: string): Promise<void> {
     try {
@@ -242,7 +292,7 @@ export const orderRequestsService = {
       // Don't throw the error to prevent blocking the main operation
     }
   },
-  
+
   // Get order history
   async getOrderHistory(requestId?: number, orderId?: number): Promise<any[]> {
     try {
@@ -250,7 +300,7 @@ export const orderRequestsService = {
         .from('order_history')
         .select('*')
         .order('created_at', { ascending: false });
-        
+
       if (requestId) {
         query = query.eq('request_id', requestId);
       } else if (orderId) {
@@ -258,9 +308,9 @@ export const orderRequestsService = {
       } else {
         return [];
       }
-      
+
       const { data, error } = await query;
-      
+
       if (error) throw error;
       return data || [];
     } catch (error) {
@@ -273,34 +323,31 @@ export const orderRequestsService = {
   async changeOrderRequestStatus(id: number, status: string, changedBy?: string): Promise<OrderRequest> {
     try {
       console.log(`Changing request ${id} status to ${status}`);
-      
-      // Check if we're approving or rejecting - if so, we need to create a client order
+  
+      // Get full order request with items
+      const orderRequest = await this.getOrderRequestById(id);
+      if (!orderRequest) throw new Error(`Order request with ID ${id} not found`);
+  
       if (status === 'Approved' || status === 'Rejected') {
-        // Get full order request with items
-        const orderRequest = await this.getOrderRequestById(id);
-        if (!orderRequest) throw new Error(`Order request with ID ${id} not found`);
-        
         console.log(`Request has ${orderRequest.items?.length || 0} items`);
-
-        // Check if a client order already exists for this request
+  
         const { data: existingOrder, error: checkError } = await supabase
           .from('client_orders')
           .select('id')
           .eq('request_id', id)
           .maybeSingle();
-          
+  
         if (checkError) throw checkError;
-        
+  
         let clientOrderId;
-        
+  
         if (!existingOrder) {
           console.log(`No existing client order for request ${id}, creating new one`);
-          
-          // Create client order if status is changing to approved or rejected
+  
           const { data: clientOrder, error: orderError } = await supabase
             .from('client_orders')
             .insert({
-              order_id: `CO-${Date.now()}`, // Generate a unique order ID
+              order_id: `CO-${Date.now()}`,
               client_id: orderRequest.client_id,
               date: orderRequest.date,
               amount: orderRequest.total_amount,
@@ -310,12 +357,11 @@ export const orderRequestsService = {
             })
             .select()
             .single();
-
+  
           if (orderError) throw orderError;
-          
+  
           clientOrderId = clientOrder.id;
-
-          // Create client order items
+  
           if (orderRequest.items && orderRequest.items.length > 0) {
             const orderItems = orderRequest.items.map(item => ({
               order_id: clientOrder.id,
@@ -327,33 +373,32 @@ export const orderRequestsService = {
               serial_start: item.serial_start,
               serial_end: item.serial_end
             }));
-            
+  
             console.log(`Adding ${orderItems.length} items to new client order`);
-
+  
             const { error: itemsError } = await supabase
               .from('client_order_items')
               .insert(orderItems);
-
+  
             if (itemsError) throw itemsError;
           }
         } else {
           console.log(`Found existing client order ${existingOrder.id} for request ${id}, updating status`);
-          
+  
           clientOrderId = existingOrder.id;
-          
-          // Just update the status of the existing order
+  
           const { error: updateError } = await supabase
             .from('client_orders')
-            .update({ 
-              status, 
-              updated_at: new Date().toISOString() 
+            .update({
+              status,
+              updated_at: new Date().toISOString()
             })
             .eq('id', existingOrder.id);
-            
+  
           if (updateError) throw updateError;
         }
-        
-        // Add history record for the client order creation/update
+  
+        // Order history entry
         await supabase
           .from('order_history')
           .insert({
@@ -362,24 +407,63 @@ export const orderRequestsService = {
             notes: `Order ${status.toLowerCase()} from request ${orderRequest.request_id}`,
             changed_by: changedBy || 'System'
           });
+  
+        // ✅ Auto-deduct raw materials if Approved
+        if (status === 'Approved') {
+          for (const item of orderRequest.items || []) {
+            const productProfile = await productProfileService.getProductById(item.product_id);
+  
+            if (!productProfile) continue;
+            for (const material of productProfile.materials || []) {
+              const materialId = material.materialId;
+              const requiredQty = material.quantityRequired * item.quantity;
+  
+              const inventoryItem = await inventoryService.getInventoryItemById(materialId);
+              const currentQty = inventoryItem?.quantity || 0;
+              const newQty = currentQty - requiredQty;
+  
+              if (newQty < 0) {
+                console.warn(`Not enough stock of material ID ${materialId}. Skipping deduction.`);
+                continue;
+              }
+  
+              await inventoryService.updateInventoryItem(materialId, { quantity: newQty });
+  
+              await inventoryService.addTransaction({
+                inventoryId: materialId,
+                transactionType: 'stock_out',
+                quantity: requiredQty,
+                createdBy: orderRequest.client_id,
+                isSupplier: false,
+                notes: `Auto deduction for product ${item.product_name} (Order ${orderRequest.id})`,
+                transactionDate: new Date().toISOString()
+              });
+            }
+          }
+        }
+  
+        // ✅ NEW: If Rejected, restore raw materials via changeOrderStatus
+        if (status === 'Rejected') {
+          console.log('Calling changeOrderStatus to restore inventory...');
+          await clientOrdersService.changeOrderStatus(clientOrderId, 'Rejected', changedBy || 'System');
+        }
       }
-
+  
       // Update order request status
       const { data: updatedRequest, error } = await supabase
         .from('order_requests')
-        .update({ 
+        .update({
           status: status,
           updated_at: new Date().toISOString()
         })
         .eq('id', id)
         .select()
         .single();
-
+  
       if (error) throw error;
-      
-      // Add history record for the request status change
+  
       await this.addOrderRequestHistory(id, status, `Status changed to ${status}`, changedBy);
-
+  
       return updatedRequest;
     } catch (error) {
       console.error(`Error changing status for order request with ID ${id}:`, error);
@@ -418,38 +502,38 @@ export const orderRequestsService = {
     const randomDigits = Math.floor(Math.random() * 10000).toString().padStart(4, '0'); // 4 random digits
     return `${prefix}${timestamp}-${randomDigits}`;
   },
-  
+
   // Check if a client has pending order requests that would prevent new requests
   async hasPendingRequests(clientId: number): Promise<boolean> {
     try {
       console.log(`Directly checking database for pending requests for client ${clientId}...`);
-      
+
       // Get all requests for this client for debugging
       const { data: allRequests, error: allRequestsError } = await supabase
         .from('order_requests')
         .select('id, status')
         .eq('client_id', clientId);
-      
+
       if (allRequestsError) throw allRequestsError;
-      
+
       console.log(`All order requests for client ${clientId}:`, allRequests);
-      
+
       // Only check for Pending or Approved status
       const { data, error } = await supabase
         .from('order_requests')
         .select('id, status')
         .eq('client_id', clientId)
         .in('status', ['Pending', 'Approved']);
-      
+
       if (error) throw error;
-      
+
       // If we found any pending requests, the client cannot place new orders
       const hasRestrictions = (data && data.length > 0);
       console.log(`Client ${clientId} has pending requests: ${hasRestrictions}`);
       if (hasRestrictions) {
         console.log(`Pending requests:`, data);
       }
-      
+
       return hasRestrictions;
     } catch (error) {
       console.error(`Error checking pending requests for client ${clientId}:`, error);

@@ -2253,7 +2253,6 @@ const PayrollPage: React.FC = () => {
                   fullWidth
                   value={formData.bankTransferRef}
                   onChange={handleInputChange}
-                  disabled={formData.status !== 'Paid'}
                 />
               </Grid>
               

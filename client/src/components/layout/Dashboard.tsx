@@ -35,7 +35,7 @@ const menuItems = [
   { text: 'Orders', 
     icon: <OrdersIcon />, 
     children: [
-      { text: 'Product Profiles', icon: <PrintIcon />, path: '/orders/products' },
+      { text: 'Products', icon: <PrintIcon />, path: '/orders/products' },
       { text: 'Order Requests', icon: <RequestIcon />, path: '/orders/requests' },
       { text: 'Client Orders', icon: <ClientRequestIcon />, path: '/orders/clients' },
       { text: 'Supplier Orders', icon: <SupplierRequestIcon />, path: '/orders/suppliers' }
@@ -778,22 +778,6 @@ const DashboardLayout: React.FC = () => {
               '&:hover': { opacity: 1 }
             }}
           >
-            <Typography variant="caption" fontWeight="bold" sx={{ fontSize: 'inherit' }}>
-              Theme:
-            </Typography>
-            <Box 
-              sx={{ 
-                width: 10, 
-                height: 10, 
-                borderRadius: '50%', 
-                bgcolor: 'var(--primary-color)',
-                display: 'inline-block',
-                mr: 0.5
-              }} 
-            />
-            <Typography variant="caption" sx={{ fontSize: 'inherit' }}>
-              {themeColor} • {darkMode ? 'Dark' : 'Light'} • {compactView ? 'Compact' : 'Standard'}
-            </Typography>
           </Box>
         </Paper>
       </Box>

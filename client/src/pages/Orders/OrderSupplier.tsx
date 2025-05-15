@@ -1,27 +1,47 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Dispatch, SetStateAction } from 'react';
+// Added for date filtering
 import { useDispatch, useSelector } from 'react-redux';
 import {
-  Box, Typography, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button,
+  Box, Typography, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, Tooltip,
   TextField, InputAdornment, Chip, Dialog, DialogTitle, DialogContent, DialogActions, FormControl,
   InputLabel, Select, MenuItem, SelectChangeEvent, Tabs, Tab, Snackbar, Alert, CircularProgress,
   Grid
 } from '@mui/material';
-import { Search as SearchIcon, Refresh as RefreshIcon, Add as AddIcon, PictureAsPdf as PdfIcon } from '@mui/icons-material';
-import { fetchSuppliers, selectAllSuppliers, selectSuppliersStatus } from '../../redux/slices/suppliersSlice';
+import { Search as SearchIcon, Refresh as RefreshIcon, Add as AddIcon, PictureAsPdf as PdfIcon, InfoOutlined } from '@mui/icons-material';
+import { fetchSuppliers, selectAllSuppliers, selectSuppliersStatus, selectSuppliersError } from '../../redux/slices/suppliersSlice';
 import { fetchInventory, addInventoryTransaction, selectAllInventoryItems, selectInventoryLoading } from '../../redux/slices/inventorySlice';
 import {
   fetchSupplierOrders, fetchQuotationRequests, updateSupplierOrder, updateQuotationRequest, addOrderPayment,
   createOrderFromQuotation, createSupplierOrder, createQuotationRequest, deleteSupplierOrder, deleteQuotationRequest,
-  selectAllSupplierOrders, selectAllQuotationRequests, selectOrderSupplierLoading } from '../../redux/slices/orderSupplierSlice';
+  selectAllSupplierOrders, selectAllQuotationRequests, selectOrderSupplierLoading, selectOrderSupplierError
+} from '../../redux/slices/orderSupplierSlice';
 import { Supplier } from '../../services/suppliersService';
 import { InventoryItem } from '../../services/inventoryService';
 import {
-  SupplierOrder, SupplierOrderItem, QuotationRequest, QuotationItem, CreateSupplierOrder,
+  SupplierOrder, SupplierOrderItem, QuotationRequest, QuotationItem, OrderPayment, CreateSupplierOrder,
   CreateQuotationRequest, UpdateSupplierOrder, UpdateQuotationRequest, Supplier as OrderSupplierServiceSupplier
 } from '../../services/orderSupplierService';
+import { orderSupplierService } from '../../services/orderSupplierService';
+import { inventoryService } from '../../services/inventoryService';
 import { AppDispatch } from '../../redux/store';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { truncateByDomain } from 'recharts/types/util/ChartUtils';
+
+// Item types for a printing business
+const itemTypes = [
+  { id: 'piece', name: 'Per Piece' },
+  { id: 'rim', name: 'Per Rim' },
+  { id: 'box', name: 'Per Box' },
+  { id: 'set', name: 'Per Set' },
+  { id: 'roll', name: 'Per Roll' },
+  { id: 'pack', name: 'Per Pack' },
+  { id: 'sheet', name: 'Per Sheet' },
+  { id: 'unit', name: 'Per Unit' },
+  { id: 'other', name: 'Other' }
+];
+
+/* Date filter implementation is needed here */
 
 // TabPanel component for tab content
 interface TabPanelProps {
@@ -56,17 +76,41 @@ interface OrderDetailsDialogProps {
   onClose: () => void;
   order: SupplierOrder | null;
   onStatusChange: (orderId: number, status: string) => void;
-  onAddPayment: (payment: {
-    order_id: number;
-    amount: number;
-    payment_date: string;
-    payment_method: string;
-    notes?: string
-  }) => void;
+  setSelectedOrder: Dispatch<SetStateAction<SupplierOrder | null>>;
+  onAddPayment: (
+    payment: {
+      order_id: number;
+      amount: number;
+      payment_date: string;
+      payment_method: string;
+      notes?: string;
+    },
+    onSuccess?: () => void
+  ) => void;
   suppliers?: Supplier[];
   inventoryItems?: InventoryItem[];
   onGeneratePDF?: (order: SupplierOrder) => void;
+  currentEditItem: {
+    index?: number;
+    inventory_id: number;
+    quantity: number;
+    unit_price: number;
+    item_type?: string;
+    otherType?: string;
+  } | null;
+  setCurrentEditItem: React.Dispatch<React.SetStateAction<{
+    index?: number;
+    inventory_id: number;
+    quantity: number;
+    unit_price: number;
+    item_type?: string;
+    otherType?: string;
+  } | null>>;
+  handleUpdateOrderItem: () => void;
+  handleCancelEditItem: () => void;
+
 }
+
 
 const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({
   open,
@@ -74,6 +118,7 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({
   order,
   onStatusChange,
   onAddPayment,
+  setSelectedOrder,
   suppliers = [],
   inventoryItems = [],
   onGeneratePDF
@@ -83,11 +128,12 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({
   const [selectedStatus, setSelectedStatus] = useState<string>('');
   const [paymentAmount, setPaymentAmount] = useState<string>('');
   const [paymentMethod, setPaymentMethod] = useState<string>('Cash');
+  const [otherPaymentMethod, setOtherPaymentMethod] = useState<string>('');
+  const [paymentCode, setPaymentCode] = useState<string>('');
   const [paymentDate, setPaymentDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [paymentNotes, setPaymentNotes] = useState<string>('');
   const [paymentPlan, setPaymentPlan] = useState<string>('');
   const [orderHistory, setOrderHistory] = useState<any[]>([]);
-
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
   };
@@ -156,11 +202,12 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({
     }
   };
 
-  const handleRecordPayment = () => {
+  const handleRecordPayment = async () => {
     if (!order) return;
 
     const paymentAmt = parseFloat(paymentAmount);
 
+    // ✅ Validation checks
     if (isNaN(paymentAmt) || paymentAmt <= 0) {
       alert("Please enter a valid payment amount.");
       return;
@@ -172,21 +219,46 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({
     }
 
     if (paymentAmt > order.remaining_amount) {
-      alert(`Payment exceeds remaining balance of ₱${order.remaining_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}`);
+      alert(
+        `Payment exceeds remaining balance of ₱${order.remaining_amount.toLocaleString(undefined, {
+          minimumFractionDigits: 2
+        })}`
+      );
       return;
     }
 
-    onAddPayment({
-      order_id: order.id!,
-      amount: paymentAmt,
-      payment_date: paymentDate,
-      payment_method: paymentMethod,
-      notes: paymentNotes || undefined
-    });
+    try {
+      // ✅ Submit payment and refresh the dialog
+      await onAddPayment(
+        {
+          order_id: order.id!,
+          amount: paymentAmt,
+          payment_date: paymentDate,
+          payment_method: paymentMethod === 'Other' ? otherPaymentMethod : paymentMethod,
+          notes: ['Crypto', 'Coins.ph'].includes(otherPaymentMethod)
+            ? `__code:${paymentCode}__ ${paymentNotes}`
+            : paymentNotes || undefined,
+        },
+        async () => {
+          const refreshedOrder = await orderSupplierService.getSupplierOrderById(order.id!);
+          if (refreshedOrder) {
+            setSelectedOrder(refreshedOrder); //update dialog with latest payment state
+          }
+        }
+      );
 
-    setPaymentAmount('');
-    setPaymentNotes('');
+      // ✅ Reset form after success
+      setPaymentAmount('');
+      setPaymentNotes('');
+      setPaymentCode('');
+      setOtherPaymentMethod('');
+      setPaymentMethod('Cash');
+    } catch (error) {
+      console.error('Error recording payment:', error);
+      alert('Error recording payment. Please try again.');
+    }
   };
+
 
 
 
@@ -208,7 +280,7 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({
         return 'default';
     }
   };
-  
+
   // Helper function to handle stock in when order is received
   const handleReceiveItems = async () => {
     try {
@@ -221,7 +293,9 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({
             quantity: item.quantity,
             createdBy: order.supplier_id,
             isSupplier: true,
-            notes: `Stock in from Purchase Order ${order.order_id}`
+            notes: `Stock in from Purchase Order ${order.order_id}`,
+            type: 'Stock in from Purchase Order ${order.order_id}',
+            reason: `Received from supplier ${order.suppliers?.name || 'Unknown'} for PO ${order.order_id}`
           }
         })).unwrap();
       }
@@ -310,13 +384,28 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({
                 onChange={handleStatusChange}
                 label="Order Status"
               >
-                <MenuItem value="Pending">Pending</MenuItem>
-                <MenuItem value="Approved">Approved</MenuItem>
-                <MenuItem value="Partially Paid">Partially Paid</MenuItem>
-                <MenuItem value="Shipped">Shipped</MenuItem>
-                <MenuItem value="Received">Received</MenuItem>
-                <MenuItem value="Completed">Completed</MenuItem>
-                <MenuItem value="Rejected">Rejected</MenuItem>
+                {(() => {
+                  const getFilteredStatuses = (currentStatus: string): string[] => {
+                    const allowedMap: Record<string, string[]> = {
+                      'Pending': ['Approved', 'Partially Paid', 'Rejected'],
+                      'Approved': ['Partially Paid', 'Completed', 'Pending'],
+                      'Partially Paid': ['Pending', 'Completed', 'Received'],
+                      'Received': ['Completed', 'Partially Paid'],
+                      'Completed': [],
+                      'Rejected': []
+                    };
+                    const allowed = allowedMap[currentStatus] || [];
+                    return Array.from(new Set([currentStatus, ...allowed]));
+                  };
+
+                  const visibleStatuses = getFilteredStatuses(order.status);
+
+                  return visibleStatuses.map((status) => (
+                    <MenuItem key={status} value={status}>
+                      {status}
+                    </MenuItem>
+                  ));
+                })()}
               </Select>
             </FormControl>
           </Box>
@@ -332,28 +421,25 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({
               <Table size="small">
                 <TableHead>
                   <TableRow>
-                    <TableCell><strong>Item</strong></TableCell>
-                    <TableCell><strong>Quantity</strong></TableCell>
-                    <TableCell><strong>Unit Price</strong></TableCell>
-                    <TableCell><strong>Total Price</strong></TableCell>
+                    <TableCell align="center"><strong>Item</strong></TableCell>
+                    <TableCell align="center"><strong>Type</strong></TableCell>
+                    <TableCell align="center"><strong>Quantity</strong></TableCell>
+                    <TableCell align="center"><strong>Unit Price</strong></TableCell>
+                    <TableCell align="center"><strong>Total Price</strong></TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {order.items.map((item, index) => (
                     <TableRow key={index}>
-                      <TableCell>{item.inventory_name}</TableCell>
-                      <TableCell>{item.quantity}</TableCell>
-                      <TableCell>₱{item.unit_price.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
-                      <TableCell>₱{item.total_price.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
-                      <TableCell>
-                        {item.expected_delivery_date
-                          ? new Date(item.expected_delivery_date).toLocaleDateString()
-                          : 'Not specified'}
-                      </TableCell>
+                      <TableCell align="center">{item.inventory_name}</TableCell>
+                      <TableCell align="center">{item.item_type || 'Per Piece'}</TableCell>
+                      <TableCell align="center">{item.quantity}</TableCell>
+                      <TableCell align="center">₱{item.unit_price.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
+                      <TableCell align="center">₱{item.total_price.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
                     </TableRow>
                   ))}
                   <TableRow>
-                    <TableCell colSpan={3} align="right"><strong>Total:</strong></TableCell>
+                    <TableCell colSpan={4} align="right"><strong>Total:</strong></TableCell>
                     <TableCell colSpan={2}>
                       <strong>₱{order.total_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong>
                     </TableCell>
@@ -362,7 +448,6 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({
               </Table>
             </TableContainer>
           </Box>
-
           {order.status === 'Shipped' && (
             <Box sx={{ mt: 3 }}>
               <Button
@@ -394,8 +479,14 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({
               </Box>
               <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                 <Typography variant="body1">Remaining Balance:</Typography>
-                <Typography variant="body1" color={order.remaining_amount && order.remaining_amount > 0 ? 'error.main' : 'success.main'} fontWeight="bold">
-                  ₱{(order.remaining_amount || order.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                <Typography
+                  variant="body1"
+                  color={(order.remaining_amount || 0) > 0 ? 'error.main' : 'success.main'}
+                  fontWeight="bold"
+                >
+                  ₱{Math.max(0, order.remaining_amount || 0).toLocaleString(undefined, {
+                    minimumFractionDigits: 2
+                  })}
                 </Typography>
               </Box>
             </Paper>
@@ -420,6 +511,8 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({
               onClick={() => {
                 if (order.id && paymentPlan !== order.payment_plan) {
                   onStatusChange(order.id, order.status);
+                  // Update payment plan through a different mechanism
+                  // For now, we'll just refresh the orders which will update the UI
                   dispatch(fetchSupplierOrders());
                 }
               }}
@@ -436,10 +529,17 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({
                 label="Amount (₱)"
                 type="number"
                 value={paymentAmount}
-                onChange={(e) => setPaymentAmount(e.target.value)}
+                onChange={(e) => {
+                  const value = parseFloat(e.target.value);
+                  if (value >= 0 || isNaN(value)) {
+                    setPaymentAmount(e.target.value);
+                  }
+                }}
                 InputProps={{
                   startAdornment: <InputAdornment position="start">₱</InputAdornment>,
+                  inputProps: { min: 0 }
                 }}
+                disabled={(order.remaining_amount ?? 0) <= 0}
                 fullWidth
                 size="small"
               />
@@ -469,12 +569,46 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({
                   <MenuItem value="Other">Other</MenuItem>
                 </Select>
               </FormControl>
+              {paymentMethod === 'Other' && (
+                <FormControl fullWidth size="small">
+                  <InputLabel>Other Payment Method</InputLabel>
+                  <Select
+                    value={otherPaymentMethod}
+                    onChange={(e) => setOtherPaymentMethod(e.target.value)}
+                    label="Other Payment Method"
+                  >
+                    {[
+                      'PayPal', 'Maya (PayMaya)', 'Coins.ph', 'Crypto', 'Remittance Center',
+                      'Post-Dated Check', 'Wire Transfer', 'Cash on Delivery (COD)',
+                      'Company Account', 'In-Kind',
+                    ].map((method) => (
+                      <MenuItem key={method} value={method}>{method}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              )}
+            </Box>
+            {paymentMethod === 'Other' && ['Crypto', 'Coins.ph'].includes(otherPaymentMethod) && (
+              <Box sx={{ mb: 2 }}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label={`${otherPaymentMethod} Code or Wallet Address`}
+                  value={paymentCode}
+                  onChange={(e) => setPaymentCode(e.target.value)}
+                  placeholder={`Enter ${otherPaymentMethod} code here`}
+                />
+              </Box>
+            )}
+            <Box sx={{ mb: 2 }}>
               <TextField
+                fullWidth
+                size="small"
                 label="Notes"
                 value={paymentNotes}
                 onChange={(e) => setPaymentNotes(e.target.value)}
-                fullWidth
-                size="small"
+                multiline
+                rows={2}
               />
             </Box>
             <Button
@@ -482,8 +616,10 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({
               color="primary"
               onClick={handleRecordPayment}
               disabled={
-                !paymentAmount || parseFloat(paymentAmount) <= 0
-              }         
+                !paymentAmount ||
+                parseFloat(paymentAmount) <= 0 ||
+                (order.remaining_amount ?? 0) <= 0
+              }
             >
               Record Payment
             </Button>
@@ -493,26 +629,38 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({
             <Box sx={{ mb: 3 }}>
               <Typography variant="h6" gutterBottom>Payment History</Typography>
               <TableContainer component={Paper} variant="outlined">
-                <Table size="small">
+                <Table size="small" sx={{ '& th, & td': { padding: '6px 8px' } }}>
                   <TableHead>
                     <TableRow>
-                      <TableCell><strong>Date</strong></TableCell>
-                      <TableCell><strong>Amount</strong></TableCell>
-                      <TableCell><strong>Method</strong></TableCell>
-                      <TableCell><strong>Notes</strong></TableCell>
+                      <TableCell align="center"><strong>Date</strong></TableCell>
+                      <TableCell align="center"><strong>Amount</strong></TableCell>
+                      <TableCell align="center"><strong>Method</strong></TableCell>
+                      <TableCell align="center"><strong>Code</strong></TableCell>
+                      <TableCell align="center"><strong>Notes</strong></TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {order.payments.map((payment, index) => (
-                      <TableRow key={index}>
-                        <TableCell>
-                          {new Date(payment.payment_date).toLocaleDateString()}
-                        </TableCell>
-                        <TableCell>₱{payment.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
-                        <TableCell>{payment.payment_method}</TableCell>
-                        <TableCell>{payment.notes || '-'}</TableCell>
-                      </TableRow>
-                    ))}
+                    {[...order.payments]
+                      .sort((a, b) => new Date(b.payment_date).getTime() - new Date(a.payment_date).getTime())
+                      .map((payment, index) => (
+                        <TableRow key={index}>
+                          <TableCell align="center">
+                            {new Date(payment.payment_date).toLocaleDateString()}
+                          </TableCell>
+                          <TableCell align="center">
+                            ₱{payment.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                          </TableCell>
+                          <TableCell align="center">
+                            {payment.payment_method}
+                          </TableCell>
+                          <TableCell align="center">
+                            {payment.notes?.match(/__code:(.*?)__/i)?.[1]?.trim() || '-'}
+                          </TableCell>
+                          <TableCell align="center">
+                            {payment.notes?.replace(/__code:.*?__/, '').trim() || '-'}
+                          </TableCell>
+                        </TableRow>
+                      ))}
                   </TableBody>
                 </Table>
               </TableContainer>
@@ -535,8 +683,8 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({
                 <TableHead>
                   <TableRow>
                     <TableCell><strong>Date</strong></TableCell>
-                    <TableCell><strong>Status</strong></TableCell>
-                    <TableCell><strong>Updated By</strong></TableCell>
+                    <TableCell align='center'><strong>Status</strong></TableCell>
+                    <TableCell align='center'><strong>Updated By</strong></TableCell>
                     <TableCell><strong>Notes</strong></TableCell>
                   </TableRow>
                 </TableHead>
@@ -546,14 +694,14 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({
                       <TableCell>
                         {entry.date ? new Date(entry.date).toLocaleString() : 'N/A'}
                       </TableCell>
-                      <TableCell>
+                      <TableCell align='center'>
                         <Chip
                           label={entry.status}
                           color={getChipColor(entry.status)}
                           size="small"
                         />
                       </TableCell>
-                      <TableCell>{entry.updatedBy}</TableCell>
+                      <TableCell align='center'>{entry.updatedBy}</TableCell>
                       <TableCell>{entry.notes}</TableCell>
                     </TableRow>
                   ))}
@@ -633,6 +781,7 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
   };
 
   if (!quotation) return null;
+  const isConverted = quotation.status === 'Converted';
 
   const getChipColor = (status: string): 'success' | 'info' | 'warning' | 'error' | 'default' => {
     switch (status.toLowerCase()) {
@@ -681,24 +830,29 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
           </Typography>
         </Box>
 
-        <Box sx={{ mb: 3 }}>
-          <Typography variant="subtitle1" fontWeight="bold">Status</Typography>
-          <FormControl fullWidth margin="normal" size="small">
-            <InputLabel id="quotation-status-label">Quotation Status</InputLabel>
-            <Select
-              labelId="quotation-status-label"
-              value={selectedStatus}
-              onChange={handleStatusChange}
-              label="Quotation Status"
-            >
-              <MenuItem value="Draft">Draft</MenuItem>
-              <MenuItem value="Sent">Sent</MenuItem>
-              <MenuItem value="Received">Received</MenuItem>
-              <MenuItem value="Approved">Approved</MenuItem>
-              <MenuItem value="Rejected">Rejected</MenuItem>
-            </Select>
-          </FormControl>
-        </Box>
+        <FormControl
+          fullWidth
+          margin="normal"
+          size="small"
+          disabled={quotation.status === 'Converted'}
+        >
+          <InputLabel id="quotation-status-label">Quotation Status</InputLabel>
+          <Select
+            labelId="quotation-status-label"
+            value={selectedStatus}
+            onChange={handleStatusChange}
+            label="Quotation Status"
+          >
+            {quotation.status === 'Converted'
+              ? <MenuItem value="Converted">Converted</MenuItem>
+              : ['Draft', 'Sent', 'Approved', 'Rejected'].map((status) => (
+                <MenuItem key={status} value={status}>
+                  {status}
+                </MenuItem>
+              ))}
+          </Select>
+        </FormControl>
+
 
         <Box sx={{ mb: 3 }}>
           <Typography variant="subtitle1" fontWeight="bold">Notes</Typography>
@@ -754,7 +908,7 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
           onClick={handleSaveStatus}
           variant="contained"
           color="primary"
-          disabled={quotation.status === selectedStatus}
+          disabled={quotation.status === 'Converted' || quotation.status === selectedStatus}
           sx={{ mr: 1 }}
         >
           Save Changes
@@ -776,6 +930,14 @@ const QuotationDialog: React.FC<QuotationDialogProps> = ({
 
 // Main component
 const OrderSupplier: React.FC = () => {
+  const [currentEditItem, setCurrentEditItem] = useState<{
+    index?: number;
+    inventory_id: number;
+    quantity: number;
+    unit_price: number;
+    item_type?: string;
+    otherType?: string;
+  } | null>(null);
   const dispatch = useDispatch<AppDispatch>();
   const suppliers = useSelector(selectAllSuppliers);
   const inventoryItems = useSelector(selectAllInventoryItems);
@@ -783,6 +945,7 @@ const OrderSupplier: React.FC = () => {
   const quotationRequests = useSelector(selectAllQuotationRequests);
 
   const suppliersLoading = useSelector(selectSuppliersStatus) === 'loading';
+  const [stockedInOrders, setStockedInOrders] = useState<Set<number>>(new Set());
   const inventoryLoading = useSelector(selectInventoryLoading);
   const orderSupplierLoading = useSelector(selectOrderSupplierLoading);
   const loading = suppliersLoading || inventoryLoading || orderSupplierLoading;
@@ -794,6 +957,7 @@ const OrderSupplier: React.FC = () => {
   const [selectedQuotation, setSelectedQuotation] = useState<QuotationRequest | null>(null);
   const [orderDialogOpen, setOrderDialogOpen] = useState(false);
   const [quotationDialogOpen, setQuotationDialogOpen] = useState(false);
+  const [editIndex, setEditIndex] = useState<number | null>(null);
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
     message: string;
@@ -801,7 +965,7 @@ const OrderSupplier: React.FC = () => {
   }>({
     open: false,
     message: '',
-    severity: 'success'
+    severity: 'info' as 'info' | 'success' | 'error' | 'warning'
   });
 
   useEffect(() => {
@@ -811,8 +975,95 @@ const OrderSupplier: React.FC = () => {
     dispatch(fetchQuotationRequests());
   }, [dispatch]);
 
+  const handleUpdateOrderItem = () => {
+    if (!currentEditItem || !orderToEdit) return;
+
+    const { inventory_id, quantity, unit_price, index, item_type, otherType } = currentEditItem;
+    
+    // Determine the final item type value
+    const finalItemType = item_type === 'other' && otherType ? otherType : item_type || 'piece';
+
+    // Create deep copy of items array
+    const updatedItems = orderToEdit.items.map(item => ({ ...item }));
+
+    const existingIndex = updatedItems.findIndex(
+      (item, i) => item.inventory_id === inventory_id && i !== index
+    );
+
+    if (typeof index === 'number') {
+      if (existingIndex !== -1) {
+        const existingItem = updatedItems[existingIndex];
+
+        // Replace merged version at existingIndex
+        updatedItems[existingIndex] = {
+          ...existingItem,
+          quantity: existingItem.quantity + quantity,
+          total_price: (existingItem.quantity + quantity) * unit_price,
+        };
+
+        // Remove the duplicate (the one you were editing)
+        updatedItems.splice(index, 1);
+      } else {
+        // Update the item in-place safely (copied object)
+        updatedItems[index] = {
+          ...updatedItems[index],
+          quantity,
+          unit_price,
+          total_price: quantity * unit_price,
+          inventory_id,
+          item_type: finalItemType,
+          inventory_name:
+            inventoryItems.find(i => i.id === inventory_id)?.itemName || ''
+        };
+      }
+    } else {
+      // New item logic
+      const duplicate = updatedItems.find(i => i.inventory_id === inventory_id);
+      if (duplicate) {
+        setSnackbar({
+          open: true,
+          message: "this item is already in the requested item below.",
+          severity: 'warning'
+        });
+        return;
+      }
+
+      updatedItems.push({
+        inventory_id,
+        inventory_name: inventoryItems.find(i => i.id === inventory_id)?.itemName || '',
+        quantity,
+        unit_price,
+        item_type: finalItemType,
+        total_price: quantity * unit_price
+      });
+    }
+
+    setOrderToEdit({
+      ...orderToEdit,
+      items: updatedItems,
+      total_amount: updatedItems.reduce((sum, item) => sum + item.total_price, 0)
+    });
+
+    setCurrentEditItem(null);
+  };
+
+  const handleCancelEditItem = () => {
+    setCurrentEditItem(null);
+  };
+
+  const getEligibleSuppliers = (): Supplier[] => {
+    return suppliers.filter(supplier => {
+      const latestOrder = supplierOrders
+        .filter(order => order.supplier_id === supplier.id)
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+
+      return !latestOrder || ['Completed', 'Rejected'].includes(latestOrder.status);
+    });
+  };
+
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setActiveTab(newValue);
+    setCurrentEditQuotationItem(null);
   };
 
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -890,6 +1141,7 @@ const OrderSupplier: React.FC = () => {
   const handleCloseOrderDialog = () => {
     setOrderDialogOpen(false);
     setSelectedOrder(null);
+    setCurrentEditItem(null);
   };
 
   const handleCloseQuotationDialog = () => {
@@ -897,32 +1149,72 @@ const OrderSupplier: React.FC = () => {
     setSelectedQuotation(null);
   };
 
-  const handleOrderStatusChange = (orderId: number, newStatus: string, paymentPlan?: string) => {
-    const updateData: any = {
-      status: newStatus
-    };
-
+  const handleOrderStatusChange = async (orderId: number, newStatus: string, paymentPlan?: string) => {
+    const updateData: any = { status: newStatus };
     if (paymentPlan !== undefined) {
       updateData.payment_plan = paymentPlan;
     }
 
-    dispatch(updateSupplierOrder({ id: orderId, data: updateData }))
-      .unwrap()
-      .then(() => {
+    try {
+      // 1. Update status
+      await dispatch(updateSupplierOrder({ id: orderId, data: updateData })).unwrap();
+
+      // 2. Fetch full PO with items
+      const fullOrder = await orderSupplierService.getSupplierOrderById(orderId);
+
+      // 3. Stock in if completed and not already processed
+      if (
+        newStatus === 'Completed' &&
+        fullOrder?.items?.length &&
+        !stockedInOrders.has(fullOrder.id!)
+      ) {
+        for (const item of fullOrder.items) {
+          const currentItem = inventoryItems.find(i => i.id === item.inventory_id);
+          const newQty = (currentItem?.quantity || 0) + item.quantity;
+
+          // Update inventory quantity
+          await inventoryService.updateInventoryItem(item.inventory_id, { quantity: newQty });
+
+          // Log stock-in transaction
+          await dispatch(addInventoryTransaction({
+            inventoryId: item.inventory_id,
+            transactionData: {
+              transactionType: 'stock_in',
+              quantity: item.quantity,
+              createdBy: fullOrder.supplier_id,
+              isSupplier: true,
+              notes: `Auto stock-in from completed PO ${fullOrder.order_id}`,
+              transactionDate: new Date().toISOString()
+            }
+          })).unwrap();
+        }
+
+        setStockedInOrders(prev => new Set(prev).add(fullOrder.id!));
+
+        // ✅ Show snackbar for stock-in success
         setSnackbar({
           open: true,
-          message: `Order updated successfully`,
+          message: `Order marked as Completed. Items have been stocked in to inventory.`,
           severity: 'success'
         });
-        dispatch(fetchSupplierOrders());
-      })
-      .catch(error => {
+      } else {
+        // Regular update success feedback
         setSnackbar({
           open: true,
-          message: `Error updating order: ${error}`,
-          severity: 'error'
+          message: `Order updated to "${newStatus}"`,
+          severity: 'success'
         });
+      }
+
+      dispatch(fetchSupplierOrders());
+    } catch (error) {
+      console.error('Failed to update order:', error);
+      setSnackbar({
+        open: true,
+        message: `Error updating order: ${error}`,
+        severity: 'error'
       });
+    }
   };
 
   const handleQuotationStatusChange = (requestId: number, newStatus: string) => {
@@ -934,6 +1226,29 @@ const OrderSupplier: React.FC = () => {
           message: `Quotation status changed to ${newStatus}`,
           severity: 'success'
         });
+
+        // Auto-create PO when status is Approved
+        if (newStatus === 'Approved') {
+          console.log('Auto-creating PO from quotation ${requestedId')
+          dispatch(createOrderFromQuotation(requestId))
+            .unwrap()
+            .then(() => {
+              dispatch(fetchSupplierOrders());
+              setSnackbar({
+                open: true,
+                message: 'Purchase Order automatically created!',
+                severity: 'info'
+              });
+            })
+            .catch(error => {
+              setSnackbar({
+                open: true,
+                message: `Failed to create PO: ${error}`,
+                severity: 'error'
+              });
+            });
+        }
+
         dispatch(fetchQuotationRequests());
       })
       .catch(error => {
@@ -945,24 +1260,19 @@ const OrderSupplier: React.FC = () => {
       });
   };
 
-  const handleAddOrderPayment = (payment: {
-    order_id: number;
-    amount: number;
-    payment_date: string;
-    payment_method: string;
-    notes?: string
-  }) => {
+
+  const handleAddOrderPayment = async (
+    payment: OrderPayment,
+    onSuccess?: () => void
+  ) => {
     dispatch(addOrderPayment(payment))
       .unwrap()
       .then(() => {
-        setSnackbar({
-          open: true,
-          message: `Payment recorded successfully`,
-          severity: 'success'
+        dispatch(fetchSupplierOrders()).then(() => {
+          if (onSuccess) onSuccess();
         });
-        dispatch(fetchSupplierOrders());
       })
-      .catch(error => {
+      .catch((error) => {
         setSnackbar({
           open: true,
           message: `Error recording payment: ${error}`,
@@ -970,6 +1280,8 @@ const OrderSupplier: React.FC = () => {
         });
       });
   };
+
+
 
   const handleCreateOrderFromQuotation = (quotationId: number) => {
     dispatch(createOrderFromQuotation(quotationId))
@@ -996,8 +1308,6 @@ const OrderSupplier: React.FC = () => {
   // Edit and Delete Functions for Purchase Orders
   const [editOrderDialogOpen, setEditOrderDialogOpen] = useState(false);
   const [orderToEdit, setOrderToEdit] = useState<SupplierOrder | null>(null);
-  const [deleteOrderConfirmOpen, setDeleteOrderConfirmOpen] = useState(false);
-  const [orderIdToDelete, setOrderIdToDelete] = useState<number | null>(null);
 
   const handleEditOrder = (order: SupplierOrder) => {
     // Deep copy the order to avoid reference issues
@@ -1006,14 +1316,11 @@ const OrderSupplier: React.FC = () => {
     setEditOrderDialogOpen(true);
   };
 
-  // For managing edited items
-  const [currentEditItem, setCurrentEditItem] = useState<{
-    index: number;
-    inventory_id: number;
-    quantity: number;
-    unit_price: number;
-    expected_delivery_date?: string;
-  } | null>(null);
+  useEffect(() => {
+    if (!editOrderDialogOpen) {
+      setCurrentEditItem(null);
+    }
+  }, [editOrderDialogOpen]);
 
   const handleEditOrderItem = (item: SupplierOrderItem, index: number) => {
     setCurrentEditItem({
@@ -1021,60 +1328,78 @@ const OrderSupplier: React.FC = () => {
       inventory_id: item.inventory_id,
       quantity: item.quantity,
       unit_price: item.unit_price,
-      expected_delivery_date: item.expected_delivery_date
     });
   };
 
-  const handleUpdateOrderItem = () => {
-    if (!currentEditItem || !orderToEdit) return;
-
-    const selectedItem = inventoryItems.find(item => item.id === currentEditItem.inventory_id);
-    if (!selectedItem) return;
+  const handleRemoveEditOrderItem = (index: number) => {
+    if (!orderToEdit) return;
 
     const updatedItems = [...orderToEdit.items];
-    updatedItems[currentEditItem.index] = {
-      ...updatedItems[currentEditItem.index],
-      inventory_id: currentEditItem.inventory_id,
-      inventory_name: selectedItem.itemName,
-      quantity: currentEditItem.quantity,
-      unit_price: currentEditItem.unit_price,
-      total_price: currentEditItem.quantity * currentEditItem.unit_price,
-      expected_delivery_date: currentEditItem.expected_delivery_date
-    };
-
-    // Calculate new total amount
-    const newTotalAmount = updatedItems.reduce((sum, item) => sum + item.total_price, 0);
+    updatedItems.splice(index, 1);
 
     setOrderToEdit({
       ...orderToEdit,
       items: updatedItems,
-      total_amount: newTotalAmount,
-      remaining_amount: orderToEdit.paid_amount ? newTotalAmount - orderToEdit.paid_amount : newTotalAmount
+      total_amount: updatedItems.reduce((sum, item) => sum + item.total_price, 0)
     });
-
-    setCurrentEditItem(null);
   };
 
-  const handleCancelEditItem = () => {
-    setCurrentEditItem(null);
+
+  const handleAddItemClick = () => {
+    setCurrentEditItem({
+      inventory_id: 0,
+      quantity: 1,
+      unit_price: 0,
+      item_type: 'piece',
+      index: undefined
+    });
   };
 
   const handleSaveEditedOrder = async (editedOrder: UpdateSupplierOrder) => {
     if (!orderToEdit || !orderToEdit.id) return;
 
+    const originalOrder = supplierOrders.find(order => order.id === orderToEdit.id);
+    const originalIds = originalOrder?.items?.map(item => item.id).filter(Boolean) || [];
+    const totalAmount = orderToEdit.items.reduce((sum, item) => sum + item.total_price, 0);
+
     // Prepare updated order data
     const updatedOrder: UpdateSupplierOrder = {
       ...editedOrder,
-      total_amount: orderToEdit.total_amount,
-      remaining_amount: orderToEdit.remaining_amount
+      total_amount: totalAmount,
+      remaining_amount: 0
     };
 
     try {
       // First update the order
       await dispatch(updateSupplierOrder({
         id: orderToEdit.id,
-        data: updatedOrder
+        data: {
+          status: orderToEdit.status,
+          notes: orderToEdit.notes,
+          payment_plan: orderToEdit.payment_plan,
+          total_amount: orderToEdit.total_amount,
+          remaining_amount: orderToEdit.remaining_amount
+        }
       })).unwrap();
+
+      //Identify and delete removed items
+      const originalIds = originalOrder?.items?.map((i: any) => i.id).filter(Boolean) || [];
+      const updatedIds = orderToEdit.items.map(i => i.id).filter(Boolean);
+
+      const deletedIds = originalIds.filter(id => !updatedIds.includes(id));
+
+      for (const id of deletedIds) {
+        await orderSupplierService.deleteOrderItem(id);
+      }
+
+      // Now persist items
+      for (const item of orderToEdit.items) {
+        if (item.id) {
+          await orderSupplierService.updateOrderItem(item.id, item);
+        } else {
+          await orderSupplierService.addOrderItem(orderToEdit.id, item);
+        }
+      }
 
       // Then update all the order items if any have changed
       // Note: In a real application, this would be handled in a transaction in the backend
@@ -1108,47 +1433,23 @@ const OrderSupplier: React.FC = () => {
     }
   };
 
-  const handleDeleteOrder = (orderId: number) => {
-    setOrderIdToDelete(orderId);
-    setDeleteOrderConfirmOpen(true);
-  };
-
-  const confirmDeleteOrder = async () => {
-    if (!orderIdToDelete) return;
-
-    try {
-      await dispatch(deleteSupplierOrder(orderIdToDelete)).unwrap();
-
-      setSnackbar({
-        open: true,
-        message: "Purchase order deleted successfully",
-        severity: 'success'
-      });
-
-      // Refresh orders list and close dialog
-      dispatch(fetchSupplierOrders());
-      setDeleteOrderConfirmOpen(false);
-      setOrderIdToDelete(null);
-    } catch (error) {
-      console.error('Error deleting purchase order:', error);
-      setSnackbar({
-        open: true,
-        message: `Error deleting purchase order: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        severity: 'error'
-      });
-    }
-  };
-
-  // Edit and Delete Functions for Quotation Requests
+  //Edit and Delete Functions for Quotation Requests
   const [editQuotationDialogOpen, setEditQuotationDialogOpen] = useState(false);
   const [quotationToEdit, setQuotationToEdit] = useState<QuotationRequest | null>(null);
-  const [deleteQuotationConfirmOpen, setDeleteQuotationConfirmOpen] = useState(false);
-  const [quotationIdToDelete, setQuotationIdToDelete] = useState<number | null>(null);
+  const isConverted = quotationToEdit?.status === 'Converted';
+
+
+
+  useEffect(() => {
+    if (!editQuotationDialogOpen) {
+      setCurrentEditQuotationItem(null);
+    }
+  }, [editQuotationDialogOpen]);
 
   const handleEditQuotation = (quotation: QuotationRequest) => {
-    // Deep copy the quotation to avoid reference issues
+    //Deep copy the quotation to avoid reference issues
     setQuotationToEdit({ ...quotation, items: [...quotation.items] });
-    // Open edit dialog with current quotation data
+    //Open edit dialog with current quotation data
     setEditQuotationDialogOpen(true);
   };
 
@@ -1171,21 +1472,45 @@ const OrderSupplier: React.FC = () => {
     });
   };
 
+  const handleRemoveEditQuotationItem = (index: number) => {
+    if (!quotationToEdit) return;
+
+    const updatedItems = [...quotationToEdit.items];
+    updatedItems.splice(index, 1);
+
+    setQuotationToEdit({
+      ...quotationToEdit,
+      items: updatedItems
+    });
+  };
+
   const handleUpdateQuotationItem = () => {
     if (!currentEditQuotationItem || !quotationToEdit) return;
 
     const selectedItem = inventoryItems.find(item => item.id === currentEditQuotationItem.inventory_id);
     if (!selectedItem) return;
 
-    const updatedItems = [...quotationToEdit.items];
-    updatedItems[currentEditQuotationItem.index] = {
-      ...updatedItems[currentEditQuotationItem.index],
+    const newItem = {
       inventory_id: currentEditQuotationItem.inventory_id,
       inventory_name: selectedItem.itemName,
       quantity: currentEditQuotationItem.quantity,
       expected_price: currentEditQuotationItem.expected_price,
       notes: currentEditQuotationItem.notes
     };
+
+    const updatedItems = [...quotationToEdit.items];
+
+    if (
+      typeof currentEditQuotationItem.index === 'number' &&
+      currentEditQuotationItem.index >= 0 &&
+      currentEditQuotationItem.index < updatedItems.length
+    ) {
+      //Update existing item
+      updatedItems[currentEditQuotationItem.index] = newItem;
+    } else {
+      //Add new item
+      updatedItems.push(newItem);
+    }
 
     setQuotationToEdit({
       ...quotationToEdit,
@@ -1195,6 +1520,7 @@ const OrderSupplier: React.FC = () => {
     setCurrentEditQuotationItem(null);
   };
 
+
   const handleCancelEditQuotationItem = () => {
     setCurrentEditQuotationItem(null);
   };
@@ -1203,14 +1529,19 @@ const OrderSupplier: React.FC = () => {
     if (!quotationToEdit || !quotationToEdit.id) return;
 
     try {
-      // Update the quotation request
+      //Update the main quotation request
       await dispatch(updateQuotationRequest({
         id: quotationToEdit.id,
         data: editedQuotation
       })).unwrap();
 
-      // In a real application, we would also update the items here
-      // For this example, we'll assume the backend handles it
+      //Delete all existing items first
+      await orderSupplierService.deleteQuotationItemsByRequestId(quotationToEdit.id);
+
+      //Insert the updated items
+      for (const item of quotationToEdit.items) {
+        await orderSupplierService.addQuotationItem(quotationToEdit.id, item);
+      }
 
       setSnackbar({
         open: true,
@@ -1218,7 +1549,7 @@ const OrderSupplier: React.FC = () => {
         severity: 'success'
       });
 
-      // Refresh quotations list and close dialog
+      //Refresh list and close dialog
       dispatch(fetchQuotationRequests());
       setEditQuotationDialogOpen(false);
       setQuotationToEdit(null);
@@ -1232,36 +1563,6 @@ const OrderSupplier: React.FC = () => {
     }
   };
 
-  const handleDeleteQuotation = (quotationId: number) => {
-    setQuotationIdToDelete(quotationId);
-    setDeleteQuotationConfirmOpen(true);
-  };
-
-  const confirmDeleteQuotation = async () => {
-    if (!quotationIdToDelete) return;
-
-    try {
-      await dispatch(deleteQuotationRequest(quotationIdToDelete)).unwrap();
-
-      setSnackbar({
-        open: true,
-        message: "Quotation request deleted successfully",
-        severity: 'success'
-      });
-
-      // Refresh quotations list and close dialog
-      dispatch(fetchQuotationRequests());
-      setDeleteQuotationConfirmOpen(false);
-      setQuotationIdToDelete(null);
-    } catch (error) {
-      console.error('Error deleting quotation request:', error);
-      setSnackbar({
-        open: true,
-        message: `Error deleting quotation request: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        severity: 'error'
-      });
-    }
-  };
 
   const handleRefresh = () => {
     dispatch(fetchSuppliers());
@@ -1376,6 +1677,7 @@ const OrderSupplier: React.FC = () => {
       // Transform order items array to table format for jspdf-autotable
       const tableHeaders = [
         { header: 'Item Description', dataKey: 'inventory_name' as const },
+        { header: 'Type', dataKey: 'item_type' as const },
         { header: 'Quantity', dataKey: 'quantity' as const },
         { header: 'Unit Price', dataKey: 'unit_price' as const },
         { header: 'Total Price', dataKey: 'total_price' as const },
@@ -1383,12 +1685,10 @@ const OrderSupplier: React.FC = () => {
 
       const tableRows = order.items.map(item => ({
         inventory_name: item.inventory_name,
+        item_type: item.item_type || 'Per Piece',
         quantity: item.quantity.toString(),
         unit_price: item.unit_price.toLocaleString(undefined, { minimumFractionDigits: 2 }),
-        total_price: item.total_price.toLocaleString(undefined, { minimumFractionDigits: 2 }),
-        expected_delivery_date: item.expected_delivery_date
-          ? new Date(item.expected_delivery_date).toLocaleDateString()
-          : 'Not specified'
+        total_price: item.total_price.toLocaleString(undefined, { minimumFractionDigits: 2 })
       }));
 
       // Draw the table
@@ -1408,11 +1708,11 @@ const OrderSupplier: React.FC = () => {
           fontStyle: 'bold'
         },
         columnStyles: {
-          0: { cellWidth: 60 },
-          1: { cellWidth: 20, halign: 'center' },
-          2: { cellWidth: 30, halign: 'right' },
-          3: { cellWidth: 30, halign: 'right' },
-          4: { cellWidth: 40 }
+          0: { cellWidth: 50 },
+          1: { cellWidth: 25, halign: 'center' },
+          2: { cellWidth: 20, halign: 'center' },
+          3: { cellWidth: 25, halign: 'right' },
+          4: { cellWidth: 30, halign: 'right' }
         },
         styles: {
           fontSize: 9,
@@ -1510,18 +1810,26 @@ const OrderSupplier: React.FC = () => {
     quantity: number;
     unit_price: number;
     total_price: number;
-    expected_delivery_date?: string;
+    item_type?: string;
   }[]>([]);
   const [currentItem, setCurrentItem] = useState<{
     inventory_id: number;
     quantity: number;
     unit_price: number;
-    expected_delivery_date?: string;
+    item_type: string;
+    otherType?: string;
   }>({
     inventory_id: 0,
     quantity: 1,
-    unit_price: 0
+    unit_price: 0,
+    item_type: 'piece'
   });
+
+  useEffect(() => {
+    if (editIndex !== null && currentItem.inventory_id === 0) {
+      setEditIndex(null);
+    }
+  }, [currentItem.inventory_id, editIndex]);
 
   const handleCreatePurchaseOrder = () => {
     setPurchaseOrderDialogOpen(true);
@@ -1536,7 +1844,8 @@ const OrderSupplier: React.FC = () => {
     setCurrentItem({
       inventory_id: 0,
       quantity: 1,
-      unit_price: 0
+      unit_price: 0,
+      item_type: 'piece'
     });
   };
 
@@ -1579,28 +1888,56 @@ const OrderSupplier: React.FC = () => {
       return;
     }
 
+    const itemType = currentItem.item_type === 'other' && currentItem.otherType 
+      ? currentItem.otherType 
+      : currentItem.item_type;
+      
     const newItem = {
       inventory_id: currentItem.inventory_id,
       inventory_name: selectedItem.itemName,
       quantity: currentItem.quantity,
       unit_price: currentItem.unit_price,
       total_price: currentItem.quantity * currentItem.unit_price,
-      expected_delivery_date: currentItem.expected_delivery_date
+      item_type: itemType
     };
 
-    setOrderItems([...orderItems, newItem]);
+    let updatedItems = [...orderItems];
+
+    if (editIndex !== null) {
+      updatedItems[editIndex] = newItem;
+      setEditIndex(null);
+    } else {
+      updatedItems.push(newItem);
+    }
+
+    setOrderItems(updatedItems);
+
     setCurrentItem({
       inventory_id: 0,
       quantity: 1,
-      unit_price: 0
+      unit_price: 0,
+      item_type: 'piece'
     });
   };
+
 
   const handleRemoveOrderItem = (index: number) => {
     const updatedItems = [...orderItems];
     updatedItems.splice(index, 1);
     setOrderItems(updatedItems);
   };
+
+  const handleEditDraftItem = (index: number) => {
+    const item = orderItems[index];
+    setCurrentItem({
+      inventory_id: item.inventory_id,
+      quantity: item.quantity,
+      unit_price: item.unit_price,
+      item_type: item.item_type || 'piece'
+    });
+    setEditIndex(index);
+  };
+
 
   const handleSubmitPurchaseOrder = async () => {
     if (!selectedSupplier) {
@@ -1959,6 +2296,7 @@ const OrderSupplier: React.FC = () => {
   const [rfqSupplier, setRfqSupplier] = useState<number | ''>('');
   const [rfqDate, setRfqDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [rfqNotes, setRfqNotes] = useState('');
+  const [editRfqIndex, setEditRfqIndex] = useState<number | null>(null);
   const [rfqItems, setRfqItems] = useState<{
     inventory_id: number;
     inventory_name: string;
@@ -1992,6 +2330,18 @@ const OrderSupplier: React.FC = () => {
     });
   };
 
+  const handleEditRfqItem = (index: number) => {
+    const item = rfqItems[index];
+    setCurrentRfqItem({
+      inventory_id: item.inventory_id,
+      quantity: item.quantity,
+      expected_price: item.expected_price,
+      notes: item.notes,
+    });
+    setEditRfqIndex(index);
+  };
+
+
   const handleAddRfqItem = () => {
     if (currentRfqItem.inventory_id === 0) {
       setSnackbar({
@@ -2002,17 +2352,7 @@ const OrderSupplier: React.FC = () => {
       return;
     }
 
-    if (currentRfqItem.quantity <= 0) {
-      setSnackbar({
-        open: true,
-        message: "Quantity must be greater than 0",
-        severity: 'error'
-      });
-      return;
-    }
-
     const selectedItem = inventoryItems.find(item => item.id === currentRfqItem.inventory_id);
-
     if (!selectedItem) {
       setSnackbar({
         open: true,
@@ -2030,12 +2370,33 @@ const OrderSupplier: React.FC = () => {
       notes: currentRfqItem.notes
     };
 
-    setRfqItems([...rfqItems, newItem]);
+    if (editRfqIndex !== null) {
+      const updatedItems = [...rfqItems];
+      updatedItems[editRfqIndex] = newItem;
+      setRfqItems(updatedItems);
+      setEditRfqIndex(null);
+    } else {
+      const alreadyExists = rfqItems.some(item => item.inventory_id === currentRfqItem.inventory_id);
+      if (alreadyExists) {
+        setSnackbar({
+          open: true,
+          message: "This item is already in the requested items.",
+          severity: 'warning'
+        });
+        return;
+      }
+      setRfqItems([...rfqItems, newItem]);
+    }
+
+    // Reset form
     setCurrentRfqItem({
       inventory_id: 0,
-      quantity: 1
+      quantity: 1,
+      expected_price: undefined,
+      notes: ''
     });
   };
+
 
   const handleRemoveRfqItem = (index: number) => {
     const updatedItems = [...rfqItems];
@@ -2135,10 +2496,10 @@ const OrderSupplier: React.FC = () => {
           <TableRow>
             <TableCell><strong>Order ID</strong></TableCell>
             <TableCell><strong>Supplier</strong></TableCell>
-            <TableCell><strong>Date</strong></TableCell>
-            <TableCell><strong>Amount</strong></TableCell>
-            <TableCell><strong>Status</strong></TableCell>
-            <TableCell><strong>Actions</strong></TableCell>
+            <TableCell align='center'><strong>Date</strong></TableCell>
+            <TableCell align='center'><strong>Amount</strong></TableCell>
+            <TableCell align='center'><strong>Status</strong></TableCell>
+            <TableCell align='center' sx={{ minWidth: 240 }}><strong>Actions</strong></TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
@@ -2155,49 +2516,44 @@ const OrderSupplier: React.FC = () => {
                 <TableRow key={order.id}>
                   <TableCell>{order.order_id}</TableCell>
                   <TableCell>{supplier?.name || `Supplier ${order.supplier_id}`}</TableCell>
-                  <TableCell>
+                  <TableCell align='center'>
                     {order.date ? new Date(order.date).toLocaleDateString() : 'N/A'}
                   </TableCell>
-                  <TableCell>₱{order.total_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
-                  <TableCell>
+                  <TableCell align='center'>₱{order.total_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
+                  <TableCell align='center'>
                     <Chip
                       label={order.status}
                       color={getChipColor(order.status)}
                       size="small"
                     />
                   </TableCell>
-                  <TableCell>
-                    <Button
-                      size="small"
-                      onClick={() => handleViewOrderDetails(order)}
-                      sx={{ mr: 1 }}
-                    >
-                      View
-                    </Button>
-                    <Button
-                      size="small"
-                      onClick={() => handleEditOrder(order)}
-                      color="primary"
-                      sx={{ mr: 1 }}
-                    >
-                      Edit
-                    </Button>
-                    <Button
-                      size="small"
-                      startIcon={<PdfIcon />}
-                      onClick={() => handleGeneratePurchaseOrderPDF(order)}
-                      color="secondary"
-                      sx={{ mr: 1 }}
-                    >
-                      PDF
-                    </Button>
-                    <Button
-                      size="small"
-                      onClick={() => handleDeleteOrder(order.id!)}
-                      color="error"
-                    >
-                      Delete
-                    </Button>
+                  <TableCell align='center'>
+                    <Box display='flex' justifyContent='center' alignItems='center' gap={1} flexWrap='wrap'>
+                      <Button
+                        size="small"
+                        onClick={() => handleViewOrderDetails(order)}
+                        sx={{ mr: 1 }}
+                      >
+                        View
+                      </Button>
+                      <Button
+                        size="small"
+                        onClick={() => handleEditOrder(order)}
+                        color="primary"
+                        sx={{ mr: 1 }}
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        size="small"
+                        startIcon={<PdfIcon />}
+                        onClick={() => handleGeneratePurchaseOrderPDF(order)}
+                        color="secondary"
+                        sx={{ mr: 1 }}
+                      >
+                        PDF
+                      </Button>
+                    </Box>
                   </TableCell>
                 </TableRow>
               );
@@ -2215,10 +2571,10 @@ const OrderSupplier: React.FC = () => {
           <TableRow>
             <TableCell><strong>Request ID</strong></TableCell>
             <TableCell><strong>Supplier</strong></TableCell>
-            <TableCell><strong>Date</strong></TableCell>
-            <TableCell><strong>Items</strong></TableCell>
-            <TableCell><strong>Status</strong></TableCell>
-            <TableCell><strong>Actions</strong></TableCell>
+            <TableCell align='center'><strong>Date</strong></TableCell>
+            <TableCell align='center'><strong>Items</strong></TableCell>
+            <TableCell align='center'><strong>Status</strong></TableCell>
+            <TableCell align='center'><strong>Actions</strong></TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
@@ -2235,49 +2591,41 @@ const OrderSupplier: React.FC = () => {
                 <TableRow key={quotation.id}>
                   <TableCell>{quotation.request_id}</TableCell>
                   <TableCell>{supplier?.name || `Supplier ${quotation.supplier_id}`}</TableCell>
-                  <TableCell>
+                  <TableCell align='center'>
                     {quotation.date ? new Date(quotation.date).toLocaleDateString() : 'N/A'}
                   </TableCell>
-                  <TableCell>{quotation.items.length} items</TableCell>
-                  <TableCell>
+                  <TableCell align='center'>{quotation.items.length} items</TableCell>
+                  <TableCell align='center'>
                     <Chip
                       label={quotation.status}
                       color={getChipColor(quotation.status)}
                       size="small"
                     />
                   </TableCell>
-                  <TableCell>
-                    <Button
-                      size="small"
-                      onClick={() => handleViewQuotationDetails(quotation)}
-                      sx={{ mr: 1 }}
-                    >
-                      View
-                    </Button>
-                    <Button
-                      size="small"
-                      onClick={() => handleEditQuotation(quotation)}
-                      color="primary"
-                      sx={{ mr: 1 }}
-                    >
-                      Edit
-                    </Button>
-                    <Button
-                      size="small"
-                      startIcon={<PdfIcon />}
-                      onClick={() => handleGenerateRFQPDF(quotation)}
-                      color="secondary"
-                      sx={{ mr: 1 }}
-                    >
-                      PDF
-                    </Button>
-                    <Button
-                      size="small"
-                      onClick={() => handleDeleteQuotation(quotation.id!)}
-                      color="error"
-                    >
-                      Delete
-                    </Button>
+                  <TableCell align='center'>
+                    <Box sx={{ display: 'flex', justifyContent: 'center', gap: '1' }}>
+                      <Button
+                        size="small"
+                        onClick={() => handleViewQuotationDetails(quotation)}
+                      >
+                        View
+                      </Button>
+                      <Button
+                        size="small"
+                        onClick={() => handleEditQuotation(quotation)}
+                        color="primary"
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        size="small"
+                        startIcon={<PdfIcon />}
+                        onClick={() => handleGenerateRFQPDF(quotation)}
+                        color="secondary"
+                      >
+                        PDF
+                      </Button>
+                    </Box>
                   </TableCell>
                 </TableRow>
               );
@@ -2367,7 +2715,15 @@ const OrderSupplier: React.FC = () => {
         suppliers={suppliers}
         inventoryItems={inventoryItems}
         onGeneratePDF={handleGeneratePurchaseOrderPDF}
+        currentEditItem={currentEditItem}
+        setCurrentEditItem={setCurrentEditItem}
+        handleUpdateOrderItem={handleUpdateOrderItem}
+        handleCancelEditItem={handleCancelEditItem}
+        setSelectedOrder={setSelectedOrder}
+        
       />
+
+
 
       {/* Quotation Details Dialog */}
       <QuotationDialog
@@ -2387,25 +2743,39 @@ const OrderSupplier: React.FC = () => {
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 1 }}>
             <Grid item xs={12} md={6}>
-              <FormControl fullWidth sx={{ mb: 2 }}>
-                <InputLabel id="supplier-label">Supplier</InputLabel>
-                <Select
-                  labelId="supplier-label"
-                  value={selectedSupplier}
-                  onChange={(e) => setSelectedSupplier(e.target.value as number | '')}
-                  label="Supplier"
-                  required
+              <Box>
+                <FormControl fullWidth required>
+                  <InputLabel id="supplier-label">Supplier</InputLabel>
+                  <Select
+                    labelId="supplier-label"
+                    value={selectedSupplier}
+                    onChange={(e) => setSelectedSupplier(Number(e.target.value))}
+                    label="Supplier"
+                  >
+                    {getEligibleSuppliers().map((supplier) => (
+                      <MenuItem key={supplier.id} value={supplier.id}>
+                        {supplier.name}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+
+                <Typography
+                  variant="body2"
+                  sx={{
+                    color: 'text.secondary',
+                    mt: 0.5,
+                    mb: 2,
+                    pl: 0.5,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 0.5
+                  }}
                 >
-                  <MenuItem value="">
-                    <em>Select a supplier</em>
-                  </MenuItem>
-                  {suppliers.map((supplier) => (
-                    <MenuItem key={supplier.id} value={supplier.id}>
-                      {supplier.name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+                  <InfoOutlined fontSize="small" />
+                  Only suppliers without ongoing purchase orders can be selected.
+                </Typography>
+              </Box>
             </Grid>
             <Grid item xs={12} md={6}>
               <TextField
@@ -2440,21 +2810,38 @@ const OrderSupplier: React.FC = () => {
                   <InputLabel id="inventory-item-label">Inventory Item</InputLabel>
                   <Select
                     labelId="inventory-item-label"
-                    value={currentItem.inventory_id || ''}
-                    onChange={(e) => setCurrentItem({
-                      ...currentItem,
-                      inventory_id: e.target.value as number
-                    })}
+                    value={currentItem.inventory_id}
+                    onChange={(e) => {
+                      const id = parseInt(e.target.value as string, 10);
+                      const selected = inventoryItems.find((item) => item.id === id);
+                      setCurrentItem({
+                        ...currentItem,
+                        inventory_id: id,
+                        unit_price: selected?.unitPrice || 0,
+                      });
+                    }}
+                    disabled={editIndex !== null}
                     label="Inventory Item"
                   >
                     <MenuItem value="">
                       <em>Select an item</em>
                     </MenuItem>
-                    {inventoryItems.map((item) => (
-                      <MenuItem key={item.id} value={item.id}>
-                        {item.itemName}
-                      </MenuItem>
-                    ))}
+
+                    {inventoryItems.map((item) => {
+                      const alreadySelected = orderItems.some(
+                        (orderItem) => orderItem.inventory_id === item.id
+                      );
+                      return (
+                        <MenuItem
+                          key={item.id}
+                          value={item.id}
+                          disabled={alreadySelected}
+                          style={alreadySelected ? { color: 'gray' } : undefined}
+                        >
+                          {item.itemName}
+                        </MenuItem>
+                      );
+                    })}
                   </Select>
                 </FormControl>
               </Grid>
@@ -2473,31 +2860,82 @@ const OrderSupplier: React.FC = () => {
                 />
               </Grid>
               <Grid item xs={6} md={2}>
-                <TextField
-                  label="Unit Price"
-                  type="number"
-                  inputProps={{ min: 0, step: 0.01 }}
-                  size="small"
-                  fullWidth
-                  value={currentItem.unit_price}
-                  onChange={(e) => setCurrentItem({
-                    ...currentItem,
-                    unit_price: parseFloat(e.target.value) || 0
-                  })}
-                  InputProps={{
-                    startAdornment: <InputAdornment position="start">₱</InputAdornment>,
-                  }}
-                />
+                <FormControl fullWidth size="small">
+                  <InputLabel id="item-type-label">Type</InputLabel>
+                  <Select
+                    labelId="item-type-label"
+                    value={currentItem.item_type}
+                    onChange={(e) => setCurrentItem({
+                      ...currentItem,
+                      item_type: e.target.value as string,
+                      otherType: e.target.value === 'other' ? currentItem.otherType : undefined
+                    })}
+                    label="Type"
+                  >
+                    {itemTypes.map(type => (
+                      <MenuItem key={type.id} value={type.id}>
+                        {type.name}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                {currentItem.item_type === 'other' && (
+                  <TextField
+                    label="Specify Type"
+                    value={currentItem.otherType || ''}
+                    onChange={(e) => setCurrentItem({
+                      ...currentItem,
+                      otherType: e.target.value
+                    })}
+                    fullWidth
+                    size="small"
+                    margin="dense"
+                  />
+                )}
               </Grid>
-              <Grid item xs={6} md={1} sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <Grid item xs={6} md={2}>
+                <Tooltip title="Unit price is automatically set from inventory and cannot be edited.">
+                  <TextField
+                    label="Unit Price"
+                    value={(() => {
+                      const selectedItem = inventoryItems.find(inv => inv.id === currentItem.inventory_id);
+                      const price = selectedItem?.unitPrice;
+                      return price != null ? `₱${price.toFixed(2)}` : '';
+                    })()}
+                    fullWidth
+                    size="small"
+                    inputProps={{ readOnly: true }}
+                  />
+                </Tooltip>
+              </Grid>
+
+              <Grid item xs={6} md={2} sx={{ display: 'flex', gap: 1 }}>
                 <Button
                   variant="contained"
                   color="primary"
                   onClick={handleAddOrderItem}
-                  size="small"
+                  fullWidth
                 >
-                  Add
+                  {editIndex !== null ? 'Update' : 'Add'}
                 </Button>
+
+                {editIndex !== null && (
+                  <Button
+                    variant="text"
+                    color="error"
+                    onClick={() => {
+                      setEditIndex(null);
+                      setCurrentItem({
+                        inventory_id: 0,
+                        quantity: 1,
+                        unit_price: 0,
+                        item_type: 'piece'
+                      });
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                )}
               </Grid>
             </Grid>
           </Paper>
@@ -2508,36 +2946,32 @@ const OrderSupplier: React.FC = () => {
                 <TableHead>
                   <TableRow>
                     <TableCell><strong>Item</strong></TableCell>
-                    <TableCell><strong>Quantity</strong></TableCell>
-                    <TableCell><strong>Unit Price</strong></TableCell>
-                    <TableCell><strong>Total Price</strong></TableCell>
-                    <TableCell><strong>Actions</strong></TableCell>
+                    <TableCell align='center'><strong>Type</strong></TableCell>
+                    <TableCell align='center'><strong>Quantity</strong></TableCell>
+                    <TableCell align='center'><strong>Unit Price</strong></TableCell>
+                    <TableCell align='center'><strong>Total Price</strong></TableCell>
+                    <TableCell align='center' sx={{ width: '180px' }}><strong>Actions</strong></TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {orderItems.map((item, index) => (
                     <TableRow key={index}>
                       <TableCell>{item.inventory_name}</TableCell>
-                      <TableCell>{item.quantity}</TableCell>
-                      <TableCell>₱{item.unit_price.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
-                      <TableCell>₱{item.total_price.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
-                      <TableCell>
-                        {item.expected_delivery_date ? new Date(item.expected_delivery_date).toLocaleDateString() : 'Not specified'}
+                      <TableCell align='center'>
+                        {item.item_type || 'Per Piece'}
                       </TableCell>
-                      <TableCell>
-                        <Button
-                          size="small"
-                          color="error"
-                          onClick={() => handleRemoveOrderItem(index)}
-                        >
-                          Remove
-                        </Button>
+                      <TableCell align='center'>{item.quantity}</TableCell>
+                      <TableCell align='center'>₱{item.unit_price.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
+                      <TableCell align='center'>₱{item.total_price.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
+                      <TableCell align='center' sx={{ whiteSpace: 'nowrap' }}>
+                        <Button onClick={() => handleEditDraftItem(index)} color="primary" size="small">Edit</Button>
+                        <Button onClick={() => handleRemoveOrderItem(index)} color="error" size="small">Remove</Button>
                       </TableCell>
                     </TableRow>
                   ))}
                   <TableRow>
-                    <TableCell colSpan={3} align="right"><strong>Total:</strong></TableCell>
-                    <TableCell colSpan={3}>
+                    <TableCell colSpan={4} align="right"><strong>Total:</strong></TableCell>
+                    <TableCell colSpan={2}>
                       <strong>₱{orderItems.reduce((sum, item) => sum + item.total_price, 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong>
                     </TableCell>
                   </TableRow>
@@ -2551,12 +2985,22 @@ const OrderSupplier: React.FC = () => {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleClosePurchaseOrderDialog}>Cancel</Button>
+          <Button
+            onClick={handleClosePurchaseOrderDialog}
+            variant="text"
+            color="error"
+          >
+            Cancel
+          </Button>
           <Button
             onClick={handleSubmitPurchaseOrder}
             variant="contained"
             color="primary"
-            disabled={!selectedSupplier || orderItems.length === 0}
+            disabled={
+              !selectedSupplier ||
+              !orderDate ||
+              orderItems.length === 0
+            }
           >
             Create Purchase Order
           </Button>
@@ -2581,13 +3025,28 @@ const OrderSupplier: React.FC = () => {
                   <MenuItem value="">
                     <em>Select a supplier</em>
                   </MenuItem>
-                  {suppliers.map((supplier) => (
+                  {getEligibleSuppliers().map(supplier => (
                     <MenuItem key={supplier.id} value={supplier.id}>
                       {supplier.name}
                     </MenuItem>
                   ))}
                 </Select>
               </FormControl>
+              <Typography
+                variant="body2"
+                sx={{
+                  color: 'text.secondary',
+                  mt: -1,
+                  mb: 2,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 0.5,
+                  pl: 0.5
+                }}
+              >
+                <InfoOutlined fontSize="small" />
+                Only suppliers without ongoing purchase orders can be selected.
+              </Typography>
             </Grid>
             <Grid item xs={12} md={6}>
               <TextField
@@ -2623,20 +3082,28 @@ const OrderSupplier: React.FC = () => {
                   <Select
                     labelId="rfq-inventory-item-label"
                     value={currentRfqItem.inventory_id || ''}
-                    onChange={(e) => setCurrentRfqItem({
-                      ...currentRfqItem,
-                      inventory_id: e.target.value as number
-                    })}
+                    onChange={(e) =>
+                      setCurrentRfqItem({
+                        ...currentRfqItem,
+                        inventory_id: e.target.value as number
+                      })
+                    }
                     label="Inventory Item"
+                    disabled={editRfqIndex !== null}
                   >
-                    <MenuItem value="">
-                      <em>Select an item</em>
-                    </MenuItem>
-                    {inventoryItems.map((item) => (
-                      <MenuItem key={item.id} value={item.id}>
-                        {item.itemName}
-                      </MenuItem>
-                    ))}
+                    {inventoryItems.map((item) => {
+                      const alreadySelected = rfqItems.some((rfqItem) => rfqItem.inventory_id === item.id);
+                      return (
+                        <MenuItem
+                          key={item.id}
+                          value={item.id}
+                          disabled={alreadySelected}
+                          style={alreadySelected ? { color: 'gray' } : undefined}
+                        >
+                          {item.itemName}
+                        </MenuItem>
+                      );
+                    })}
                   </Select>
                 </FormControl>
               </Grid>
@@ -2702,25 +3169,32 @@ const OrderSupplier: React.FC = () => {
                 <TableHead>
                   <TableRow>
                     <TableCell><strong>Item</strong></TableCell>
-                    <TableCell><strong>Quantity</strong></TableCell>
-                    <TableCell><strong>Expected Price</strong></TableCell>
-                    <TableCell><strong>Notes</strong></TableCell>
-                    <TableCell><strong>Actions</strong></TableCell>
+                    <TableCell align='center'><strong>Quantity</strong></TableCell>
+                    <TableCell align='center'><strong>Expected Price</strong></TableCell>
+                    <TableCell align='center'><strong>Notes</strong></TableCell>
+                    <TableCell align='center'><strong>Actions</strong></TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {rfqItems.map((item, index) => (
                     <TableRow key={index}>
                       <TableCell>{item.inventory_name}</TableCell>
-                      <TableCell>{item.quantity}</TableCell>
-                      <TableCell>
+                      <TableCell align='center'>{item.quantity}</TableCell>
+                      <TableCell align='center'>
                         {item.expected_price
                           ? `₱${item.expected_price.toLocaleString(undefined, { minimumFractionDigits: 2 })}`
                           : 'To be quoted'
                         }
                       </TableCell>
-                      <TableCell>{item.notes || '-'}</TableCell>
-                      <TableCell>
+                      <TableCell align='center'>{item.notes || '-'}</TableCell>
+                      <TableCell align='center' sx={{ whiteSpace: 'nowrap' }}>
+                        <Button
+                          size="small"
+                          color="primary"
+                          onClick={() => handleEditRfqItem(index)}
+                        >
+                          Edit
+                        </Button>
                         <Button
                           size="small"
                           color="error"
@@ -2775,6 +3249,7 @@ const OrderSupplier: React.FC = () => {
                     <Select
                       labelId="edit-supplier-label"
                       value={orderToEdit.supplier_id}
+                      disabled
                       onChange={(e) => setOrderToEdit(prev => prev ? { ...prev, supplier_id: e.target.value as number } : null)}
                       label="Supplier"
                       required
@@ -2831,7 +3306,6 @@ const OrderSupplier: React.FC = () => {
                   />
                 </Grid>
               </Grid>
-
               <TextField
                 label="Notes"
                 multiline
@@ -2841,126 +3315,181 @@ const OrderSupplier: React.FC = () => {
                 fullWidth
                 sx={{ mb: 3 }}
               />
-
-              <Typography variant="subtitle1" gutterBottom>
-                Order Items
-              </Typography>
-
-              {currentEditItem ? (
-                <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
-                  <Grid container spacing={2} alignItems="center">
-                    <Grid item xs={12} md={4}>
-                      <FormControl fullWidth size="small">
-                        <InputLabel id="edit-inventory-item-label">Inventory Item</InputLabel>
-                        <Select
-                          labelId="edit-inventory-item-label"
-                          value={currentEditItem.inventory_id}
-                          onChange={(e) => setCurrentEditItem({
+              <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+                <Typography variant="subtitle1">Order Items</Typography>
+                {!currentEditItem && (
+                  <Button
+                    variant="outlined"
+                    size='small'
+                    onClick={handleAddItemClick}
+                    startIcon={<AddIcon />}
+                  >
+                    Add Item
+                  </Button>
+                )}
+              </Box>
+              {currentEditItem && (
+                <Grid container spacing={2} alignItems="center" sx={{ mb: 2, mt: 2 }}>
+                  <Grid item xs={3}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel>Inventory Item</InputLabel>
+                      <Select
+                        value={currentEditItem.inventory_id}
+                        onChange={(e) => {
+                          const selectedId = Number(e.target.value);
+                          const selectedItem = inventoryItems.find(i => i.id === selectedId);
+                          setCurrentEditItem({
                             ...currentEditItem,
-                            inventory_id: e.target.value as number
-                          })}
-                          label="Inventory Item"
-                        >
-                          {inventoryItems.map((item) => (
-                            <MenuItem key={item.id} value={item.id}>
+                            inventory_id: selectedId,
+                            unit_price: selectedItem?.unitPrice || 0
+                          });
+                        }}
+                        label="Inventory Item"
+                        disabled={typeof currentEditItem.index === 'number' && currentEditItem.index >= 0}
+                      >
+                        {inventoryItems.map((item) => {
+                          const alreadySelected = orderToEdit?.items.some((orderItem, i) =>
+                            orderItem.inventory_id === item.id &&
+                            i !== currentEditItem?.index // allow current one to remain editable
+                          );
+
+                          return (
+                            <MenuItem
+                              key={item.id}
+                              value={item.id}
+                              disabled={alreadySelected}
+                              style={alreadySelected ? { color: 'gray' } : undefined}
+                            >
                               {item.itemName}
                             </MenuItem>
-                          ))}
-                        </Select>
-                      </FormControl>
-                    </Grid>
-                    <Grid item xs={6} md={2}>
-                      <TextField
-                        label="Quantity"
-                        type="number"
-                        inputProps={{ min: 1 }}
-                        size="small"
-                        fullWidth
-                        value={currentEditItem.quantity}
+                          );
+                        })}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={2}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel id="edit-item-type-label">Type</InputLabel>
+                      <Select
+                        labelId="edit-item-type-label"
+                        value={currentEditItem.item_type || 'piece'}
                         onChange={(e) => setCurrentEditItem({
                           ...currentEditItem,
-                          quantity: parseInt(e.target.value) || 0
+                          item_type: e.target.value as string,
                         })}
-                      />
-                    </Grid>
-                    <Grid item xs={6} md={2}>
+                        label="Type"
+                      >
+                        {itemTypes.map(type => (
+                          <MenuItem key={type.id} value={type.id}>
+                            {type.name}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                    {currentEditItem.item_type === 'other' && (
                       <TextField
-                        label="Unit Price"
-                        type="number"
-                        inputProps={{ min: 0, step: 0.01 }}
-                        size="small"
-                        fullWidth
-                        value={currentEditItem.unit_price}
+                        label="Specify Type"
+                        value={currentEditItem.otherType || ''}
                         onChange={(e) => setCurrentEditItem({
                           ...currentEditItem,
-                          unit_price: parseFloat(e.target.value) || 0
+                          otherType: e.target.value
                         })}
-                        InputProps={{
-                          startAdornment: <InputAdornment position="start">₱</InputAdornment>,
-                        }}
+                        fullWidth
+                        size="small"
+                        margin="dense"
                       />
-                    </Grid>
-                    <Grid item xs={6} md={2} sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+                    )}
+                  </Grid>
+                  <Grid item xs={2}>
+                    <TextField
+                      type="number"
+                      label="Quantity"
+                      size="small"
+                      value={currentEditItem.quantity}
+                      onChange={(e) =>
+                        setCurrentEditItem({ ...currentEditItem, quantity: Number(e.target.value) })
+                      }
+                      fullWidth
+                    />
+                  </Grid>
+                  <Grid item xs={2}>
+                    <TextField
+                      type="number"
+                      label="Unit Price"
+                      size="small"
+                      value={currentEditItem.unit_price}
+                      disabled
+                      fullWidth
+                    />
+                  </Grid>
+                  <Grid item xs={2}>
+                    <Box display="flex" gap={1}>
                       <Button
+                        onClick={handleUpdateOrderItem}
                         variant="contained"
                         color="primary"
-                        onClick={handleUpdateOrderItem}
-                        size="small"
+                        disabled={currentEditItem.inventory_id === 0}
+                        fullWidth
                       >
-                        Update
+                        {typeof currentEditItem.index === 'number' ? 'Update' : 'Add'}
                       </Button>
                       <Button
-                        variant="outlined"
                         onClick={handleCancelEditItem}
-                        size="small"
+                        variant="text"
+                        color="error"
+                        fullWidth
                       >
                         Cancel
                       </Button>
-                    </Grid>
+                    </Box>
                   </Grid>
-                </Paper>
-              ) : null}
-
+                </Grid>
+              )}
               <TableContainer component={Paper} variant="outlined" sx={{ mb: 2 }}>
                 <Table size="small">
                   <TableHead>
                     <TableRow>
                       <TableCell><strong>Item</strong></TableCell>
-                      <TableCell><strong>Quantity</strong></TableCell>
-                      <TableCell><strong>Unit Price</strong></TableCell>
-                      <TableCell><strong>Total Price</strong></TableCell>
-                      <TableCell><strong>Actions</strong></TableCell>
+                      <TableCell align='center'><strong>Type</strong></TableCell>
+                      <TableCell align='center'><strong>Quantity</strong></TableCell>
+                      <TableCell align='center'><strong>Unit Price</strong></TableCell>
+                      <TableCell align='center'><strong>Total Price</strong></TableCell>
+                      <TableCell align='center' sx={{ width: '180px' }}><strong>Actions</strong></TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     {orderToEdit.items.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={6} align="center">No items in this order</TableCell>
+                        <TableCell colSpan={7} align="center">No items in this order</TableCell>
                       </TableRow>
                     ) : (
                       orderToEdit.items.map((item, index) => (
                         <TableRow key={index}>
                           <TableCell>{item.inventory_name}</TableCell>
-                          <TableCell>{item.quantity}</TableCell>
-                          <TableCell>₱{item.unit_price.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
-                          <TableCell>₱{item.total_price.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
-                          <TableCell>
-                            {item.expected_delivery_date ? new Date(item.expected_delivery_date).toLocaleDateString() : 'Not specified'}
-                          </TableCell>
-                          <TableCell>
-                            <Button
-                              size="small"
-                              onClick={() => handleEditOrderItem(item, index)}
-                              color="primary"
-                            >
-                              Edit
-                            </Button>
+                          <TableCell align='center'>{item.item_type || 'Per Piece'}</TableCell>
+                          <TableCell align='center'>{item.quantity}</TableCell>
+                          <TableCell align='center'>₱{item.unit_price.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
+                          <TableCell align='center'>₱{item.total_price.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
+                          <TableCell align='center' sx={{ width: '180px' }} >
+                            <Box display="flex" justifyContent='center'>
+                              <Button onClick={() => handleEditOrderItem(item, index)} size="small" color='primary' sx={{ minWidth: 0 }}>
+                                Edit
+                              </Button>
+                              <Button
+                                onClick={() => handleRemoveEditOrderItem(index)}
+                                size="small"
+                                color="error"
+                                sx={{ minWidth: 0 }}
+                              >
+                                Remove
+                              </Button>
+                            </Box>
                           </TableCell>
                         </TableRow>
                       ))
                     )}
                     <TableRow>
-                      <TableCell colSpan={3} align="right"><strong>Total:</strong></TableCell>
+                      <TableCell colSpan={4} align="right"><strong>Total:</strong></TableCell>
                       <TableCell colSpan={3}>
                         <strong>₱{orderToEdit.total_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong>
                       </TableCell>
@@ -2972,7 +3501,7 @@ const OrderSupplier: React.FC = () => {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setEditOrderDialogOpen(false)}>Cancel</Button>
+          <Button variant='text' color='error' onClick={() => setEditOrderDialogOpen(false)}>Cancel</Button>
           <Button
             onClick={() => orderToEdit && handleSaveEditedOrder({
               supplier_id: orderToEdit.supplier_id,
@@ -2997,78 +3526,119 @@ const OrderSupplier: React.FC = () => {
             <>
               <Grid container spacing={2} sx={{ mt: 1 }}>
                 <Grid item xs={12} md={4}>
-                  <TextField
-                    label="Request ID"
-                    value={quotationToEdit.request_id}
-                    fullWidth
-                    disabled
-                    sx={{ mb: 2 }}
-                  />
+                  <Tooltip title={isConverted ? "This RFQ is converted and the request ID cannot be changed." : ""}>
+                    <span>
+                      <TextField
+                        label="Request ID"
+                        value={quotationToEdit.request_id}
+                        disabled={isConverted}
+                        fullWidth
+                        sx={{ mb: 2 }}
+                      />
+                    </span>
+                  </Tooltip>
                 </Grid>
                 <Grid item xs={12} md={4}>
-                  <FormControl fullWidth sx={{ mb: 2 }}>
-                    <InputLabel id="edit-rfq-supplier-label">Supplier</InputLabel>
-                    <Select
-                      labelId="edit-rfq-supplier-label"
-                      value={quotationToEdit.supplier_id}
-                      onChange={(e) => setQuotationToEdit(prev => prev ? { ...prev, supplier_id: e.target.value as number } : null)}
-                      label="Supplier"
-                      required
-                    >
-                      {suppliers.map((supplier) => (
-                        <MenuItem key={supplier.id} value={supplier.id}>
-                          {supplier.name}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
+                  <Tooltip title={isConverted ? "This RFQ is converted and the supplier cannot be changed." : ""}>
+                    <span>
+                      <FormControl fullWidth sx={{ mb: 2 }}>
+                        <InputLabel id="edit-rfq-supplier-label">Supplier</InputLabel>
+                        <Select
+                          labelId="edit-rfq-supplier-label"
+                          value={quotationToEdit.supplier_id}
+                          disabled={isConverted}
+                          onChange={(e) => setQuotationToEdit(prev => prev ? { ...prev, supplier_id: e.target.value as number } : null)}
+                          label="Supplier"
+                          required
+                        >
+                          {suppliers.map((supplier) => (
+                            <MenuItem key={supplier.id} value={supplier.id}>
+                              {supplier.name}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    </span>
+                  </Tooltip>
                 </Grid>
                 <Grid item xs={12} md={4}>
-                  <TextField
-                    label="Request Date"
-                    type="date"
-                    value={quotationToEdit.date}
-                    onChange={(e) => setQuotationToEdit(prev => prev ? { ...prev, date: e.target.value } : null)}
-                    fullWidth
-                    InputLabelProps={{ shrink: true }}
-                    required
-                    sx={{ mb: 2 }}
-                  />
+                  <Tooltip title={isConverted ? "This RFQ is converted and the request date cannot be changed." : " "}>
+                    <span>
+                      <TextField
+                        label="Request Date"
+                        type="date"
+                        value={quotationToEdit.date}
+                        disabled={isConverted}
+                        onChange={(e) => setQuotationToEdit(prev => prev ? { ...prev, date: e.target.value } : null)}
+                        fullWidth
+                        InputLabelProps={{ shrink: true }}
+                        required
+                        sx={{ mb: 2 }}
+                      />
+                    </span>
+                  </Tooltip>
                 </Grid>
               </Grid>
+              <Tooltip title={isConverted ? "This RFQ is converted and the status cannot be changed." : " "} >
+                <span>
+                  <FormControl fullWidth sx={{ mb: 2 }} disabled={isConverted}>
+                    <InputLabel id="edit-quotation-status-label">Status</InputLabel>
+                    <Select
+                      labelId="edit-quotation-status-label"
+                      value={quotationToEdit.status}
+                      onChange={(e) => setQuotationToEdit(prev => prev ? { ...prev, status: e.target.value } : null)}
+                      label="Status"
+                    >
+                      {isConverted
+                        ? <MenuItem value="Converted">Converted</MenuItem>
+                        : ['Draft', 'Approved', 'Rejected'].map(status => (
+                          <MenuItem key={status} value={status}>{status}</MenuItem>
+                        ))}
+                    </Select>
+                  </FormControl>
+                </span>
+              </Tooltip>
+              <Tooltip title={isConverted ? "This RFQ is converted and the notes cannot be changed." : " "} >
+                <span>
+                  <TextField
+                    label="Notes"
+                    multiline
+                    rows={3}
+                    disabled={isConverted}
+                    value={quotationToEdit.notes || ''}
+                    onChange={(e) => setQuotationToEdit(prev => prev ? { ...prev, notes: e.target.value } : null)}
+                    fullWidth
+                    sx={{ mb: 3 }}
+                  />
+                </span>
+              </Tooltip>
+              <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+                <Typography variant="subtitle1" gutterBottom>
+                  Requested Items
+                </Typography>
+                {!currentEditQuotationItem && (
+                  <Button
+                    onClick={() => {
+                      if (isConverted) {
+                        setSnackbar({
+                          open: true,
+                          message: 'This RFQ has already been converted and can no longer be edited.',
+                          severity: 'warning'
+                        });
+                      } else {
+                        handleAddItemClick();
+                      }
+                    }}
+                  >
+                    + Add Item
+                  </Button>
 
-              <FormControl fullWidth sx={{ mb: 2 }}>
-                <InputLabel id="edit-quotation-status-label">Status</InputLabel>
-                <Select
-                  labelId="edit-quotation-status-label"
-                  value={quotationToEdit.status}
-                  onChange={(e) => setQuotationToEdit(prev => prev ? { ...prev, status: e.target.value } : null)}
-                  label="Status"
-                >
-                  <MenuItem value="Draft">Draft</MenuItem>
-                  <MenuItem value="Sent">Sent</MenuItem>
-                  <MenuItem value="Received">Received</MenuItem>
-                  <MenuItem value="Approved">Approved</MenuItem>
-                  <MenuItem value="Rejected">Rejected</MenuItem>
-                </Select>
-              </FormControl>
 
-              <TextField
-                label="Notes"
-                multiline
-                rows={3}
-                value={quotationToEdit.notes || ''}
-                onChange={(e) => setQuotationToEdit(prev => prev ? { ...prev, notes: e.target.value } : null)}
-                fullWidth
-                sx={{ mb: 3 }}
-              />
-
-              <Typography variant="subtitle1" gutterBottom>
-                Requested Items
-              </Typography>
-
+                )}
+              </Box>
               {currentEditQuotationItem ? (
                 <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+
                   <Grid container spacing={2} alignItems="center">
                     <Grid item xs={12} md={3}>
                       <FormControl fullWidth size="small">
@@ -3076,17 +3646,32 @@ const OrderSupplier: React.FC = () => {
                         <Select
                           labelId="edit-rfq-item-label"
                           value={currentEditQuotationItem.inventory_id}
-                          onChange={(e) => setCurrentEditQuotationItem({
-                            ...currentEditQuotationItem,
-                            inventory_id: e.target.value as number
-                          })}
+                          onChange={(e) =>
+                            setCurrentEditQuotationItem({
+                              ...currentEditQuotationItem,
+                              inventory_id: e.target.value as number
+                            })
+                          }
                           label="Inventory Item"
+                          disabled={typeof currentEditQuotationItem.index === 'number' && currentEditQuotationItem.index >= 0} // disable editing
                         >
-                          {inventoryItems.map((item) => (
-                            <MenuItem key={item.id} value={item.id}>
-                              {item.itemName}
-                            </MenuItem>
-                          ))}
+                          {inventoryItems.map((item) => {
+                            const alreadySelected = quotationToEdit.items.some((qItem, i) =>
+                              qItem.inventory_id === item.id &&
+                              i !== currentEditQuotationItem.index //allow current item to stay editable
+                            );
+
+                            return (
+                              <MenuItem
+                                key={item.id}
+                                value={item.id}
+                                disabled={alreadySelected}
+                                style={alreadySelected ? { color: 'gray' } : undefined}
+                              >
+                                {item.itemName}
+                              </MenuItem>
+                            );
+                          })}
                         </Select>
                       </FormControl>
                     </Grid>
@@ -3098,6 +3683,7 @@ const OrderSupplier: React.FC = () => {
                         size="small"
                         fullWidth
                         value={currentEditQuotationItem.quantity}
+                        disabled={isConverted}
                         onChange={(e) => setCurrentEditQuotationItem({
                           ...currentEditQuotationItem,
                           quantity: parseInt(e.target.value) || 0
@@ -3112,6 +3698,7 @@ const OrderSupplier: React.FC = () => {
                         size="small"
                         fullWidth
                         value={currentEditQuotationItem.expected_price || ''}
+                        disabled={isConverted}
                         onChange={(e) => setCurrentEditQuotationItem({
                           ...currentEditQuotationItem,
                           expected_price: e.target.value ? parseFloat(e.target.value) : undefined
@@ -3127,6 +3714,7 @@ const OrderSupplier: React.FC = () => {
                         size="small"
                         fullWidth
                         value={currentEditQuotationItem.notes || ''}
+                        disabled={isConverted}
                         onChange={(e) => setCurrentEditQuotationItem({
                           ...currentEditQuotationItem,
                           notes: e.target.value
@@ -3143,7 +3731,8 @@ const OrderSupplier: React.FC = () => {
                         Update
                       </Button>
                       <Button
-                        variant="outlined"
+                        variant="text"
+                        color="error"
                         onClick={handleCancelEditQuotationItem}
                         size="small"
                       >
@@ -3159,10 +3748,10 @@ const OrderSupplier: React.FC = () => {
                   <TableHead>
                     <TableRow>
                       <TableCell><strong>Item</strong></TableCell>
-                      <TableCell><strong>Quantity</strong></TableCell>
-                      <TableCell><strong>Expected Price</strong></TableCell>
+                      <TableCell align='center'><strong>Quantity</strong></TableCell>
+                      <TableCell align='center'><strong>Expected Price</strong></TableCell>
                       <TableCell><strong>Notes</strong></TableCell>
-                      <TableCell><strong>Actions</strong></TableCell>
+                      <TableCell align='center'><strong>Actions</strong></TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -3174,22 +3763,47 @@ const OrderSupplier: React.FC = () => {
                       quotationToEdit.items.map((item, index) => (
                         <TableRow key={index}>
                           <TableCell>{item.inventory_name}</TableCell>
-                          <TableCell>{item.quantity}</TableCell>
-                          <TableCell>
+                          <TableCell align='center'>{item.quantity}</TableCell>
+                          <TableCell align='center'>
                             {item.expected_price
                               ? `₱${item.expected_price.toLocaleString(undefined, { minimumFractionDigits: 2 })}`
                               : 'To be quoted'
                             }
                           </TableCell>
                           <TableCell>{item.notes || '-'}</TableCell>
-                          <TableCell>
-                            <Button
-                              size="small"
-                              onClick={() => handleEditQuotationItem(item, index)}
-                              color="primary"
-                            >
-                              Edit
-                            </Button>
+                          <TableCell align='center'>
+                            <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+                              <Button
+                                onClick={() => {
+                                  if (isConverted) {
+                                    setSnackbar({
+                                      open: true,
+                                      message: 'This RFQ has already been converted and can no longer be edited.',
+                                      severity: 'warning'
+                                    });
+                                  } else {
+                                    handleEditQuotationItem(item, index);
+                                  }
+                                }}
+                              >
+                                Edit
+                              </Button>
+                              <Button
+                                onClick={() => {
+                                  if (isConverted) {
+                                    setSnackbar({
+                                      open: true,
+                                      message: 'This RFQ has already been converted and can no longer be edited.',
+                                      severity: 'warning'
+                                    });
+                                  } else {
+                                    handleRemoveEditQuotationItem(index);
+                                  }
+                                }}
+                              >
+                                Remove
+                              </Button>
+                            </Box>
                           </TableCell>
                         </TableRow>
                       ))
@@ -3201,14 +3815,29 @@ const OrderSupplier: React.FC = () => {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setEditQuotationDialogOpen(false)}>Cancel</Button>
+          <Button onClick={() => setEditQuotationDialogOpen(false)}
+            variant='text'
+            color='error'
+          >
+            Cancel
+          </Button>
           <Button
-            onClick={() => quotationToEdit && handleSaveEditedQuotation({
-              supplier_id: quotationToEdit.supplier_id,
-              date: quotationToEdit.date,
-              status: quotationToEdit.status,
-              notes: quotationToEdit.notes
-            })}
+            onClick={() => {
+              if (isConverted) {
+                setSnackbar({
+                  open: true,
+                  message: 'This RFQ has been converted and cannot be edited.',
+                  severity: 'warning'
+                });
+              } else if (quotationToEdit) {
+                handleSaveEditedQuotation({
+                  supplier_id: quotationToEdit.supplier_id,
+                  date: quotationToEdit.date,
+                  status: quotationToEdit.status,
+                  notes: quotationToEdit.notes
+                });
+              }
+            }}
             variant="contained"
             color="primary"
           >
@@ -3216,38 +3845,6 @@ const OrderSupplier: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
-
-      {/* Delete Confirmation Dialogs */}
-      <Dialog open={deleteOrderConfirmOpen} onClose={() => setDeleteOrderConfirmOpen(false)}>
-        <DialogTitle>Confirm Delete</DialogTitle>
-        <DialogContent>
-          <Typography>
-            Are you sure you want to delete this purchase order? This action cannot be undone.
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDeleteOrderConfirmOpen(false)}>Cancel</Button>
-          <Button onClick={confirmDeleteOrder} color="error" variant="contained">
-            Delete
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      <Dialog open={deleteQuotationConfirmOpen} onClose={() => setDeleteQuotationConfirmOpen(false)}>
-        <DialogTitle>Confirm Delete</DialogTitle>
-        <DialogContent>
-          <Typography>
-            Are you sure you want to delete this quotation request? This action cannot be undone.
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDeleteQuotationConfirmOpen(false)}>Cancel</Button>
-          <Button onClick={confirmDeleteQuotation} color="error" variant="contained">
-            Delete
-          </Button>
-        </DialogActions>
-      </Dialog>
-
       <Snackbar
         open={snackbar.open}
         autoHideDuration={6000}

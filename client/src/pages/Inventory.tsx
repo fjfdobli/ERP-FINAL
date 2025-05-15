@@ -2,11 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { Box, Typography, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, TextField, InputAdornment, Chip, LinearProgress, Dialog, DialogTitle, DialogContent, DialogActions, CircularProgress, Snackbar, Alert, FormControl, InputLabel, Select, MenuItem, SelectChangeEvent, Grid, Divider, IconButton, Tooltip } from '@mui/material';
 import { Add as AddIcon, Search as SearchIcon, Edit as EditIcon, Delete as DeleteIcon, Visibility as VisibilityIcon } from '@mui/icons-material';
 import { useDispatch, useSelector } from 'react-redux';
-import { 
+import {
   fetchInventory, fetchLowStockItems, updateInventoryItem, addInventoryTransaction, createInventoryItem,
   deleteInventoryItem, fetchActiveSuppliers, fetchActiveEmployees, fetchItemTransactions,
-  selectAllInventoryItems, selectInventoryLoading, selectInventoryError, selectActiveSuppliers, 
-  selectActiveEmployees, selectInventoryTransactions } from '../redux/slices/inventorySlice';
+  selectAllInventoryItems, selectInventoryLoading, selectInventoryError, selectActiveSuppliers,
+  selectActiveEmployees, selectInventoryTransactions
+} from '../redux/slices/inventorySlice';
 import { InventoryItem } from '../services/inventoryService';
 import { AppDispatch } from '../redux/store';
 
@@ -23,7 +24,7 @@ const itemTypes = [
 
 const InventoryList: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
-  
+
   // Redux state
   const inventoryItems = useSelector(selectAllInventoryItems);
   const isLoading = useSelector(selectInventoryLoading);
@@ -31,7 +32,7 @@ const InventoryList: React.FC = () => {
   const activeSuppliers = useSelector(selectActiveSuppliers);
   const activeEmployees = useSelector(selectActiveEmployees);
   const transactions = useSelector(selectInventoryTransactions);
-  
+
   const [searchTerm, setSearchTerm] = useState('');
   const [showLowStock, setShowLowStock] = useState(false);
   const [quantityDialogOpen, setQuantityDialogOpen] = useState(false);
@@ -50,23 +51,21 @@ const InventoryList: React.FC = () => {
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [snackbarSeverity, setSnackbarSeverity] = useState<'success' | 'error'>('success');
-  
+
   // State for new/edit item form
   const [newItem, setNewItem] = useState({
     itemName: '',
-    sku: '',
     itemType: '',
     quantity: 0,
     minStockLevel: 0,
     unitPrice: 0,
     supplierId: ''
   });
-  
+
   // Copy of item for edit form
   const [editingItem, setEditingItem] = useState({
     id: '',
     itemName: '',
-    sku: '',
     itemType: '',
     quantity: 0,
     minStockLevel: 0,
@@ -77,7 +76,7 @@ const InventoryList: React.FC = () => {
   useEffect(() => {
     // Fetch inventory data on component mount
     dispatch(fetchInventory());
-    
+
     // Fetch active suppliers and employees
     dispatch(fetchActiveSuppliers());
     dispatch(fetchActiveEmployees());
@@ -107,32 +106,31 @@ const InventoryList: React.FC = () => {
     : inventoryItems;
 
   // Then by search term if one exists
-  const filteredItems = searchTerm 
+  const filteredItems = searchTerm
     ? lowStockFilteredItems.filter(item =>
-        item.itemName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.itemType.toLowerCase().includes(searchTerm.toLowerCase())
-      )
+      item.itemName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.itemType.toLowerCase().includes(searchTerm.toLowerCase())
+    )
     : lowStockFilteredItems;
 
   const handleOpenQuantityDialog = (item: InventoryItem, type: 'add' | 'remove') => {
     setSelectedItem(item);
     setAdjustmentType(type);
     setAdjustmentAmount(1);
-    
+
     // Set current date (without time)
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0);
     setTransactionDateObj(today);
     setTransactionDate(today.toISOString().slice(0, 16));
-    
+
     // Set default selections based on type
     if (type === 'add' && activeSuppliers.length > 0) {
       setSelectedSupplierId(String(activeSuppliers[0].id));
     } else if (type === 'remove' && activeEmployees.length > 0) {
       setSelectedEmployeeId(String(activeEmployees[0].id));
     }
-    
+
     setQuantityDialogOpen(true);
   };
 
@@ -156,7 +154,6 @@ const InventoryList: React.FC = () => {
     // Reset form
     setNewItem({
       itemName: '',
-      sku: '',
       itemType: '',
       quantity: 0,
       minStockLevel: 0,
@@ -179,16 +176,16 @@ const InventoryList: React.FC = () => {
   const handleEmployeeChange = (event: SelectChangeEvent<string>) => {
     setSelectedEmployeeId(event.target.value);
   };
-  
+
   const handleDateChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const dateStr = event.target.value; // YYYY-MM-DD
-    
+
     // Create a new date with the selected date but set time to noon (12:00:00)
     const newDate = new Date(`${dateStr}T12:00:00`);
-    
+
     // Handle invalid dates
     if (isNaN(newDate.getTime())) return;
-    
+
     setTransactionDateObj(newDate);
     setTransactionDate(newDate.toISOString().slice(0, 16));
   };
@@ -214,7 +211,7 @@ const InventoryList: React.FC = () => {
   const handleSaveNewItem = async () => {
     try {
       // Check required fields
-      if (!newItem.itemName || !newItem.sku || !newItem.itemType) {
+      if (!newItem.itemName || !newItem.itemType) {
         setSnackbarMessage('Please fill in all required fields');
         setSnackbarSeverity('error');
         setSnackbarOpen(true);
@@ -224,12 +221,12 @@ const InventoryList: React.FC = () => {
       // Convert to the proper format for creating an inventory item
       await dispatch(createInventoryItem({
         itemName: newItem.itemName,
-        sku: newItem.sku,
         itemType: newItem.itemType,
         quantity: newItem.quantity,
         minStockLevel: newItem.minStockLevel,
         unitPrice: newItem.unitPrice,
-        supplierId: newItem.supplierId ? Number(newItem.supplierId) : undefined
+        supplierId: newItem.supplierId ? Number(newItem.supplierId) : undefined,
+        sku: '' // Pass empty string for SKU field
       })).unwrap();
 
       setSnackbarMessage('Inventory item created successfully');
@@ -248,7 +245,7 @@ const InventoryList: React.FC = () => {
     if (!selectedItem) return;
 
     try {
-      const newQuantity = adjustmentType === 'add' 
+      const newQuantity = adjustmentType === 'add'
         ? selectedItem.quantity + adjustmentAmount
         : Math.max(0, selectedItem.quantity - adjustmentAmount);
 
@@ -258,6 +255,20 @@ const InventoryList: React.FC = () => {
         data: { quantity: newQuantity }
       })).unwrap();
 
+      console.log("📦 Simulated inventory transaction", {
+        inventoryId: selectedItem.id,
+        transactionType: adjustmentType === 'add' ? 'stock_in' : 'stock_out',
+        quantity: adjustmentAmount,
+        createdBy: Number(adjustmentType === 'add' ? selectedSupplierId : selectedEmployeeId),
+        isSupplier: adjustmentType === 'add',
+        type: 'manual',
+        reason: adjustmentType === 'add'
+          ? `Manual stock in by Admin`
+          : `Manual stock out by Admin`,
+        notes: `${adjustmentType === 'add' ? 'Stock In' : 'Stock Out'} transaction`,
+        transactionDate: new Date(transactionDate).toISOString()
+      });
+
       // Then add a transaction record
       await dispatch(addInventoryTransaction({
         inventoryId: selectedItem.id,
@@ -266,6 +277,10 @@ const InventoryList: React.FC = () => {
           quantity: adjustmentAmount,
           createdBy: Number(adjustmentType === 'add' ? selectedSupplierId : selectedEmployeeId),
           isSupplier: adjustmentType === 'add',
+          type: 'manual',
+          reason: adjustmentType === 'add'
+            ? `Manual stock in by Admin`
+            : `Manual stock out by Admin`,
           notes: `${adjustmentType === 'add' ? 'Stock In' : 'Stock Out'} transaction`,
           transactionDate: new Date(transactionDate).toISOString()
         }
@@ -286,7 +301,7 @@ const InventoryList: React.FC = () => {
   const handleCloseSnackbar = () => {
     setSnackbarOpen(false);
   };
-  
+
   // Handle view item dialog
   const handleOpenViewDialog = (item: InventoryItem) => {
     setSelectedItem(item);
@@ -294,7 +309,7 @@ const InventoryList: React.FC = () => {
     dispatch(fetchItemTransactions(item.id));
     setViewItemDialogOpen(true);
   };
-  
+
   const handleCloseViewDialog = () => {
     setViewItemDialogOpen(false);
     setSelectedItem(null);
@@ -307,7 +322,6 @@ const InventoryList: React.FC = () => {
     setEditingItem({
       id: '',
       itemName: '',
-      sku: '',
       itemType: '',
       quantity: 0,
       minStockLevel: 0,
@@ -339,7 +353,7 @@ const InventoryList: React.FC = () => {
 
     try {
       // Check required fields
-      if (!editingItem.itemName || !editingItem.sku || !editingItem.itemType) {
+      if (!editingItem.itemName || !editingItem.itemType) {
         setSnackbarMessage('Please fill in all required fields');
         setSnackbarSeverity('error');
         setSnackbarOpen(true);
@@ -351,12 +365,12 @@ const InventoryList: React.FC = () => {
         id: Number(editingItem.id),
         data: {
           itemName: editingItem.itemName,
-          sku: editingItem.sku,
           itemType: editingItem.itemType,
           quantity: editingItem.quantity,
           minStockLevel: editingItem.minStockLevel,
           unitPrice: editingItem.unitPrice,
-          supplierId: editingItem.supplierId ? Number(editingItem.supplierId) : undefined
+          supplierId: editingItem.supplierId ? Number(editingItem.supplierId) : undefined,
+          sku: '' // Pass empty string for SKU field
         }
       })).unwrap();
 
@@ -401,8 +415,8 @@ const InventoryList: React.FC = () => {
         <Typography variant="h4" component="h1" fontWeight="bold">
           Inventory
         </Typography>
-        <Button 
-          variant="contained" 
+        <Button
+          variant="contained"
           startIcon={<AddIcon />}
           onClick={handleOpenAddItemDialog}
         >
@@ -426,9 +440,9 @@ const InventoryList: React.FC = () => {
             ),
           }}
         />
-        <Button 
-          variant={showLowStock ? "contained" : "outlined"} 
-          color="error" 
+        <Button
+          variant={showLowStock ? "contained" : "outlined"}
+          color="error"
           onClick={handleLowStockFilter}
           sx={{ mr: 1 }}
         >
@@ -446,19 +460,18 @@ const InventoryList: React.FC = () => {
             <TableHead sx={{ backgroundColor: 'background.paper' }}>
               <TableRow>
                 <TableCell><strong>Item Name</strong></TableCell>
-                <TableCell><strong>SKU</strong></TableCell>
                 <TableCell><strong>Type</strong></TableCell>
-                <TableCell><strong>Quantity</strong></TableCell>
-                <TableCell><strong>Min Stock</strong></TableCell>
-                <TableCell><strong>Current Stock</strong></TableCell>
-                <TableCell><strong>Status</strong></TableCell>
-                <TableCell><strong>Actions</strong></TableCell>
+                <TableCell align='center' sx={{ width: 165 }}><strong>Quantity</strong></TableCell>
+                <TableCell align='center'><strong>Min Stock</strong></TableCell>
+                <TableCell align='center'><strong>Current Stock</strong></TableCell>
+                <TableCell align='center'><strong>Status</strong></TableCell>
+                <TableCell align='center'><strong>Actions</strong></TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {filteredItems.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} align="center">
+                  <TableCell colSpan={7} align="center">
                     {showLowStock ? "No low stock items found" : "No items found"}
                   </TableCell>
                 </TableRow>
@@ -468,85 +481,104 @@ const InventoryList: React.FC = () => {
                   const minStock = item.minStockLevel;
                   const stockLevel = Math.min((quantity / Math.max(minStock, 1)) * 100, 100); // Capped at 100%
                   const isLowStock = quantity < minStock;
-                  
+
                   return (
                     <TableRow key={item.id}>
                       <TableCell>{item.itemName}</TableCell>
-                      <TableCell>{item.sku}</TableCell>
                       <TableCell>{item.itemType}</TableCell>
                       <TableCell>
                         <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                          <Box sx={{ width: 100, mr: 1 }}>
-                            <LinearProgress 
-                              variant="determinate" 
-                              value={stockLevel} 
-                              color={isLowStock ? "error" : "primary"} 
+                          <Box sx={{ minWidth: 100, mr: 1 }}>
+                            <LinearProgress
+                              variant="determinate"
+                              value={stockLevel}
+                              color={isLowStock ? "error" : "primary"}
                             />
                           </Box>
-                          <Typography>
+                          <Typography align='center'>
                             {quantity}
                           </Typography>
                         </Box>
                       </TableCell>
-                      <TableCell>{minStock}</TableCell>
-                      <TableCell>{quantity}</TableCell>
-                      <TableCell>
-                        <Chip 
-                          label={isLowStock ? 'Low Stock' : 'In Stock'} 
-                          color={isLowStock ? 'error' : 'success'}
+                      <TableCell align='center'>{minStock}</TableCell>
+                      <TableCell align='center'>{quantity}</TableCell>
+                      <TableCell align='center'>
+                        <Chip
+                          label={
+                            quantity === 0
+                              ? 'Out of Stock'
+                              : isLowStock
+                                ? 'Low Stock'
+                                : 'In Stock'
+                          }
+                          color={
+                            quantity === 0
+                              ? 'default'
+                              : isLowStock
+                                ? 'error'
+                                : 'success'
+                          }
                           size="small"
                         />
                       </TableCell>
-                      <TableCell>
-                        <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
-                          <Button 
-                            size="small" 
-                            variant="outlined"
-                            color="primary"
-                            onClick={() => handleOpenQuantityDialog(item, 'add')}
-                            disabled={activeSuppliers.length === 0}
-                          >
-                            Stock In
-                          </Button>
-                          <Button 
-                            size="small" 
-                            variant="outlined"
-                            color="error"
-                            onClick={() => handleOpenQuantityDialog(item, 'remove')}
-                            disabled={quantity <= 0 || activeEmployees.length === 0}
-                          >
-                            Stock Out
-                          </Button>
-                          <Button 
-                            size="small" 
-                            variant="outlined"
-                            color="info"
-                            onClick={() => handleOpenViewDialog(item)}
-                          >
-                            View
-                          </Button>
-                          <Button 
-                            size="small" 
-                            variant="outlined"
-                            color="primary"
-                            onClick={() => {
-                              setSelectedItem(item);
-                              setEditingItem({
-                                id: String(item.id),
-                                itemName: item.itemName,
-                                sku: item.sku,
-                                itemType: item.itemType,
-                                quantity: item.quantity,
-                                minStockLevel: item.minStockLevel,
-                                unitPrice: item.unitPrice || 0,
-                                supplierId: item.supplierId ? String(item.supplierId) : ''
-                              });
-                              setEditItemDialogOpen(true);
-                            }}
-                          >
-                            Edit
-                          </Button>
-                        </Box>
+                      <TableCell align='center'>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color="primary"
+                          onClick={() => handleOpenQuantityDialog(item, 'add')}
+                          disabled={activeSuppliers.length === 0}
+                        >
+                          Stock In
+                        </Button>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color="error"
+                          onClick={() => handleOpenQuantityDialog(item, 'remove')}
+                          disabled={quantity <= 0 || activeEmployees.length === 0}
+                        >
+                          Stock Out
+                        </Button>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color="info"
+                          onClick={() => handleOpenViewDialog(item)}
+                        >
+                          View
+                        </Button>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color="primary"
+                          onClick={() => {
+                            setSelectedItem(item);
+                            setEditingItem({
+                              id: String(item.id),
+                              itemName: item.itemName,
+                              itemType: item.itemType,
+                              quantity: item.quantity,
+                              minStockLevel: item.minStockLevel,
+                              unitPrice: item.unitPrice || 0,
+                              supplierId: item.supplierId ? String(item.supplierId) : ''
+                            });
+                            setEditItemDialogOpen(true);
+                          }}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color="error"
+                          onClick={() => {
+                            setSelectedItem(item);
+                            setDeleteConfirmOpen(true);
+                          }}
+                        >
+                          Delete
+                        </Button>
                       </TableCell>
                     </TableRow>
                   );
@@ -567,7 +599,7 @@ const InventoryList: React.FC = () => {
             <Typography variant="subtitle1" gutterBottom>
               {selectedItem?.itemName} (Current: {selectedItem?.quantity})
             </Typography>
-            
+
             <TextField
               label="Quantity"
               type="number"
@@ -580,7 +612,7 @@ const InventoryList: React.FC = () => {
               }}
               autoFocus
             />
-            
+
             <TextField
               label="Transaction Date"
               type="date"
@@ -595,7 +627,7 @@ const InventoryList: React.FC = () => {
                 max: new Date().toISOString().split('T')[0]
               }}
             />
-            
+
             {adjustmentType === 'add' ? (
               <FormControl fullWidth margin="normal">
                 <InputLabel id="supplier-select-label">Supplier</InputLabel>
@@ -608,7 +640,7 @@ const InventoryList: React.FC = () => {
                   {activeSuppliers.map((supplier) => (
                     <MenuItem key={supplier.id} value={supplier.id}>
                       {supplier.name}
-                      </MenuItem>
+                    </MenuItem>
                   ))}
                 </Select>
               </FormControl>
@@ -629,7 +661,7 @@ const InventoryList: React.FC = () => {
                 </Select>
               </FormControl>
             )}
-            
+
             {adjustmentType === 'remove' && selectedItem && adjustmentAmount > selectedItem.quantity && (
               <Typography color="error" variant="caption" sx={{ display: 'block', mt: 1 }}>
                 Warning: This will reduce inventory below zero.
@@ -639,13 +671,13 @@ const InventoryList: React.FC = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseQuantityDialog}>Cancel</Button>
-          <Button 
-            onClick={handleAdjustQuantity} 
-            color="primary" 
+          <Button
+            onClick={handleAdjustQuantity}
+            color="primary"
             variant="contained"
             disabled={
-              adjustmentAmount <= 0 || 
-              (adjustmentType === 'add' && !selectedSupplierId) || 
+              adjustmentAmount <= 0 ||
+              (adjustmentType === 'add' && !selectedSupplierId) ||
               (adjustmentType === 'remove' && !selectedEmployeeId)
             }
           >
@@ -666,7 +698,7 @@ const InventoryList: React.FC = () => {
                 </Typography>
                 <Divider sx={{ mb: 2 }} />
               </Grid>
-              
+
               <Grid item xs={12} md={6}>
                 <TextField
                   name="itemName"
@@ -677,19 +709,8 @@ const InventoryList: React.FC = () => {
                   required
                 />
               </Grid>
-              
-              <Grid item xs={12} md={6}>
-                <TextField
-                  name="sku"
-                  label="SKU *"
-                  value={newItem.sku}
-                  onChange={handleNewItemChange}
-                  fullWidth
-                  required
-                  helperText="Unique identifier for this item"
-                />
-              </Grid>
-              
+
+
               <Grid item xs={12} md={6}>
                 <FormControl fullWidth required>
                   <InputLabel id="item-type-label">Item Type</InputLabel>
@@ -708,7 +729,7 @@ const InventoryList: React.FC = () => {
                   </Select>
                 </FormControl>
               </Grid>
-              
+
               <Grid item xs={12} md={6}>
                 <FormControl fullWidth>
                   <InputLabel id="supplier-label">Supplier</InputLabel>
@@ -727,14 +748,14 @@ const InventoryList: React.FC = () => {
                   </Select>
                 </FormControl>
               </Grid>
-              
+
               <Grid item xs={12}>
                 <Typography variant="subtitle1" gutterBottom sx={{ mt: 2 }}>
                   Stock Information
                 </Typography>
                 <Divider sx={{ mb: 2 }} />
               </Grid>
-              
+
               <Grid item xs={12} md={4}>
                 <TextField
                   name="quantity"
@@ -748,7 +769,7 @@ const InventoryList: React.FC = () => {
                   }}
                 />
               </Grid>
-              
+
               <Grid item xs={12} md={4}>
                 <TextField
                   name="minStockLevel"
@@ -763,7 +784,7 @@ const InventoryList: React.FC = () => {
                   helperText="Alert when below this level"
                 />
               </Grid>
-              
+
               <Grid item xs={12} md={4}>
                 <TextField
                   name="unitPrice"
@@ -783,11 +804,11 @@ const InventoryList: React.FC = () => {
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
           <Button onClick={handleCloseAddItemDialog}>Cancel</Button>
-          <Button 
-            onClick={handleSaveNewItem} 
-            variant="contained" 
+          <Button
+            onClick={handleSaveNewItem}
+            variant="contained"
             color="primary"
-            disabled={!newItem.itemName || !newItem.sku || !newItem.itemType}
+            disabled={!newItem.itemName || !newItem.itemType}
           >
             Save Item
           </Button>
@@ -805,7 +826,6 @@ const InventoryList: React.FC = () => {
                   <Typography variant="subtitle1" gutterBottom>Basic Information</Typography>
                   <Divider sx={{ mb: 2 }} />
                   <Typography variant="body1"><strong>Item Name:</strong> {selectedItem.itemName}</Typography>
-                  <Typography variant="body1"><strong>SKU:</strong> {selectedItem.sku}</Typography>
                   <Typography variant="body1"><strong>Item Type:</strong> {selectedItem.itemType}</Typography>
                   <Typography variant="body1">
                     <strong>Supplier:</strong> {
@@ -813,7 +833,7 @@ const InventoryList: React.FC = () => {
                     }
                   </Typography>
                 </Grid>
-                
+
                 <Grid item xs={12} md={6}>
                   <Typography variant="subtitle1" gutterBottom>Stock Information</Typography>
                   <Divider sx={{ mb: 2 }} />
@@ -824,8 +844,8 @@ const InventoryList: React.FC = () => {
                   </Typography>
                   <Box sx={{ mt: 2, display: 'flex', alignItems: 'center' }}>
                     <Typography variant="body1" sx={{ mr: 2 }}><strong>Stock Status:</strong></Typography>
-                    <Chip 
-                      label={selectedItem.quantity < selectedItem.minStockLevel ? 'Low Stock' : 'In Stock'} 
+                    <Chip
+                      label={selectedItem.quantity < selectedItem.minStockLevel ? 'Low Stock' : 'In Stock'}
                       color={selectedItem.quantity < selectedItem.minStockLevel ? 'error' : 'success'}
                       size="small"
                     />
@@ -835,15 +855,16 @@ const InventoryList: React.FC = () => {
                 <Grid item xs={12}>
                   <Typography variant="subtitle1" gutterBottom sx={{ mt: 2 }}>Transaction History</Typography>
                   <Divider sx={{ mb: 2 }} />
-                  
+
                   <TableContainer component={Paper} variant="outlined">
                     <Table size="small">
                       <TableHead>
                         <TableRow>
-                          <TableCell><strong>Date</strong></TableCell>
-                          <TableCell><strong>Type</strong></TableCell>
-                          <TableCell><strong>Quantity</strong></TableCell>
+                          <TableCell align='center'><strong>Date</strong></TableCell>
+                          <TableCell align='center'><strong>Type</strong></TableCell>
+                          <TableCell align='center'><strong>Quantity</strong></TableCell>
                           <TableCell><strong>Person</strong></TableCell>
+                          <TableCell align='center'><strong>Reason</strong></TableCell>
                         </TableRow>
                       </TableHead>
                       <TableBody>
@@ -854,29 +875,30 @@ const InventoryList: React.FC = () => {
                         ) : (
                           transactions.map((transaction) => (
                             <TableRow key={transaction.id}>
-                              <TableCell>
+                              <TableCell align='center'>
                                 {new Date(transaction.transactionDate).toLocaleDateString()}
                                 {' '}
                                 {new Date(transaction.transactionDate).toLocaleTimeString([], {
-                                  hour: '2-digit', 
+                                  hour: '2-digit',
                                   minute: '2-digit',
                                   hour12: true
                                 })}
                               </TableCell>
-                              <TableCell>
+                              <TableCell align='center'>
                                 <Chip
                                   size="small"
                                   label={transaction.transactionType === 'stock_in' ? 'Stock In' : 'Stock Out'}
                                   color={transaction.transactionType === 'stock_in' ? 'primary' : 'error'}
                                 />
                               </TableCell>
-                              <TableCell>{transaction.quantity}</TableCell>
+                              <TableCell align='center'>{transaction.quantity}</TableCell>
                               <TableCell>
-                                {transaction.isSupplier 
+                                {transaction.isSupplier
                                   ? activeSuppliers.find(s => s.id === transaction.createdBy)?.name || 'Unknown Supplier'
                                   : activeEmployees.find(e => e.id === transaction.createdBy)?.name || 'Unknown Employee'
                                 }
                               </TableCell>
+                              <TableCell align='center'>{transaction.reason || '-'}</TableCell>
                             </TableRow>
                           ))
                         )}
@@ -892,7 +914,7 @@ const InventoryList: React.FC = () => {
           <Button onClick={handleCloseViewDialog}>Close</Button>
         </DialogActions>
       </Dialog>
-      
+
       {/* Edit Item Dialog */}
       <Dialog open={editItemDialogOpen} onClose={handleCloseEditDialog} maxWidth="md" fullWidth>
         <DialogTitle>Edit Inventory Item</DialogTitle>
@@ -905,7 +927,7 @@ const InventoryList: React.FC = () => {
                 </Typography>
                 <Divider sx={{ mb: 2 }} />
               </Grid>
-              
+
               <Grid item xs={12} md={6}>
                 <TextField
                   name="itemName"
@@ -916,19 +938,8 @@ const InventoryList: React.FC = () => {
                   required
                 />
               </Grid>
-              
-              <Grid item xs={12} md={6}>
-                <TextField
-                  name="sku"
-                  label="SKU *"
-                  value={editingItem.sku}
-                  onChange={handleEditItemChange}
-                  fullWidth
-                  required
-                  helperText="Unique identifier for this item"
-                />
-              </Grid>
-              
+
+
               <Grid item xs={12} md={6}>
                 <FormControl fullWidth required>
                   <InputLabel id="edit-item-type-label">Item Type</InputLabel>
@@ -947,7 +958,7 @@ const InventoryList: React.FC = () => {
                   </Select>
                 </FormControl>
               </Grid>
-              
+
               <Grid item xs={12} md={6}>
                 <FormControl fullWidth>
                   <InputLabel id="edit-supplier-label">Supplier</InputLabel>
@@ -966,14 +977,14 @@ const InventoryList: React.FC = () => {
                   </Select>
                 </FormControl>
               </Grid>
-              
+
               <Grid item xs={12}>
                 <Typography variant="subtitle1" gutterBottom sx={{ mt: 2 }}>
                   Stock Information
                 </Typography>
                 <Divider sx={{ mb: 2 }} />
               </Grid>
-              
+
               <Grid item xs={12} md={4}>
                 <TextField
                   name="quantity"
@@ -987,7 +998,7 @@ const InventoryList: React.FC = () => {
                   }}
                 />
               </Grid>
-              
+
               <Grid item xs={12} md={4}>
                 <TextField
                   name="minStockLevel"
@@ -1002,7 +1013,7 @@ const InventoryList: React.FC = () => {
                   helperText="Alert when below this level"
                 />
               </Grid>
-              
+
               <Grid item xs={12} md={4}>
                 <TextField
                   name="unitPrice"
@@ -1022,17 +1033,17 @@ const InventoryList: React.FC = () => {
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
           <Button onClick={handleCloseEditDialog}>Cancel</Button>
-          <Button 
-            onClick={handleSaveEditItem} 
-            variant="contained" 
+          <Button
+            onClick={handleSaveEditItem}
+            variant="contained"
             color="primary"
-            disabled={!editingItem.itemName || !editingItem.sku || !editingItem.itemType}
+            disabled={!editingItem.itemName || !editingItem.itemType}
           >
             Save Changes
           </Button>
         </DialogActions>
       </Dialog>
-      
+
       {/* Delete Confirmation Dialog */}
       <Dialog open={deleteConfirmOpen} onClose={handleCloseDeleteConfirm}>
         <DialogTitle>Confirm Delete</DialogTitle>

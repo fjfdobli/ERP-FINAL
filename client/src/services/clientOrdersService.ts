@@ -1,5 +1,9 @@
 import { supabase } from '../supabaseClient';
 import { OrderRequestItem } from './orderRequestsService';
+import { inventoryService } from './inventoryService';
+import { productProfileService } from './productProfileService';
+
+
 
 export interface PaymentRecord {
   id?: number;
@@ -73,7 +77,7 @@ export const clientOrdersService = {
 
       // Update the order with new payment information
       const status = remainingAmount <= 0 ? 'Completed' : 'Partially Paid';
-      
+
       const { error: updateError } = await supabase
         .from('client_orders')
         .update({
@@ -87,10 +91,12 @@ export const clientOrdersService = {
       if (updateError) throw updateError;
 
       // Add history record
+      const finalMethod = orderPayment.payment_method ?? 'Unknown';
+
       await this.addOrderHistory(
         orderPayment.order_id,
         'Payment',
-        `Payment of ₱${orderPayment.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })} recorded. ${remainingAmount <= 0 ? 'Order fully paid.' : ''}`,
+        `Payment of ₱${orderPayment.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })} via ${finalMethod}`,
         'Admin'
       );
 
@@ -208,59 +214,93 @@ export const clientOrdersService = {
   },
 
   // Change order status (e.g., to Completed, Rejected, or back to Pending)
+  // Change order status (e.g., to Completed, Rejected, or back to Pending)
   async changeOrderStatus(id: number, status: string, changedBy?: string): Promise<ClientOrder> {
     try {
-      // Get the current order with all items before updating
       const currentOrder = await this.getClientOrderById(id);
       console.log(`Changing order ${id} status to ${status}`);
       console.log(`Current order has ${currentOrder.items?.length || 0} items`);
-      
-      // If changing to Pending, we need to move it back to Order Requests
+
+      //Perform stock-out only on approval
+      if (status === 'Approved') {
+        for (const item of currentOrder.items || []) {
+          const productProfile = await productProfileService.getProductById(item.product_id);
+          if (!productProfile || !productProfile.materials) continue;
+
+          for (const material of productProfile.materials) {
+            const materialId = material.materialId;
+            const deductQty = material.quantityRequired * item.quantity;
+
+            const inventoryItem = await inventoryService.getInventoryItemById(materialId);
+            const currentQty = inventoryItem?.quantity || 0;
+
+            await inventoryService.updateInventoryItem(materialId, {
+              quantity: currentQty - deductQty
+            });
+
+            await inventoryService.addTransaction({
+              inventoryId: materialId,
+              transactionType: 'stock_out',
+              quantity: deductQty,
+              createdBy: currentOrder.client_id,
+              isSupplier: false,
+              notes: `Stocked out for client order ${currentOrder.order_id} approval`,
+              transactionDate: new Date().toISOString()
+            });
+          }
+        }
+      }
+
+      //Restore inventory for Pending or Rejected
       if (status === 'Pending') {
-        // First, check if this order was created from an order request
-        if (currentOrder.request_id) {
-          // Get all items from this order
-          const { data: orderItems, error: itemsError } = await supabase
-            .from('client_order_items')
-            .select('*')
-            .eq('order_id', id);
-            
-          if (itemsError) throw itemsError;
-          console.log(`Retrieved ${orderItems?.length || 0} items from client order`);
-          
-          // Check if the original order request still exists
+        const { data: orderItems, error: itemsError } = await supabase
+          .from('client_order_items')
+          .select('*')
+          .eq('order_id', id);
+
+        if (itemsError) throw itemsError;
+
+        for (const item of orderItems || []) {
+          const productProfile = await productProfileService.getProductById(item.product_id);
+          if (!productProfile || !productProfile.materials) continue;
+
+          for (const material of productProfile.materials) {
+            const materialId = material.materialId;
+            const returnQty = material.quantityRequired * item.quantity;
+
+            const inventoryItem = await inventoryService.getInventoryItemById(materialId);
+            const currentQty = inventoryItem?.quantity || 0;
+
+            await inventoryService.updateInventoryItem(material.materialId, {
+              quantity: currentQty + returnQty
+            });
+          }
+        }
+
+        // Restore request if reverting to Pending
+        if (status === 'Pending' && currentOrder.request_id) {
           const { data: existingRequest, error: requestError } = await supabase
             .from('order_requests')
             .select('*')
             .eq('id', currentOrder.request_id)
             .single();
-            
-          if (requestError && requestError.code !== 'PGRST116') { // PGRST116 is "not found"
-            throw requestError;
-          }
-          
+
+          if (requestError && requestError.code !== 'PGRST116') throw requestError;
+
           if (existingRequest) {
-            console.log(`Order request ${currentOrder.request_id} exists, updating it`);
-            // The order request still exists, update it back to pending
-            const { error: updateError } = await supabase
+            await supabase
               .from('order_requests')
               .update({
                 status: 'Pending',
                 updated_at: new Date().toISOString()
               })
               .eq('id', currentOrder.request_id);
-              
-            if (updateError) throw updateError;
-            
-            // Delete existing items for the order request
-            const { error: deleteItemsError } = await supabase
+
+            await supabase
               .from('order_request_items')
               .delete()
               .eq('request_id', currentOrder.request_id);
-              
-            if (deleteItemsError) throw deleteItemsError;
-            
-            // Insert new items based on the current order items
+
             if (orderItems && orderItems.length > 0) {
               const orderRequestItems = orderItems.map((item: any) => ({
                 request_id: currentOrder.request_id,
@@ -272,30 +312,18 @@ export const clientOrdersService = {
                 serial_start: item.serial_start,
                 serial_end: item.serial_end
               }));
-              
-              console.log(`Adding ${orderRequestItems.length} items to order request`);
-              
-              const { error: insertItemsError } = await supabase
-                .from('order_request_items')
-                .insert(orderRequestItems);
-                
-              if (insertItemsError) throw insertItemsError;
-              
-              // Update the total amount based on the items
+
+              await supabase.from('order_request_items').insert(orderRequestItems);
+
               const totalAmount = orderItems.reduce((sum, item) => sum + (item.total_price || 0), 0);
-              const { error: updateAmountError } = await supabase
+              await supabase
                 .from('order_requests')
                 .update({ total_amount: totalAmount })
                 .eq('id', currentOrder.request_id);
-                
-              if (updateAmountError) throw updateAmountError;
             }
           } else {
-            console.log(`Order request ${currentOrder.request_id} doesn't exist, creating new one`);
-            // The original order request doesn't exist anymore, create a new one
-            // Calculate total amount from items
             const totalAmount = orderItems?.reduce((sum, item) => sum + (item.total_price || 0), 0) || 0;
-            
+
             const { data: newRequest, error: createError } = await supabase
               .from('order_requests')
               .insert({
@@ -311,10 +339,9 @@ export const clientOrdersService = {
               })
               .select()
               .single();
-              
+
             if (createError) throw createError;
-            
-            // Insert new items for the new order request
+
             if (orderItems && orderItems.length > 0) {
               const orderRequestItems = orderItems.map((item: any) => ({
                 request_id: newRequest.id,
@@ -326,60 +353,34 @@ export const clientOrdersService = {
                 serial_start: item.serial_start,
                 serial_end: item.serial_end
               }));
-              
-              console.log(`Adding ${orderRequestItems.length} items to new order request`);
-              
-              const { error: insertItemsError } = await supabase
-                .from('order_request_items')
-                .insert(orderRequestItems);
-                
-              if (insertItemsError) throw insertItemsError;
+
+              await supabase.from('order_request_items').insert(orderRequestItems);
             }
+
+            await supabase
+              .from('client_orders')
+              .update({ request_id: newRequest.id })
+              .eq('id', id);
           }
-          
-          // Add a history record for moving back to pending
-          await this.addOrderHistory(
-            id, 
-            'MovedToPending', 
-            'Order moved back to Order Requests for modification', 
-            changedBy || 'System'
-          );
-          
-          // Now delete the client order as it's moved back to order requests
-          const { error: deleteOrderError } = await supabase
-            .from('client_orders')
-            .delete()
-            .eq('id', id);
-            
-          if (deleteOrderError) throw deleteOrderError;
-          
-          // Return the deleted order with updated status for UI refresh
-          return {
-            ...currentOrder,
-            status: 'Pending'
-          };
         }
       }
-      
-      // For any other status changes (not to Pending), just update the status
-      const { data: updatedOrder, error } = await supabase
+
+      //Final status update
+      const { error: updateError } = await supabase
         .from('client_orders')
-        .update({ 
-          status: status,
+        .update({
+          status,
           updated_at: new Date().toISOString()
         })
-        .eq('id', id)
-        .select()
-        .single();
+        .eq('id', id);
 
-      if (error) throw error;
-      
-      // Add history record for the status change
-      await this.addOrderHistory(id, status, `Status changed to ${status}`, changedBy);
-      
-      return updatedOrder;
+      if (updateError) throw updateError;
+
+      await this.addOrderHistory(id, status, `Status changed to ${status}`, changedBy || 'Admin');
+
+      return this.getClientOrderById(id);
     } catch (error) {
-      console.error(`Error changing status for client order with ID ${id}:`, error);
+      console.error(`Error changing client order status for ID ${id}:`, error);
       throw error;
     }
   },
@@ -403,7 +404,7 @@ export const clientOrdersService = {
       throw error;
     }
   },
-  
+
   // Add history tracking
   async addOrderHistory(orderId: number, status: string, notes?: string, changedBy?: string): Promise<void> {
     try {
@@ -420,45 +421,45 @@ export const clientOrdersService = {
       // Don't throw the error to prevent blocking the main operation
     }
   },
-  
+
   // Check if a client has active orders that would prevent new orders
   async hasActiveOrders(clientId: number): Promise<boolean> {
     try {
       console.log(`Directly checking database for active orders for client ${clientId}...`);
-      
+
       // First, get all orders for this client for debugging
       const { data: allOrders, error: allOrdersError } = await supabase
         .from('client_orders')
         .select('id, status')
         .eq('client_id', clientId);
-      
+
       if (allOrdersError) throw allOrdersError;
-      
+
       console.log(`All orders for client ${clientId}:`, allOrders);
-      
+
       // Only check for Approved or Partially Paid orders
       const { data, error } = await supabase
         .from('client_orders')
         .select('id, status')
         .eq('client_id', clientId)
         .in('status', ['Approved', 'Partially Paid']);
-      
+
       if (error) throw error;
-      
+
       // If we found any active orders, the client cannot place new orders
       const hasRestrictions = (data && data.length > 0);
       console.log(`Client ${clientId} has active orders (Approved/Partially Paid): ${hasRestrictions}`);
       if (hasRestrictions) {
         console.log(`Active orders:`, data);
       }
-      
+
       return hasRestrictions;
     } catch (error) {
       console.error(`Error checking active orders for client ${clientId}:`, error);
       throw error;
     }
   },
-  
+
   // Get order history
   async getOrderHistory(requestId?: number, orderId?: number): Promise<any[]> {
     try {
@@ -466,7 +467,7 @@ export const clientOrdersService = {
         .from('order_history')
         .select('*')
         .order('created_at', { ascending: false });
-        
+
       if (requestId) {
         query = query.eq('request_id', requestId);
       } else if (orderId) {
@@ -474,9 +475,9 @@ export const clientOrdersService = {
       } else {
         return [];
       }
-      
+
       const { data, error } = await query;
-      
+
       if (error) throw error;
       return data || [];
     } catch (error) {

@@ -48,9 +48,10 @@ interface OrderDetailsDialogProps {
   onClose: () => void;
   order: ExtendedClientOrder | null;
   onStatusChange: (orderId: number, status: string) => void;
+  onRefreshOrder: (orderId: number) => void;
 }
 
-const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({ open, onClose, order, onStatusChange }) => {
+const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({ open, onClose, order, onStatusChange, onRefreshOrder }) => {
   const dispatch = useDispatch<AppDispatch>();
   const [tabValue, setTabValue] = useState(0);
   const [orderHistory, setOrderHistory] = useState<any[]>([]);
@@ -61,6 +62,11 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({ open, onClose, 
   const [paymentDate, setPaymentDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [paymentNotes, setPaymentNotes] = useState<string>('');
   const [paymentPlan, setPaymentPlan] = useState<string>('');
+  const [paymentCode, setPaymentCode] = useState<string>('');
+  const [otherPaymentMethod, setOtherPaymentMethod] = useState<string>('');
+  const [paymentHistory, setPaymentHistory] = useState<any[]>([]);
+
+
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
@@ -74,6 +80,7 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({ open, onClose, 
       setPaymentDate(new Date().toISOString().split('T')[0]);
       setPaymentNotes('');
       setPaymentPlan(order.payment_plan || '');
+      setPaymentHistory(order.payments || []);
 
       // Fetch complete order history from the database
       const fetchOrderHistory = async () => {
@@ -107,12 +114,30 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({ open, onClose, 
             setOrderHistory(historyEntries);
           } else {
             // Format database history for display
-            const formattedHistory = history.map(entry => ({
-              date: entry.created_at,
-              status: entry.status,
-              updatedBy: entry.changed_by,
-              notes: entry.notes
-            }));
+            const formattedHistory = history.map(entry => {
+              let note = entry.notes;
+
+              if (entry.status === 'Payment' && entry.amount) {
+                let method = 'unknown';
+
+                //Try extracting from the note if possible
+                if (entry.notes?.includes('via ')) {
+                  const match = entry.notes.match(/via ([\w\.\(\)\- ]+)/i);
+                  if (match && match[1]) {
+                    method = match[1].trim();
+                  }
+                }
+
+                note = `Payment of ₱${entry.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })} via ${method}`;
+              }
+
+              return {
+                date: entry.created_at,
+                status: entry.status,
+                updatedBy: entry.changed_by,
+                notes: note
+              };
+            });
 
             // Add the initial creation event if not in history
             if (!history.some(h => h.status === 'Created')) {
@@ -162,6 +187,19 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({ open, onClose, 
     }
   }, [order, open]);
 
+  const otherPaymentOptions = [
+    'PayPal',
+    'Maya (PayMaya)',
+    'Coins.ph',
+    'Crypto',
+    'Remittance Center',
+    'Post-Dated Check',
+    'Wire Transfer',
+    'Cash on Delivery (COD)',
+    'Company Account',
+    'In-Kind'
+  ];
+
   const handleStatusChange = (event: SelectChangeEvent<string>) => {
     const newStatus = event.target.value;
 
@@ -202,7 +240,7 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({ open, onClose, 
       case 'Approved':
         return ['Pending', 'Approved', 'Partially Paid', 'Completed']; // no Rejected
       case 'Partially Paid':
-        return ['Pending','Partially Paid', 'Completed']; // no Pending, Approved, Rejected
+        return ['Partially Paid', 'Completed']; // no Pending, Approved, Rejected
       case 'Completed':
         return ['Completed']; // Only Completed
       case 'Rejected':
@@ -211,7 +249,7 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({ open, onClose, 
         return ['Pending', 'Approved', 'Partially Paid', 'Completed', 'Rejected'];
     }
   };
-  
+
 
   if (!order) return null;
 
@@ -306,7 +344,7 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({ open, onClose, 
             </Box>
           )}
 
-          
+
           <Box sx={{ mb: 3 }}>
             <Typography variant="subtitle1" fontWeight="bold">Status</Typography>
             <FormControl fullWidth margin="normal" size="small">
@@ -421,12 +459,53 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({ open, onClose, 
                   <MenuItem value="Other">Other</MenuItem>
                 </Select>
               </FormControl>
+              {paymentMethod === 'Other' && (
+                <FormControl fullWidth size="small">
+                  <InputLabel>Other Payment Method</InputLabel>
+                  <Select
+                    value={otherPaymentMethod}
+                    onChange={(e) => setOtherPaymentMethod(e.target.value)}
+                    label="Other Payment Method"
+                  >
+                    {[
+                      'PayPal',
+                      'Maya (PayMaya)',
+                      'Coins.ph',
+                      'Crypto',
+                      'Remittance Center',
+                      'Post-Dated Check',
+                      'Wire Transfer',
+                      'Cash on Delivery (COD)',
+                      'Company Account',
+                      'In-Kind',
+                    ].map((method) => (
+                      <MenuItem key={method} value={method}>{method}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              )}
+            </Box>
+            {paymentMethod === 'Other' && ['Crypto', 'Coins.ph'].includes(otherPaymentMethod) && (
+              <Box sx={{ mb: 2 }}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label={`${otherPaymentMethod} Code or Wallet Address`}
+                  value={paymentCode}
+                  onChange={(e) => setPaymentCode(e.target.value)}
+                  placeholder={`Enter ${otherPaymentMethod} code here`}
+                />
+              </Box>
+            )}
+            <Box sx={{ mb: 2 }}>
               <TextField
                 label="Notes"
                 value={paymentNotes}
                 onChange={(e) => setPaymentNotes(e.target.value)}
                 fullWidth
                 size="small"
+                multiline
+                rows={2}
               />
             </Box>
             <Button
@@ -437,26 +516,36 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({ open, onClose, 
                   alert('Please enter a valid payment amount');
                   return;
                 }
-              
+
                 const payment = parseFloat(paymentAmount);
-                const remaining = order.remaining_amount ?? order.amount; // fallback just in case
-              
+                const remaining = order.remaining_amount ?? order.amount;
+
                 if (payment > remaining) {
                   alert(`Payment amount cannot exceed remaining balance of ₱${remaining.toLocaleString(undefined, { minimumFractionDigits: 2 })}`);
                   return;
                 }
-                
+
                 dispatch(addOrderPayment({
                   order_id: order.id,
                   amount: payment,
                   payment_date: paymentDate,
-                  payment_method: paymentMethod,
-                  notes: paymentNotes
-                }));
-              
-                // Clear fields after submission
+                  payment_method: paymentMethod === 'Other' ? otherPaymentMethod : paymentMethod,
+                  notes: ['Crypto', 'Coins.ph'].includes(otherPaymentMethod)
+                    ? `${paymentNotes} (${otherPaymentMethod} Code: ${paymentCode})`
+                    : paymentNotes
+                })).then(() => {
+                  dispatch(fetchClientOrders()).then(() => {
+                    onRefreshOrder(order.id); // 🔁 Refresh current order in dialog
+                  });
+                });
+
+
+                // Clear fields
                 setPaymentAmount('');
                 setPaymentNotes('');
+                setPaymentCode('');
+                setOtherPaymentMethod('');
+                setPaymentMethod('Cash');
               }}
               disabled={!paymentAmount || parseFloat(paymentAmount) <= 0}
             >
@@ -464,28 +553,37 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({ open, onClose, 
             </Button>
           </Box>
 
-          {order.payments && order.payments.length > 0 ? (
+          {paymentHistory && paymentHistory.length > 0 ? (
             <Box sx={{ mb: 3 }}>
               <Typography variant="h6" gutterBottom>Payment History</Typography>
               <TableContainer component={Paper} variant="outlined">
-                <Table size="small">
+                <Table size="small" sx={{ '& th, & td': { padding: '6px 8px' } }}>
                   <TableHead>
                     <TableRow>
-                      <TableCell><strong>Date</strong></TableCell>
-                      <TableCell><strong>Amount</strong></TableCell>
-                      <TableCell><strong>Method</strong></TableCell>
-                      <TableCell><strong>Notes</strong></TableCell>
+                      <TableCell align="center"><strong>Date</strong></TableCell>
+                      <TableCell align="center"><strong>Amount</strong></TableCell>
+                      <TableCell align="center"><strong>Method</strong></TableCell>
+                      <TableCell align="center"><strong>Code</strong></TableCell>
+                      <TableCell align="center"><strong>Notes</strong></TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {order.payments.map((payment, index) => (
+                    {paymentHistory.map((payment, index) => (
                       <TableRow key={index}>
-                        <TableCell>
-                          {new Date(payment.payment_date).toLocaleDateString()}
+                        <TableCell align="center">{new Date(payment.payment_date).toLocaleDateString()}</TableCell>
+                        <TableCell align="center">₱{payment.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
+                        <TableCell align="center">{payment.payment_method}</TableCell>
+                        <TableCell align="center">
+                          {typeof payment.payment_method === 'string' &&
+                            ['Crypto', 'Coins.ph'].includes(payment.payment_method) &&
+                            typeof payment.notes === 'string' &&
+                            payment.notes.includes('Code:') ? (
+                            payment.notes.match(/Code:\s*(.*)\)$/)?.[1]?.trim() ?? '-'
+                          ) : '-'}
                         </TableCell>
-                        <TableCell>₱{payment.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
-                        <TableCell>{payment.payment_method}</TableCell>
-                        <TableCell>{payment.notes || '-'}</TableCell>
+                        <TableCell align="center">
+                          {payment.notes?.replace(/\s?\(.*?Code:.*?\)/, '') || '-'}
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -595,6 +693,7 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({ open, onClose, 
   );
 };
 
+
 // Main component for client orders list
 const ClientOrdersList: React.FC = () => {
   // Use Redux for state management
@@ -610,6 +709,7 @@ const ClientOrdersList: React.FC = () => {
   const [selectedOrder, setSelectedOrder] = useState<ExtendedClientOrder | null>(null);
   const [detailsDialogOpen, setDetailsDialogOpen] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<number>(0);
+  const [filterMonth, setFilterMonth] = useState<string>(new Date().toISOString().substring(0, 7)); // Default to current month (YYYY-MM)
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
     message: string;
@@ -633,11 +733,21 @@ const ClientOrdersList: React.FC = () => {
     setSearchTerm(e.target.value);
   };
 
+  const handleMonthChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFilterMonth(e.target.value);
+  };
+
   const filterOrders = (orders: ExtendedClientOrder[]) => {
-    if (!searchTerm.trim()) return orders;
+    // First filter by date
+    const filteredByDate = filterMonth 
+      ? orders.filter(order => order.date?.substring(0, 7) === filterMonth)
+      : orders;
+      
+    // Then filter by search term
+    if (!searchTerm.trim()) return filteredByDate;
 
     const searchLower = searchTerm.toLowerCase();
-    return orders.filter(order => {
+    return filteredByDate.filter(order => {
       const orderIdMatch = order.order_id.toLowerCase().includes(searchLower);
       const clientNameMatch = order.clients?.name?.toLowerCase().includes(searchLower) || false;
       const statusMatch = order.status.toLowerCase().includes(searchLower);
@@ -649,6 +759,18 @@ const ClientOrdersList: React.FC = () => {
   const handleViewDetails = (order: ExtendedClientOrder) => {
     setSelectedOrder(order);
     setDetailsDialogOpen(true);
+  };
+
+  const refreshSelectedOrder = (orderId: number) => {
+    const allOrders = [
+      ...approvedOrders,
+      ...partiallyPaidOrders,
+      ...completedOrders,
+      ...rejectedOrders,
+    ];
+
+    const updated = allOrders.find((o) => o.id === orderId);
+    if (updated) setSelectedOrder({ ...updated }); // 🔁 force re-render
   };
 
   const handleCloseDetailsDialog = () => {
@@ -708,7 +830,7 @@ const ClientOrdersList: React.FC = () => {
     dispatch(fetchClientOrders());
   };
 
-  
+
   const handleCloseSnackbar = () => {
     setSnackbar(prev => ({ ...prev, open: false }));
   };
@@ -720,10 +842,10 @@ const ClientOrdersList: React.FC = () => {
           <TableRow>
             <TableCell><strong>Order ID</strong></TableCell>
             <TableCell><strong>Client</strong></TableCell>
-            <TableCell><strong>Date</strong></TableCell>
-            <TableCell><strong>Amount</strong></TableCell>
-            <TableCell><strong>Status</strong></TableCell>
-            <TableCell><strong>Actions</strong></TableCell>
+            <TableCell align='center'><strong>Date</strong></TableCell>
+            <TableCell align='center'><strong>Amount</strong></TableCell>
+            <TableCell align='center'><strong>Status</strong></TableCell>
+            <TableCell align='center'><strong>Actions</strong></TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
@@ -738,11 +860,11 @@ const ClientOrdersList: React.FC = () => {
               <TableRow key={order.id}>
                 <TableCell>{order.order_id}</TableCell>
                 <TableCell>{order.clients?.name || `Client ${order.client_id}`}</TableCell>
-                <TableCell>
+                <TableCell align='center'>
                   {order.date ? new Date(order.date).toLocaleDateString() : 'N/A'}
                 </TableCell>
-                <TableCell>₱{order.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
-                <TableCell>
+                <TableCell align='center'>₱{order.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
+                <TableCell align='center'>
                   <Chip
                     label={order.status}
                     color={
@@ -754,7 +876,7 @@ const ClientOrdersList: React.FC = () => {
                     size="small"
                   />
                 </TableCell>
-                <TableCell>
+                <TableCell align='center'>
                   <Button
                     size="small"
                     onClick={() => handleViewDetails(order)}
@@ -786,14 +908,14 @@ const ClientOrdersList: React.FC = () => {
         </Button>
       </Box>
 
-      <Box sx={{ mb: 3, display: 'flex', alignItems: 'center' }}>
+      <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
         <TextField
           placeholder="Search orders..."
           variant="outlined"
           size="small"
           value={searchTerm}
           onChange={handleSearch}
-          sx={{ width: 300, mr: 2 }}
+          sx={{ width: 300 }}
           InputProps={{
             startAdornment: (
               <InputAdornment position="start">
@@ -801,6 +923,15 @@ const ClientOrdersList: React.FC = () => {
               </InputAdornment>
             ),
           }}
+        />
+        <TextField
+          label="Filter by Month"
+          type="month"
+          value={filterMonth}
+          onChange={handleMonthChange}
+          variant="outlined"
+          size="small"
+          InputLabelProps={{ shrink: true }}
         />
       </Box>
 
@@ -842,6 +973,7 @@ const ClientOrdersList: React.FC = () => {
         onClose={handleCloseDetailsDialog}
         order={selectedOrder}
         onStatusChange={handleStatusChange}
+        onRefreshOrder={refreshSelectedOrder}
       />
 
       <Snackbar

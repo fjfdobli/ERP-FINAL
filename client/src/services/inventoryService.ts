@@ -3,7 +3,7 @@ import { supabase } from '../supabaseClient';
 export interface InventoryItem {
   id: number;
   itemName: string;
-  sku: string;
+  sku?: string;
   itemType: string;
   quantity: number;
   minStockLevel: number;
@@ -11,11 +11,12 @@ export interface InventoryItem {
   supplierId: number | null;
   createdAt?: string;
   updatedAt?: string;
+  min_stock: number;
 }
 
 export interface CreateInventoryItem {
   itemName: string;
-  sku: string;
+  sku?: string;
   itemType: string;
   quantity: number;
   minStockLevel: number;
@@ -43,6 +44,9 @@ export interface InventoryTransaction {
   isSupplier: boolean;
   notes?: string;
   transactionDate: string;
+  type?: string;
+  created_at?: string;
+  reason?: string;
 }
 
 export interface CreateInventoryTransaction {
@@ -53,6 +57,8 @@ export interface CreateInventoryTransaction {
   isSupplier: boolean;
   notes?: string;
   transactionDate?: string;
+  type?: string;
+  reason?: string;
 }
 
 // Table names
@@ -103,11 +109,11 @@ export const inventoryService = {
    */
   async searchInventory(query: string): Promise<InventoryItem[]> {
     const searchTerm = `%${query}%`;
-    
+
     const { data, error } = await supabase
       .from(INVENTORY_TABLE)
       .select('*')
-      .or(`itemName.ilike.${searchTerm},sku.ilike.${searchTerm},itemType.ilike.${searchTerm}`)
+      .or(`itemName.ilike.${searchTerm},itemType.ilike.${searchTerm}`)
       .order('itemName', { ascending: true });
 
     if (error) {
@@ -128,11 +134,11 @@ export const inventoryService = {
         .from(INVENTORY_TABLE)
         .select('*')
         .order('itemName', { ascending: true });
-      
+
       if (error) {
         throw new Error(error.message);
       }
-      
+
       // Filter client-side for items where quantity is less than minStockLevel
       return (data || []).filter(item => item.quantity <= item.minStockLevel);
     } catch (error) {
@@ -174,6 +180,8 @@ export const inventoryService = {
       console.error(`Error updating inventory item with ID ${id}:`, error);
       throw new Error(error.message);
     }
+
+    console.log(`[SERVICE] Inventory item ${id} updated to:`, data); 
 
     return data;
   },
