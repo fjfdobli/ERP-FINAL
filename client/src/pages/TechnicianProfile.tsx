@@ -238,7 +238,16 @@ const TechnicianProfile: React.FC = () => {
   // Handle select input changes
   const handleSelectChange = (e: any) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    if (name === 'type') {
+      // If the type is changing, update the company field accordingly
+      setFormData(prev => ({
+        ...prev,
+        [name]: value,
+        company: value === 'Company' ? "Opzon's Printers" : ''
+      }));
+    } else {
+      setFormData(prev => ({ ...prev, [name]: value }));
+    }
   };
   
   // Open dialog to add new technician
@@ -254,7 +263,7 @@ const TechnicianProfile: React.FC = () => {
       bio: '',
       status: 'Active',
       type: 'Company',
-      company: ''
+      company: "Opzon's Printers" // Default company name for Company type
     });
     setOpenDialog(true);
   };
@@ -263,6 +272,8 @@ const TechnicianProfile: React.FC = () => {
   const handleEditTechnician = (technician: Technician) => {
     setIsEditing(true);
     setSelectedTechnician(technician);
+    // If technician type is Company, set company name to Opzon's Printers
+    const techType = technician.type || 'Company';
     setFormData({
       firstName: technician.firstName ?? technician.first_name ?? '',
       lastName: technician.lastName ?? technician.last_name ?? '',
@@ -271,8 +282,8 @@ const TechnicianProfile: React.FC = () => {
       experience: technician.experience,
       bio: technician.bio || '',
       status: technician.status,
-      type: technician.type || 'Company',
-      company: technician.company || ''
+      type: techType,
+      company: techType === 'Company' ? "Opzon's Printers" : (technician.company || '')
     });
     setOpenDialog(true);
   };
@@ -302,7 +313,7 @@ const TechnicianProfile: React.FC = () => {
       bio: formData.bio || null,
       status: formData.status,
       type: formData.type as 'Company' | 'External',
-      company: formData.type === 'External' ? formData.company : null
+      company: formData.type === 'External' ? formData.company : "Opzon's Printers"
     };
 
     try {
@@ -1609,10 +1620,10 @@ const TechnicianProfile: React.FC = () => {
                   fullWidth
                   label="Company Name"
                   name="company"
-                  value={formData.company}
+                  value={formData.type === 'Company' ? "Opzon's Printers" : formData.company}
                   onChange={handleInputChange}
                   disabled={formData.type !== 'External'}
-                  helperText={formData.type === 'External' ? "Enter contractor's company name" : "Not applicable for company employees"}
+                  helperText={formData.type === 'External' ? "Enter contractor's company name" : "Company employee at Opzon's Printers"}
                 />
               </Grid>
               

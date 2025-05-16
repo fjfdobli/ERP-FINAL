@@ -73,10 +73,6 @@ const PersonalInfoTab = ({ employee }: { employee: Employee }) => {
         <Typography variant="body1">{`${employee.firstName} ${employee.lastName}`}</Typography>
       </Grid>
       
-      <Grid item xs={12} md={6}>
-        <Typography variant="subtitle1" fontWeight="bold">Employee ID</Typography>
-        <Typography variant="body1">{employee.employeeId || 'Not assigned'}</Typography>
-      </Grid>
       
       <Grid item xs={12} md={6}>
         <Typography variant="subtitle1" fontWeight="bold">Birth Date</Typography>
@@ -688,16 +684,6 @@ const EmployeesList: React.FC = () => {
                   fullWidth
                   required
                   value={formData.lastName}
-                  onChange={handleInputChange}
-                />
-              </Grid>
-              
-              <Grid item xs={12} md={6}>
-                <TextField
-                  name="employeeId"
-                  label="Employee ID"
-                  fullWidth
-                  value={formData.employeeId}
                   onChange={handleInputChange}
                 />
               </Grid>

@@ -568,17 +568,6 @@ const InventoryList: React.FC = () => {
                         >
                           Edit
                         </Button>
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          color="error"
-                          onClick={() => {
-                            setSelectedItem(item);
-                            setDeleteConfirmOpen(true);
-                          }}
-                        >
-                          Delete
-                        </Button>
                       </TableCell>
                     </TableRow>
                   );
@@ -1055,9 +1044,6 @@ const InventoryList: React.FC = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseDeleteConfirm}>Cancel</Button>
-          <Button onClick={handleConfirmDelete} color="error" variant="contained">
-            Delete
-          </Button>
         </DialogActions>
       </Dialog>
 

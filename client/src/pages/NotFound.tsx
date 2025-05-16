@@ -1,24 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Box, 
-  Typography, 
-  Button, 
-  Container, 
-  Paper,
-  Grid,
-  Divider,
-  useTheme,
-  keyframes,
-  Breadcrumbs,
-  Link
-} from '@mui/material';
+  Box, Typography, Button, Container, Paper, Grid, 
+  Divider, useTheme, keyframes, Breadcrumbs, Link } from '@mui/material';
 import { 
-  Home as HomeIcon, 
-  ArrowBack as BackIcon,
-  Error as ErrorIcon,
-  Print as PrintIcon,
-  SentimentDissatisfied as SadIcon
-} from '@mui/icons-material';
+  Home as HomeIcon, ArrowBack as BackIcon, Error as ErrorIcon,
+  Print as PrintIcon, SentimentDissatisfied as SadIcon } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 // Define subtle animations

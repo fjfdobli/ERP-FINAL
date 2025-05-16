@@ -170,10 +170,6 @@ const BillingPaymentTab = ({ client }: { client: Client }) => {
         <Typography variant="body1">{client.paymentTerms || 'Not specified'}</Typography>
       </Grid>
       
-      <Grid item xs={12} md={6}>
-        <Typography variant="subtitle1" fontWeight="bold">Credit Limit</Typography>
-        <Typography variant="body1">₱{typeof client.creditLimit === 'number' ? client.creditLimit.toLocaleString() : client.creditLimit || '0'}</Typography>
-      </Grid>
       
     </Grid>
   );
@@ -306,23 +302,7 @@ const ClientsList: React.FC = () => {
 
   const businessTypes = ['Company', 'Organization', 'Government', 'Educational', 'Individual', 'Other'];
   const industries = ['Publishing', 'Marketing', 'Advertising', 'Education', 'Government', 'Retail', 'Healthcare', 'Financial', 'Technology', 'Manufacturing', 'Nonprofit', 'Other'];
-  const paymentTerms = [
-    'Cash on Delivery (COD)',
-    'Cash Before Delivery (CBD)',
-    '7 Days PDC',
-    '15 Days PDC',
-    '30 Days PDC',
-    'Cash on Pickup (COP)',
-    '50% DP, 50% on Delivery',
-    '30% DP, 70% on Delivery',
-    'Cash Terms',
-    '7 Days Term',
-    '15 Days Term',
-    '30 Days Term',
-    'GCash/Digital Payment',
-    'Credit Card',
-    'Monthly Direct Debit'
-  ];
+
 
   const showSnackbar = useCallback((message: string, severity: 'success' | 'error') => {
     setSnackbar({ open: true, message, severity });
@@ -746,7 +726,7 @@ const ClientsList: React.FC = () => {
         <Tabs value={tabValue} onChange={handleTabChange} aria-label="client form tabs" centered>
           <Tab icon={<Business />} label="Business Info" />
           <Tab icon={<Person />} label="Contact Details" />
-          <Tab icon={<Payments />} label="Billing & Payment" />
+          <Tab icon={<Payments />} label="Billing Address" />
           <Tab icon={<Info />} label="Additional Info" />
         </Tabs>
         
@@ -976,16 +956,6 @@ const ClientsList: React.FC = () => {
                       />
                     </Grid>
                     
-                    <Grid item xs={12}>
-                      <TextField
-                        name="billing_address_line2"
-                        label="Billing Address Line 2"
-                        fullWidth
-                        value={formData.billing_address_line2}
-                        onChange={handleInputChange}
-                      />
-                    </Grid>
-                    
                     <Grid item xs={12} md={4}>
                       <TextField
                         name="billing_city"
@@ -1017,44 +987,6 @@ const ClientsList: React.FC = () => {
                    </Grid>
                  </>
                )}
-               
-               <Grid item xs={12}>
-                 <Divider sx={{ my: 2 }} />
-                 <Typography variant="h6" gutterBottom>
-                   Payment Details
-                 </Typography>
-               </Grid>
-               
-               <Grid item xs={12} md={6}>
-                 <FormControl fullWidth>
-                   <InputLabel id="payment-terms-label">Payment Terms</InputLabel>
-                   <Select
-                     labelId="payment-terms-label"
-                     name="paymentTerms"
-                     value={formData.paymentTerms}
-                     label="Payment Terms"
-                     onChange={handleSelectChange}
-                   >
-                     {paymentTerms.map((term) => (
-                       <MenuItem key={term} value={term}>{term}</MenuItem>
-                     ))}
-                   </Select>
-                 </FormControl>
-               </Grid>
-               
-               <Grid item xs={12} md={6}>
-                 <TextField
-                   name="creditLimit"
-                   label="Credit Limit (₱)"
-                   type="number"
-                   fullWidth
-                   value={formData.creditLimit}
-                   onChange={handleInputChange}
-                   InputProps={{
-                     startAdornment: <InputAdornment position="start">₱</InputAdornment>,
-                   }}
-                 />
-               </Grid>
             
              </Grid>
            </TabPanel>

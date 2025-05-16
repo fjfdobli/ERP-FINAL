@@ -212,7 +212,7 @@ const SupplierViewDetails: React.FC<SupplierViewDetailsProps> = ({ open, supplie
       <Tabs value={tabValue} onChange={handleTabChange} aria-label="supplier details tabs" centered>
         <Tab icon={<Business />} label="Business Info" />
         <Tab icon={<Person />} label="Contact Details" />
-        <Tab icon={<Payments />} label="Billing & Payment" />
+        <Tab icon={<Payments />} label="Billing Address" />
         <Tab icon={<Info />} label="Additional Info" />
       </Tabs>
       
@@ -764,7 +764,7 @@ const SuppliersList: React.FC = () => {
         <Tabs value={tabValue} onChange={handleTabChange} aria-label="supplier form tabs" centered>
           <Tab icon={<Business />} label="Business Info" />
           <Tab icon={<Person />} label="Contact Details" />
-          <Tab icon={<Payments />} label="Billing & Payment" />
+          <Tab icon={<Payments />} label="Billing Address" />
           <Tab icon={<Info />} label="Additional Info" />
         </Tabs>
         
@@ -1036,30 +1036,6 @@ const SuppliersList: React.FC = () => {
                  </Grid>
                </>
              )}
-             
-             <Grid item xs={12}>
-               <Divider sx={{ my: 2 }} />
-               <Typography variant="h6" gutterBottom>
-                 Payment Details
-               </Typography>
-             </Grid>
-             
-             <Grid item xs={12} md={6}>
-               <FormControl fullWidth>
-                 <InputLabel id="payment-terms-label">Payment Terms</InputLabel>
-                 <Select
-                   labelId="payment-terms-label"
-                   name="paymentTerms"
-                   value={formData.paymentTerms}
-                   label="Payment Terms"
-                   onChange={handleSelectChange}
-                 >
-                   {paymentTerms.map((term) => (
-                     <MenuItem key={term} value={term}>{term}</MenuItem>
-                   ))}
-                 </Select>
-               </FormControl>
-             </Grid>
              
            </Grid>
          </TabPanel>
