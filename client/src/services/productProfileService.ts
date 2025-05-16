@@ -6,6 +6,8 @@ export interface ProductMaterial {
   materialId: number;
   materialName: string;
   quantityRequired: number;
+  unit_type?: string;
+  otherType?: string;
 }
 
 export interface Product {
@@ -97,6 +99,8 @@ export const productProfileService = {
       console.error('Error fetching products:', productError);
       throw new Error(productError.message);
     }
+    
+    console.log('[SERVICE] Raw products from database:', JSON.stringify(products.map(p => p.id), null, 2));
 
     if (!products || products.length === 0) {
       return [];
@@ -110,6 +114,9 @@ export const productProfileService = {
       return [];
     }
     
+    // Log what we're selecting to debug properly
+    console.log('Fetching materials for product IDs:', productIds);
+    
     const { data: materials, error: materialsError } = await supabase
       .from(PRODUCT_MATERIALS_TABLE)
       .select(`
@@ -117,14 +124,37 @@ export const productProfileService = {
         productId,
         materialId,
         quantityRequired,
+        unit_type,
+        other_type,
         inventory!inner(itemName)
       `)
       .in('productId', productIds);
+      
+    // Log a sample of the raw data returned
+    if (materials && materials.length > 0) {
+      console.log('Sample raw material data:', {
+        first_material: materials[0],
+        has_unit_type: 'unit_type' in materials[0],
+        unit_type_value: materials[0].unit_type
+      });
+    }
 
     if (materialsError) {
       console.error('Error fetching product materials:', materialsError);
       throw new Error(materialsError.message);
     }
+    
+    // Debug: Log the raw materials data to see what's coming from the server
+    console.log('[SERVICE] Raw materials from database:', 
+                JSON.stringify(materials.slice(0, 3).map((m: any) => {
+                  return {
+                    id: m.id,
+                    productId: m.productId,
+                    materialId: m.materialId,
+                    unit_type: m.unit_type,
+                    other_type: m.other_type
+                  };
+                }), null, 2));
 
     // Map materials to their respective products
     const productsWithMaterials = products.map(product => {
@@ -134,12 +164,20 @@ export const productProfileService = {
           // First get the inventory item data
           const inventoryData = material.inventory as any;
           
+          // Cast material to any to access properties that TypeScript doesn't know about
+          const materialAny = material as any;
+          
+          // Get unit_type with fallback
+          const unitType = materialAny.unit_type;
+          
           return {
             id: material.id,
             productId: material.productId,
             materialId: material.materialId,
             materialName: inventoryData?.itemName || 'Unknown Material',
-            quantityRequired: material.quantityRequired
+            quantityRequired: material.quantityRequired,
+            unit_type: unitType || 'piece',
+            otherType: materialAny.other_type || ''
           };
         });
 
@@ -180,6 +218,8 @@ export const productProfileService = {
         productId,
         materialId,
         quantityRequired,
+        unit_type,
+        other_type,
         inventory!inner(itemName)
       `)
       .eq('productId', id);
@@ -194,13 +234,20 @@ export const productProfileService = {
       // First get the inventory item data
       const inventoryData = material.inventory as any;
       
-      return {
+      const mappedMaterial = {
         id: material.id,
         productId: material.productId,
         materialId: material.materialId,
         materialName: inventoryData?.itemName || 'Unknown Material',
-        quantityRequired: material.quantityRequired
+        quantityRequired: material.quantityRequired,
+        unit_type: 'unit_type' in material ? material.unit_type : 'piece',
+        otherType: 'other_type' in material ? material.other_type : ''
       };
+      
+      // Debug log
+      console.log('Material data from DB:', material, '-> Mapped to:', mappedMaterial);
+      
+      return mappedMaterial;
     });
 
     return {
@@ -246,6 +293,8 @@ export const productProfileService = {
         productId,
         materialId,
         quantityRequired,
+        unit_type,
+        other_type,
         inventory!inner(itemName)
       `)
       .in('productId', productIds);
@@ -263,12 +312,20 @@ export const productProfileService = {
           // First get the inventory item data
           const inventoryData = material.inventory as any;
           
+          // Cast material to any to access properties that TypeScript doesn't know about
+          const materialAny = material as any;
+          
+          // Get unit_type with fallback
+          const unitType = materialAny.unit_type;
+          
           return {
             id: material.id,
             productId: material.productId,
             materialId: material.materialId,
             materialName: inventoryData?.itemName || 'Unknown Material',
-            quantityRequired: material.quantityRequired
+            quantityRequired: material.quantityRequired,
+            unit_type: unitType || 'piece',
+            otherType: materialAny.other_type || ''
           };
         });
 
@@ -301,11 +358,28 @@ export const productProfileService = {
     }
 
     // Map materials with the new product ID
-    const productMaterials = materials.map(material => ({
-      productId: newProduct.id,
-      materialId: material.materialId,
-      quantityRequired: material.quantityRequired
-    }));
+    const productMaterials = materials.map(material => {
+      // Force unit_type to string, avoiding any nullable values
+      const unitType = String(material.unit_type || 'piece');
+      
+      // Create a direct record with explicit unit_type
+      const materialRecord = {
+        productId: newProduct.id,
+        materialId: material.materialId,
+        quantityRequired: material.quantityRequired,
+        unit_type: unitType, // Explicitly string
+        other_type: unitType === 'other' ? material.otherType : null
+      };
+      
+      console.log('Material being created in database:', {
+        original: material,
+        modified: materialRecord,
+        unit_type_source: material.unit_type,
+        unit_type_used: unitType
+      });
+      
+      return materialRecord;
+    });
 
     // Insert the materials if there are any
     if (productMaterials.length > 0) {
@@ -317,6 +391,8 @@ export const productProfileService = {
           productId,
           materialId,
           quantityRequired,
+          unit_type,
+          other_type,
           inventory!inner(itemName)
         `);
 
@@ -326,19 +402,46 @@ export const productProfileService = {
         await supabase.from(PRODUCTS_TABLE).delete().eq('id', newProduct.id);
         throw new Error(materialsError.message);
       }
+      
+      // Log what was returned from the database after insertion
+      console.log('[DATABASE RESPONSE] Received from insert:', newMaterials);
 
       // Format the materials with proper names for return
       const formattedMaterials = (newMaterials || []).map(material => {
         // First get the inventory item data
         const inventoryData = material.inventory as any;
         
-        return {
+        // Explicitly log the incoming data for debugging
+        console.log('Raw material data from DB:', material);
+        
+        // Cast material to any to access properties that TypeScript doesn't know about
+        const materialAny = material as any;
+        
+        // Very important: Make a direct reference to unit_type with fallback
+        const unitType = materialAny.unit_type;
+        
+        const mappedMaterial = {
           id: material.id,
           productId: material.productId,
           materialId: material.materialId,
           materialName: inventoryData?.itemName || 'Unknown Material',
-          quantityRequired: material.quantityRequired
+          quantityRequired: material.quantityRequired,
+          // Force the unit_type to be explicitly set - this is critical
+          unit_type: unitType || 'piece',
+          otherType: materialAny.other_type || ''
         };
+        
+        // Explicitly log whether unit_type exists
+        console.log('[CRITICAL] Material unit_type debug:', {
+          has_unit_type: !!unitType,
+          unit_type_value: unitType,
+          mapped_unit_type: mappedMaterial.unit_type
+        });
+        
+        // Debug: Log an individual mapped material
+        console.log('Mapped material object:', mappedMaterial);
+        
+        return mappedMaterial;
       });
 
       return {
@@ -388,12 +491,34 @@ export const productProfileService = {
     // Insert the new set of materials
     if (materials.length > 0) {
       // Prepare materials without 'id' and with the correct productId
-      const materialsToInsert = materials.map(material => ({
-        productId: id,
-        materialId: material.materialId,
-        quantityRequired: material.quantityRequired
-      }));
+      // Force the materials to use string values for unit_type
+      const materialsToInsert = materials.map(material => {
+        // Force unit_type to string, avoiding any nullable values
+        const unitType = String(material.unit_type || 'piece');
+        
+        // Create a direct record with explicit unit_type
+        const materialRecord = {
+          productId: id,
+          materialId: material.materialId,
+          quantityRequired: material.quantityRequired,
+          unit_type: unitType, // Explicitly string
+          other_type: unitType === 'other' ? material.otherType : null
+        };
+        
+        console.log('Material being sent to database:', {
+          original: material,
+          modified: materialRecord,
+          unit_type_source: material.unit_type,
+          unit_type_used: unitType
+        });
+        
+        return materialRecord;
+      });
 
+      // Log exactly what's going to the database - critical for debugging
+      console.log('[DATABASE INSERT] Sending to product_materials table:', 
+                 JSON.stringify(materialsToInsert, null, 2));
+      
       const { data: newMaterials, error: materialsError } = await supabase
         .from(PRODUCT_MATERIALS_TABLE)
         .insert(materialsToInsert)
@@ -402,6 +527,8 @@ export const productProfileService = {
           productId,
           materialId,
           quantityRequired,
+          unit_type,
+          other_type,
           inventory!inner(itemName)
         `);
 
@@ -409,19 +536,46 @@ export const productProfileService = {
         console.error(`Error adding updated materials for product ID ${id}:`, materialsError);
         throw new Error(materialsError.message);
       }
+      
+      // Log what was returned from the database after insertion
+      console.log('[DATABASE RESPONSE] Received from insert:', newMaterials);
 
       // Format the materials with proper names for return
       const formattedMaterials = (newMaterials || []).map(material => {
         // First get the inventory item data
         const inventoryData = material.inventory as any;
         
-        return {
+        // Explicitly log the incoming data for debugging
+        console.log('Raw material data from DB:', material);
+        
+        // Cast material to any to access properties that TypeScript doesn't know about
+        const materialAny = material as any;
+        
+        // Very important: Make a direct reference to unit_type with fallback
+        const unitType = materialAny.unit_type;
+        
+        const mappedMaterial = {
           id: material.id,
           productId: material.productId,
           materialId: material.materialId,
           materialName: inventoryData?.itemName || 'Unknown Material',
-          quantityRequired: material.quantityRequired
+          quantityRequired: material.quantityRequired,
+          // Force the unit_type to be explicitly set - this is critical
+          unit_type: unitType || 'piece',
+          otherType: materialAny.other_type || ''
         };
+        
+        // Explicitly log whether unit_type exists
+        console.log('[CRITICAL] Material unit_type debug:', {
+          has_unit_type: !!unitType,
+          unit_type_value: unitType,
+          mapped_unit_type: mappedMaterial.unit_type
+        });
+        
+        // Debug: Log an individual mapped material
+        console.log('Mapped material object:', mappedMaterial);
+        
+        return mappedMaterial;
       });
 
       return {

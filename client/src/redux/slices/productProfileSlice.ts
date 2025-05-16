@@ -150,7 +150,50 @@ const productProfileSlice = createSlice({
       })
       .addCase(fetchProducts.fulfilled, (state, action) => {
         state.isLoading = false;
-        state.products = action.payload;
+        
+        // Ensure all products have proper unit_type values for materials
+        const productsWithUnitTypes = action.payload.map(product => {
+          // First log the product materials to debug what's coming in
+          if (product.materials && product.materials.length > 0) {
+            console.log(`[REDUX] Product ${product.id} materials unit_types before processing:`, 
+              product.materials.map(m => m.unit_type));
+          }
+          
+          return {
+            ...product,
+            materials: product.materials.map(material => {
+              // Always log the unit_type being processed to help debug
+              console.log(`Material ${material.id} unit_type processing:`, {
+                materialId: material.materialId,
+                materialName: material.materialName,
+                unit_type_orig: material.unit_type,
+                has_unit_type: material.unit_type !== undefined && material.unit_type !== null
+              });
+              
+              // Keep the original unit_type if present, fallback only if needed
+              return {
+                ...material,
+                // Preserve original unit_type, only use fallback if undefined/null
+                unit_type: material.unit_type || 'piece',
+                // Also ensure otherType is defined
+                otherType: material.otherType || ''
+              };
+            })
+          };
+        });
+        
+        // Log first product's materials after processing
+        if (productsWithUnitTypes.length > 0 && productsWithUnitTypes[0].materials.length > 0) {
+          console.log('[REDUX] First product materials after processing:', 
+            productsWithUnitTypes[0].materials.map(m => ({ 
+              id: m.id, 
+              materialName: m.materialName,
+              unit_type: m.unit_type,
+              otherType: m.otherType 
+            })));
+        }
+        
+        state.products = productsWithUnitTypes;
         state.error = null;
       })
       .addCase(fetchProducts.rejected, (state, action) => {
@@ -195,7 +238,29 @@ const productProfileSlice = createSlice({
       })
       .addCase(createProduct.fulfilled, (state, action) => {
         state.isLoading = false;
-        state.products.push(action.payload);
+        
+        // Ensure created product has proper unit_type values for materials
+        const createdProduct = {
+          ...action.payload,
+          materials: action.payload.materials.map(material => ({
+            ...material,
+            // Force unit_type to be present and correct
+            unit_type: material.unit_type || 'piece'
+          }))
+        };
+        
+        // Log the product being created with unit_types
+        console.log('[REDUX] Created product with forced unit_types:', 
+                  JSON.stringify({
+                    id: createdProduct.id,
+                    materials: createdProduct.materials.map(m => ({
+                      id: m.id,
+                      materialName: m.materialName,
+                      unit_type: m.unit_type
+                    }))
+                  }, null, 2));
+        
+        state.products.push(createdProduct);
         state.error = null;
       })
       .addCase(createProduct.rejected, (state, action) => {
@@ -210,7 +275,28 @@ const productProfileSlice = createSlice({
       })
       .addCase(updateProduct.fulfilled, (state, action) => {
         state.isLoading = false;
-        const updatedProduct = action.payload;
+        
+        // Ensure updated product has proper unit_type values for materials
+        const updatedProduct = {
+          ...action.payload,
+          materials: action.payload.materials.map(material => ({
+            ...material,
+            // Force unit_type to be present and correct
+            unit_type: material.unit_type || 'piece'
+          }))
+        };
+        
+        // Log the product being updated with unit_types
+        console.log('[REDUX] Updated product with forced unit_types:', 
+                  JSON.stringify({
+                    id: updatedProduct.id,
+                    materials: updatedProduct.materials.map(m => ({
+                      id: m.id,
+                      materialName: m.materialName,
+                      unit_type: m.unit_type
+                    }))
+                  }, null, 2));
+        
         const index = state.products.findIndex(product => product.id === updatedProduct.id);
         if (index !== -1) {
           state.products[index] = updatedProduct;

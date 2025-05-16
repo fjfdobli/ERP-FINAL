@@ -20,6 +20,19 @@ import { fetchInventory, selectAllInventoryItems } from '../../redux/slices/inve
 import { ExtendedProduct } from '../../services/productProfileService';
 import { InventoryItem } from '../../services/inventoryService';
 
+// Unit type options for materials
+const unitTypes = [
+  { id: 'piece', name: 'Per Piece' },
+  { id: 'rim', name: 'Per Rim' },
+  { id: 'box', name: 'Per Box' },
+  { id: 'set', name: 'Per Set' },
+  { id: 'roll', name: 'Per Roll' },
+  { id: 'pack', name: 'Per Pack' },
+  { id: 'sheet', name: 'Per Sheet' },
+  { id: 'unit', name: 'Per Unit' },
+  { id: 'other', name: 'Other' }
+];
+
 const ProductCard = React.memo(({ product, onView, onEdit, onDelete }: {
   product: ExtendedProduct;
   onView: (product: ExtendedProduct) => void;
@@ -56,6 +69,18 @@ const ProductCard = React.memo(({ product, onView, onEdit, onDelete }: {
   </Card>
 ));
 
+// Helper function to get unit type display name
+const getUnitTypeDisplay = (unitType: string | undefined | null, otherType?: string): string => {
+  if (!unitType) return 'Not Specified';
+  
+  if (unitType === 'other') {
+    return otherType || 'Custom';
+  }
+  
+  const matchingType = unitTypes.find(t => t.id === unitType);
+  return matchingType ? matchingType.name : unitType;
+};
+
 const ProductProfile: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
   const products = useSelector(selectAllProducts);
@@ -78,8 +103,21 @@ const ProductProfile: React.FC = () => {
   const [snackbarSeverity, setSnackbarSeverity] = useState<'success' | 'error' | 'info'>('success');
 
   useEffect(() => {
+    // Fetch inventory and products when component mounts
     dispatch(fetchInventory());
     dispatch(fetchProducts());
+    
+    // Also set up a refresh of products after successful save operations
+    const refreshProducts = () => {
+      console.log('Refreshing products from database...');
+      dispatch(fetchProducts());
+    };
+    
+    // Refresh products every 30 seconds while component is mounted
+    const refreshInterval = setInterval(refreshProducts, 30000);
+    
+    // Clean up interval on unmount
+    return () => clearInterval(refreshInterval);
   }, [dispatch]);
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -111,14 +149,68 @@ const ProductProfile: React.FC = () => {
   };
 
   const handleOpenEditDialog = (product: ExtendedProduct) => {
-    setCurrentProduct({ ...product });
+    console.log('Opening edit dialog with product data:', JSON.stringify(product, null, 2));
+    
+    // Force unit_type to be seen in the edit dialog by ensuring each material has the correct unit_type
+    const enhancedProduct = {
+      ...product,
+      materials: product.materials.map(mat => {
+        // Log each material as it's processed
+        console.log('Edit processing material:', mat);
+        
+        // Try to get the unit type from Supabase or use what's already there
+        const unitTypeFromDB = mat.unit_type;
+        
+        // If it's from our dropdown, ensure we preserve it
+        return {
+          ...mat,
+          // Force unit_type to be a specific value for display
+          unit_type: unitTypeFromDB || 'piece'
+        };
+      })
+    };
+    
+    // Store the enhanced product for editing
+    setCurrentProduct(enhancedProduct);
     setIsEdit(true);
     setImageFiles([]);
     setDialogOpen(true);
   };
 
   const handleOpenViewDialog = (product: ExtendedProduct) => {
-    setCurrentProduct({ ...product });
+    console.log('Opening view dialog with product:', JSON.stringify({
+      productId: product.id,
+      materialsCount: product.materials.length,
+      firstMaterial: product.materials[0] ? {
+        id: product.materials[0].id,
+        unitType: product.materials[0].unit_type,
+        typeOfUnitType: typeof product.materials[0].unit_type
+      } : 'no materials'
+    }));
+    
+    // Create a deep copy with unit_type values explicitly preserved
+    const enhancedProduct = {
+      ...product,
+      materials: product.materials.map(mat => {
+        // Enhanced debugging of unit_type
+        console.log('Material unit_type in ViewDialog:', {
+          id: mat.id, 
+          rawUnitType: mat.unit_type,
+          typeOfUnitType: typeof mat.unit_type
+        });
+        
+        // Ensure unit_type is always defined properly
+        return {
+          ...mat,
+          // Use the original unit_type from the database but provide fallback if needed
+          unit_type: mat.unit_type || 'piece',
+          // Ensure otherType is defined properly
+          otherType: mat.otherType || ''
+        };
+      })
+    };
+    
+    setCurrentProduct(enhancedProduct);
     setViewDialogOpen(true);
   };
 
@@ -186,6 +278,8 @@ const ProductProfile: React.FC = () => {
         materialId: 0,
         materialName: '',
         quantityRequired: 1,
+        unit_type: 'piece',
+        otherType: '',
       }]
     }));
   };
@@ -224,6 +318,20 @@ const ProductProfile: React.FC = () => {
           ...material,
           quantityRequired: adjustedQuantity,
         };
+      } else if (field === 'unit_type') {
+        // Force unit_type to be explicitly set in the object
+        // This is a critical fix to ensure unit_type is saved correctly
+        return {
+          ...material,
+          unit_type: value,
+          // Reset otherType if not 'other'
+          otherType: value === 'other' ? material.otherType : '',
+        };
+      } else if (field === 'otherType') {
+        return {
+          ...material,
+          otherType: value,
+        };
       }
 
       return material;
@@ -245,6 +353,27 @@ const ProductProfile: React.FC = () => {
       setSnackbarOpen(true);
       return;
     }
+    
+    // Log the current state before saving
+    console.log('About to save product with materials:', JSON.stringify(currentProduct.materials, null, 2));
+    
+    // Force unit_type to be set correctly for all materials before saving
+    const materialsWithForcedUnitType = currentProduct.materials.map(material => {
+      return {
+        ...material,
+        unit_type: material.unit_type || 'piece', // Ensure unit_type is not undefined
+      };
+    });
+    
+    // Update current product with the ensured unit types
+    const updatedProduct = {
+      ...currentProduct,
+      materials: materialsWithForcedUnitType
+    };
+    
+    // Set the updated product in state 
+    setCurrentProduct(updatedProduct);
+    
     try {
       if (isEdit) {
         let finalImageUrls = (currentProduct.imageUrls || []).filter(url => !url.startsWith('blob:'));
@@ -252,6 +381,9 @@ const ProductProfile: React.FC = () => {
           const newUploaded = await dispatch(uploadMultipleProductImages({ files: imageFiles, productId: currentProduct.id })).unwrap();
           finalImageUrls = [...finalImageUrls, ...newUploaded];
         }
+        // Log the materials being sent for update
+        console.log('Materials being sent for update:', currentProduct.materials);
+        
         await dispatch(updateProduct({
           id: currentProduct.id,
           updates: {
@@ -261,7 +393,11 @@ const ProductProfile: React.FC = () => {
             imageUrl: finalImageUrls[0] || null,
             imageUrls: finalImageUrls
           },
-          materials: currentProduct.materials
+          // Explicitly ensure unit_type is passed for each material
+          materials: currentProduct.materials.map(mat => ({
+            ...mat,
+            unit_type: mat.unit_type || 'piece' // Ensure unit_type is set
+          }))
         })).unwrap();
         setSnackbarMessage('Product updated successfully');
       } else {
@@ -276,7 +412,9 @@ const ProductProfile: React.FC = () => {
           materials: currentProduct.materials.map(m => ({
             materialId: m.materialId,
             materialName: m.materialName,
-            quantityRequired: m.quantityRequired
+            quantityRequired: m.quantityRequired,
+            unit_type: m.unit_type || 'piece',
+            otherType: m.unit_type === 'other' ? m.otherType : ''
           }))
         })).unwrap();
         if (imageFiles.length > 0 && created.id) {
@@ -474,6 +612,7 @@ const ProductProfile: React.FC = () => {
                           <TableRow>
                             <TableCell>Material</TableCell>
                             <TableCell>Quantity Required</TableCell>
+                            <TableCell>Unit Type</TableCell>
                             <TableCell>Actions</TableCell>
                           </TableRow>
                         </TableHead>
@@ -511,6 +650,59 @@ const ProductProfile: React.FC = () => {
                                   onChange={e => handleMaterialChange(idx, 'quantityRequired', Number(e.target.value))}
                                   inputProps={{ min: 0.1, step: 0.1 }}
                                 />
+                              </TableCell>
+                              <TableCell>
+                                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                                  <FormControl fullWidth size="small">
+                                    <InputLabel>Unit Type</InputLabel>
+                                    <Select
+                                      label="Unit Type"
+                                      // Force the value to be the string value
+                                      value={mat.unit_type || 'piece'}
+                                      onChange={e => {
+                                        // Force the value to be a string
+                                        const newValue = String(e.target.value);
+                                        console.log(`CHANGING UNIT TYPE: ${mat.unit_type} -> ${newValue}`, {
+                                          materialBefore: JSON.stringify(mat)
+                                        });
+                                        
+                                        // Update the UI immediately for a better user experience
+                                        const updatedMaterial = {
+                                          ...mat,
+                                          unit_type: newValue
+                                        };
+                                        
+                                        // Directly update the current product
+                                        const materials = [...currentProduct!.materials];
+                                        materials[idx] = updatedMaterial;
+                                        
+                                        // Update the state with the new unit type immediately
+                                        setCurrentProduct(prev => ({
+                                          ...prev!,
+                                          materials
+                                        }));
+                                        
+                                        // Then call the regular handler
+                                        handleMaterialChange(idx, 'unit_type', newValue);
+                                      }}
+                                    >
+                                      {unitTypes.map(type => (
+                                        <MenuItem key={type.id} value={type.id}>
+                                          {type.name}
+                                        </MenuItem>
+                                      ))}
+                                    </Select>
+                                  </FormControl>
+                                  
+                                  {mat.unit_type === 'other' && (
+                                    <TextField
+                                      size="small"
+                                      placeholder="Specify unit type"
+                                      value={mat.otherType || ''}
+                                      onChange={e => handleMaterialChange(idx, 'otherType', e.target.value)}
+                                    />
+                                  )}
+                                </Box>
                               </TableCell>
                               <TableCell>
                                 <Button size="small" color="error" onClick={() => handleRemoveMaterial(idx)}>
@@ -572,17 +764,35 @@ const ProductProfile: React.FC = () => {
                   <Table size="small">
                     <TableHead>
                       <TableRow>
-                        <TableCell>Material</TableCell>
-                        <TableCell>Quantity</TableCell>
+                        <TableCell><strong>Material</strong></TableCell>
+                        <TableCell><strong>Quantity</strong></TableCell>
+                        <TableCell><strong>Unit Type</strong></TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {currentProduct.materials.map((mat, idx) => (
-                        <TableRow key={idx}>
-                          <TableCell>{mat.materialName}</TableCell>
-                          <TableCell>{mat.quantityRequired}</TableCell>
-                        </TableRow>
-                      ))}
+                      {currentProduct.materials.map((mat, idx) => {
+                        // Log the material data for debugging
+                        console.log(`View dialog material ${idx}:`, {
+                          id: mat.id,
+                          materialName: mat.materialName,
+                          unit_type: mat.unit_type,
+                          otherType: mat.otherType
+                        });
+                        
+                        // Use our helper function to get the display name
+                        const displayName = getUnitTypeDisplay(mat.unit_type, mat.otherType);
+                        
+                        // Log the final result for debugging
+                        console.log(`Unit type for ${mat.materialName}:`, displayName);
+                        
+                        return (
+                          <TableRow key={idx}>
+                            <TableCell>{mat.materialName}</TableCell>
+                            <TableCell>{mat.quantityRequired}</TableCell>
+                            <TableCell>{displayName}</TableCell>
+                          </TableRow>
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </TableContainer>

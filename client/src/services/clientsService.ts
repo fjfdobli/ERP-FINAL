@@ -9,8 +9,11 @@ export interface Client {
   status: string;
   address: string | null;
   notes: string | null;
-  businessType: string | null;
+  businesstype: string | null; // lowercase to match database column name
+  businessType?: string | null; // keep for backward compatibility
+  custom_business_type: string | null;
   industry: string | null;
+  custom_industry: string | null;
   taxId: string | null;
   clientSince: string | null;
   alternatePhone: string | null;
@@ -33,8 +36,10 @@ export interface InsertClient {
   status: string;
   address: string | null;
   notes: string | null;
-  businessType: string | null;
+  businesstype: string | null; // lowercase to match database column name
+  custom_business_type: string | null;
   industry: string | null;
+  custom_industry: string | null;
   taxId: string | null;
   clientSince?: string;
   alternatePhone: string | null;

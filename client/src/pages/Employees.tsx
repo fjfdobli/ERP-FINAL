@@ -757,26 +757,14 @@ const EmployeesList: React.FC = () => {
               </Grid>
               
               <Grid item xs={12} md={6}>
-                <FormControl fullWidth>
-                  <InputLabel id="position-label">Position</InputLabel>
-                  <Select
-                    labelId="position-label"
-                    name="position"
-                    value={formData.position}
-                    label="Position"
-                    onChange={handleSelectChange}
-                    required
-                  >
-                    {formData.department && positionsByDepartment[formData.department] ? 
-                      positionsByDepartment[formData.department].map((pos) => (
-                        <MenuItem key={pos} value={pos}>{pos}</MenuItem>
-                      )) : 
-                      Object.values(positionsByDepartment).flat().map((pos) => (
-                        <MenuItem key={pos} value={pos}>{pos}</MenuItem>
-                      ))
-                    }
-                  </Select>
-                </FormControl>
+                <TextField
+                  name="position"
+                  label="Position"
+                  fullWidth
+                  required
+                  value={formData.position}
+                  onChange={handleInputChange}
+                />
               </Grid>
               
               <Grid item xs={12} md={6}>

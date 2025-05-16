@@ -44,8 +44,10 @@ interface SupplierFormData {
   phone: string;
   status: string;
   businessType: string;
+  custom_business_type: string;
   taxId: string;
   industry: string;
+  custom_industry: string;
   address_line1: string;
   address_line2: string;
   city: string;
@@ -83,7 +85,11 @@ const BusinessInfoTab = ({ supplier }: { supplier: Supplier }) => {
       
       <Grid item xs={12} md={6}>
         <Typography variant="subtitle1" fontWeight="bold">Business Type</Typography>
-        <Typography variant="body1">{supplier.businessType || 'Not specified'}</Typography>
+        <Typography variant="body1">
+          {(supplier.businessType || supplier.businesstype) === 'Other' 
+            ? `${supplier.businessType || supplier.businesstype} - ${supplier.custom_business_type}` 
+            : (supplier.businessType || supplier.businesstype) || 'Not specified'}
+        </Typography>
       </Grid>
       
       <Grid item xs={12} md={6}>
@@ -93,7 +99,11 @@ const BusinessInfoTab = ({ supplier }: { supplier: Supplier }) => {
       
       <Grid item xs={12} md={6}>
         <Typography variant="subtitle1" fontWeight="bold">Industry</Typography>
-        <Typography variant="body1">{supplier.industry || 'Not specified'}</Typography>
+        <Typography variant="body1">
+          {supplier.industry === 'Other' 
+            ? `${supplier.industry} - ${supplier.custom_industry}` 
+            : supplier.industry || 'Not specified'}
+        </Typography>
       </Grid>
       
       <Grid item xs={12} md={6}>
@@ -259,8 +269,10 @@ const SuppliersList: React.FC = () => {
     phone: '',
     status: 'Active',
     businessType: 'Company',
+    custom_business_type: '',
     taxId: '',
     industry: '',
+    custom_industry: '',
     address_line1: '',
     address_line2: '',
     city: '',
@@ -397,9 +409,11 @@ const SuppliersList: React.FC = () => {
         email: supplier.email || '',
         phone: supplier.phone || '',
         status: supplier.status === 'Inactive' ? 'Inactive' : 'Active',
-        businessType: supplier.businessType || 'Company',
+        businessType: supplier.businessType || supplier.businesstype || 'Company',
+        custom_business_type: supplier.custom_business_type || '',
         taxId: supplier.taxId || '',
         industry: supplier.industry || '',
+        custom_industry: supplier.custom_industry || '',
         address_line1: mainAddress.line1 || '',
         address_line2: mainAddress.line2 || '',
         city: mainAddress.city || '',
@@ -430,8 +444,10 @@ const SuppliersList: React.FC = () => {
         phone: '',
         status: 'Active',
         businessType: 'Company',
+        custom_business_type: '',
         taxId: '',
         industry: '',
+        custom_industry: '',
         address_line1: '',
         address_line2: '',
         city: '',
@@ -567,8 +583,10 @@ const SuppliersList: React.FC = () => {
         status: formData.status, // This should be either 'Active' or 'Inactive'
         address: formattedAddress,
         notes: formData.notes || '',
-        businessType: formData.businessType || 'Company',
+        businesstype: formData.businessType || 'Company', // lowercase to match database column name
+        custom_business_type: formData.businessType === 'Other' ? formData.custom_business_type : null,
         industry: formData.industry || '',
+        custom_industry: formData.industry === 'Other' ? formData.custom_industry : null,
         taxId: formData.taxId || '',
         relationship_since: relationshipSince,
         alternatePhone: formData.alternatePhone || '',
@@ -805,6 +823,17 @@ const SuppliersList: React.FC = () => {
                     ))}
                   </Select>
                 </FormControl>
+                {formData.businessType === 'Other' && (
+                  <TextField
+                    name="custom_business_type"
+                    label="Specify Business Type"
+                    fullWidth
+                    value={formData.custom_business_type}
+                    onChange={handleInputChange}
+                    margin="normal"
+                    size="small"
+                  />
+                )}
               </Grid>
               
               <Grid item xs={12} md={6}>
@@ -832,6 +861,17 @@ const SuppliersList: React.FC = () => {
                     ))}
                   </Select>
                 </FormControl>
+                {formData.industry === 'Other' && (
+                  <TextField
+                    name="custom_industry"
+                    label="Specify Industry"
+                    fullWidth
+                    value={formData.custom_industry}
+                    onChange={handleInputChange}
+                    margin="normal"
+                    size="small"
+                  />
+                )}
               </Grid>
               
               <Grid item xs={12} md={6}>
