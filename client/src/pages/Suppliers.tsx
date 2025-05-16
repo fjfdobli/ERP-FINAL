@@ -305,25 +305,7 @@ const SuppliersList: React.FC = () => {
 
   const businessTypes = ['Company', 'Corporation', 'LLC', 'Sole Proprietorship', 'Partnership', 'Other'];
   const industries = ['Printing Supplies', 'Paper', 'Ink', 'Machinery', 'Electronics', 'Tools', 'Packaging', 'Office Supplies', 'Other'];
-  const paymentTerms = [
-    'Cash on Delivery (COD)',
-    'Cash Before Delivery (CBD)',
-    '7 Days PDC',
-    '15 Days PDC',
-    '30 Days PDC',
-    'Cash on Pickup (COP)',
-    '50% DP, 50% on Delivery',
-    '30% DP, 70% on Delivery',
-    'Cash Terms',
-    '7 Days Term',
-    '15 Days Term',
-    '30 Days Term',
-    '60 Days Term',
-    '90 Days Term',
-    'GCash/Digital Payment',
-    'Credit Card',
-    'Monthly Direct Debit'
-  ];
+
 
   const showSnackbar = useCallback((message: string, severity: 'success' | 'error') => {
     setSnackbar({ open: true, message, severity });
