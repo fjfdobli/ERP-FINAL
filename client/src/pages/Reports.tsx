@@ -1837,16 +1837,6 @@ const ReportsList: React.FC = () => {
                             {formatCurrency(dashboardData.revenueThisMonth - dashboardData.expensesThisMonth)}
                           </Typography>
                         </Grid>
-                        
-                        <Grid item xs={12}>
-                          <Divider sx={{ my: 2 }} />
-                          <Typography variant="subtitle2" color="text.secondary">
-                            Pending Payments
-                          </Typography>
-                          <Typography variant="h5" color="warning.main">
-                            {formatCurrency(dashboardData.pendingPayments)}
-                          </Typography>
-                        </Grid>
                       </Grid>
                     </CardContent>
                   </Card>
