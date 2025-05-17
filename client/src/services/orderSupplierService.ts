@@ -29,7 +29,7 @@ export interface SupplierOrderItem {
   unit_price: number;
   total_price: number;
   // Virtual field - not in database but used in UI
-  item_type?: string; 
+  item_type?: string;
 }
 
 export interface QuotationRequest {
@@ -162,7 +162,7 @@ export const orderSupplierService = {
 
         // Add console log to debug the item_type values
         console.log('Order items from DB:', JSON.stringify(itemsData));
-        
+
         order.items = itemsData || [];
 
         // Fetch payments
@@ -188,17 +188,17 @@ export const orderSupplierService = {
    */
   async getSupplierOrderById(id: number): Promise<SupplierOrder | null> {
     try {
-      // 1. Fetch the order
+      //Fetch the order
       const { data: orderData, error: orderError } = await supabase
         .from(SUPPLIER_ORDERS_TABLE)
-        .select('*')
+        .select('*, items:supplier_purchase_items(*), suppliers(name)')
         .eq('id', id)
         .single();
 
       if (orderError) throw orderError;
       if (!orderData) return null;
 
-      // 2. Fetch the order items
+      //Fetch the order items
       const { data: itemsData, error: itemsError } = await supabase
         .from(SUPPLIER_ORDER_ITEMS_TABLE)
         .select('*')
@@ -206,7 +206,7 @@ export const orderSupplierService = {
 
       if (itemsError) throw itemsError;
 
-      // 3. Fetch the payments
+      //Fetch the payments
       const { data: paymentsData, error: paymentsError } = await supabase
         .from(ORDER_PAYMENTS_TABLE)
         .select('*')
@@ -214,7 +214,7 @@ export const orderSupplierService = {
 
       if (paymentsError) throw paymentsError;
 
-      // 4. Combine the data
+      //Combine the data
       const order = {
         ...orderData,
         items: itemsData || [],
@@ -237,7 +237,7 @@ export const orderSupplierService = {
       ...updates,
       item_type: updates.item_type || 'piece'
     };
-    
+
     const { data, error } = await supabase
       .from('supplier_purchase_items')
       .update(updatesWithType)
@@ -257,7 +257,7 @@ export const orderSupplierService = {
       item_type: item.item_type || 'piece',
       order_id: orderId
     };
-    
+
     const { data, error } = await supabase
       .from('supplier_purchase_items')
       .insert([itemWithType]);
@@ -431,7 +431,7 @@ export const orderSupplierService = {
       // 2. Get the updated order details with items
       const { data: orderData, error: orderError } = await supabase
         .from(SUPPLIER_ORDERS_TABLE)
-        .select('*, items:supplier_purchase_items(*)')  // <== must match your actual items table alias
+        .select('*, items:supplier_purchase_items(*), suppliers(name)')
         .eq('id', payment.order_id)
         .single();
 
@@ -457,13 +457,16 @@ export const orderSupplierService = {
         })
         .eq('id', payment.order_id);
 
-      //Auto partial stock-in
-      for (const item of orderData.items || []) {
-        const unitPrice = item.unit_price;
-        const totalQty = item.quantity;
-        const maxQtyByPayment = Math.floor(newPaidAmount / unitPrice);
+      // Improved stock-in calculation logic based on payment ratio
+      const paymentRatio = payment.amount / orderData.total_amount;
+      console.log(`Payment ratio for this transaction: ${paymentRatio.toFixed(4)} (${payment.amount} / ${orderData.total_amount})`);
 
-        //Check existing stock-in transactions for this order
+      for (const item of orderData.items || []) {
+        // Calculate the proportional quantity to stock-in based on payment ratio
+        const totalQty = item.quantity;
+        const proportionalQty = Math.floor(totalQty * paymentRatio);
+        
+        // Get existing stock-ins for this item from this purchase order
         const { data: stockIns, error: stockError } = await supabase
           .from('inventory_transactions')
           .select('quantity')
@@ -471,26 +474,60 @@ export const orderSupplierService = {
           .eq('transactionType', 'stock_in')
           .like('notes', `%PO ${orderData.order_id}%`);
 
-        const alreadyStocked = stockIns?.reduce((sum, tx) => sum + tx.quantity, 0) || 0;
-        const toStockNow = Math.min(maxQtyByPayment - alreadyStocked, totalQty - alreadyStocked);
+        if (stockError) {
+          console.error('Error checking existing stock-ins:', stockError);
+          continue;
+        }
 
+        // Calculate how many items have already been stocked in
+        const alreadyStocked = stockIns?.reduce((sum, tx) => sum + tx.quantity, 0) || 0;
+        console.log(`Item ${item.inventory_name}: Total Qty: ${totalQty}, Already stocked: ${alreadyStocked}, Proportional for this payment: ${proportionalQty}`);
+        
+        // Calculate how many to stock in now
+        // If this is the final payment, stock all remaining items
+        const isFullyPaid = newRemainingAmount <= 0;
+        const toStockNow = isFullyPaid 
+          ? totalQty - alreadyStocked 
+          : Math.min(proportionalQty, totalQty - alreadyStocked);
+        
+        console.log(`Will stock in ${toStockNow} units of ${item.inventory_name}`);
+
+        // Only proceed if there are items to stock in
         if (toStockNow > 0) {
           const inventoryItem = await inventoryService.getInventoryItemById(item.inventory_id);
-          const currentQty = inventoryItem?.quantity || 0;
-
+          if (!inventoryItem) {
+            console.error(`Inventory item with ID ${item.inventory_id} not found`);
+            continue;
+          }
+          
+          const currentQty = inventoryItem.quantity || 0;
+          const newQty = currentQty + toStockNow;
+          
+          // Update inventory quantity
           await inventoryService.updateInventoryItem(item.inventory_id, {
-            quantity: currentQty + toStockNow
+            quantity: newQty
           });
 
+          const supplierName = orderData.suppliers?.name || 'Unknown';
+
+          // Add transaction record
           await inventoryService.addTransaction({
             inventoryId: item.inventory_id,
             transactionType: 'stock_in',
             quantity: toStockNow,
             createdBy: orderData.supplier_id,
             isSupplier: true,
-            notes: `Auto partial stock-in from PO ${orderData.order_id}`,
+            type: 'supplier_order',
+            reason: isFullyPaid
+              ? `Auto stock-in from completed order — Supplier: ${supplierName}`
+              : `Auto partial stock-in from supplier ${supplierName}`,
+            notes: isFullyPaid
+              ? `Auto stock-in from completed PO ${orderData.order_id}`
+              : `Auto partial stock-in from PO ${orderData.order_id}`,
             transactionDate: new Date().toISOString()
           });
+          
+          console.log(`Successfully stocked in ${toStockNow} units of ${item.inventory_name} (Inventory ID: ${item.inventory_id})`);
         }
       }
 

@@ -50,7 +50,15 @@ body {
   -moz-osx-font-smoothing: grayscale;
   background-color: var(--background-color);
   color: var(--text-color);
-  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Theme transition class for smoother theme change */
+body.theme-transition,
+body.theme-transition *,
+body.theme-transition *:before,
+body.theme-transition *:after {
+  transition: all 0.5s ease !important;
+  transition-delay: 0 !important;
 }
 
 /* Dashboard card styles */

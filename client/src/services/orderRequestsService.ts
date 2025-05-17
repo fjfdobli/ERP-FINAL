@@ -323,27 +323,27 @@ export const orderRequestsService = {
   async changeOrderRequestStatus(id: number, status: string, changedBy?: string): Promise<OrderRequest> {
     try {
       console.log(`Changing request ${id} status to ${status}`);
-  
+
       // Get full order request with items
       const orderRequest = await this.getOrderRequestById(id);
       if (!orderRequest) throw new Error(`Order request with ID ${id} not found`);
-  
+
       if (status === 'Approved' || status === 'Rejected') {
         console.log(`Request has ${orderRequest.items?.length || 0} items`);
-  
+
         const { data: existingOrder, error: checkError } = await supabase
           .from('client_orders')
           .select('id')
           .eq('request_id', id)
           .maybeSingle();
-  
+
         if (checkError) throw checkError;
-  
-        let clientOrderId;
-  
+
+        let clientOrderId: number;
+
         if (!existingOrder) {
           console.log(`No existing client order for request ${id}, creating new one`);
-  
+
           const { data: clientOrder, error: orderError } = await supabase
             .from('client_orders')
             .insert({
@@ -357,11 +357,11 @@ export const orderRequestsService = {
             })
             .select()
             .single();
-  
+
           if (orderError) throw orderError;
-  
+
           clientOrderId = clientOrder.id;
-  
+
           if (orderRequest.items && orderRequest.items.length > 0) {
             const orderItems = orderRequest.items.map(item => ({
               order_id: clientOrder.id,
@@ -373,31 +373,60 @@ export const orderRequestsService = {
               serial_start: item.serial_start,
               serial_end: item.serial_end
             }));
-  
+
             console.log(`Adding ${orderItems.length} items to new client order`);
-  
+
             const { error: itemsError } = await supabase
               .from('client_order_items')
               .insert(orderItems);
-  
+
             if (itemsError) throw itemsError;
           }
         } else {
-          console.log(`Found existing client order ${existingOrder.id} for request ${id}, updating status`);
-  
+          console.log(`Found existing client order ${existingOrder.id} for request ${id}, updating status and items`);
+
           clientOrderId = existingOrder.id;
-  
+
+          const { error: deleteError } = await supabase
+            .from('client_order_items')
+            .delete()
+            .eq('order_id', clientOrderId);
+
+          if (deleteError) throw deleteError;
+
+          //Reinsert updated items
+          if (orderRequest.items && orderRequest.items.length > 0) {
+            const updatedItems = orderRequest.items.map(item => ({
+              order_id: clientOrderId,
+              product_id: item.product_id,
+              product_name: item.product_name,
+              quantity: item.quantity,
+              unit_price: item.unit_price,
+              total_price: item.total_price,
+              serial_start: item.serial_start,
+              serial_end: item.serial_end
+            }));
+
+            const { error: insertError } = await supabase
+              .from('client_order_items')
+              .insert(updatedItems);
+
+            if (insertError) throw insertError;
+          }
+
+          //Update the client order status
           const { error: updateError } = await supabase
             .from('client_orders')
             .update({
+              amount: orderRequest.total_amount,
               status,
               updated_at: new Date().toISOString()
             })
-            .eq('id', existingOrder.id);
-  
+            .eq('id', clientOrderId);
+
           if (updateError) throw updateError;
         }
-  
+
         // Order history entry
         await supabase
           .from('order_history')
@@ -407,48 +436,50 @@ export const orderRequestsService = {
             notes: `Order ${status.toLowerCase()} from request ${orderRequest.request_id}`,
             changed_by: changedBy || 'System'
           });
-  
-        // ✅ Auto-deduct raw materials if Approved
+
+        //Auto-deduct raw materials if Approved
         if (status === 'Approved') {
           for (const item of orderRequest.items || []) {
             const productProfile = await productProfileService.getProductById(item.product_id);
-  
+
             if (!productProfile) continue;
             for (const material of productProfile.materials || []) {
               const materialId = material.materialId;
               const requiredQty = material.quantityRequired * item.quantity;
-  
+
               const inventoryItem = await inventoryService.getInventoryItemById(materialId);
               const currentQty = inventoryItem?.quantity || 0;
               const newQty = currentQty - requiredQty;
-  
+
               if (newQty < 0) {
                 console.warn(`Not enough stock of material ID ${materialId}. Skipping deduction.`);
                 continue;
               }
-  
+
               await inventoryService.updateInventoryItem(materialId, { quantity: newQty });
-  
+
               await inventoryService.addTransaction({
                 inventoryId: materialId,
                 transactionType: 'stock_out',
                 quantity: requiredQty,
                 createdBy: orderRequest.client_id,
                 isSupplier: false,
-                notes: `Auto deduction for product ${item.product_name} (Order ${orderRequest.id})`,
-                transactionDate: new Date().toISOString()
+                transactionDate: new Date().toISOString(),
+                type: 'client_order',
+                notes: `Stocked out for approved client order — Client: ${orderRequest.clients?.name || 'Unknown Client'}`,
+                reason: `Auto stock-out due to order approval by ${orderRequest.clients?.name || 'Unknown Client'}`
               });
             }
           }
         }
-  
-        // ✅ NEW: If Rejected, restore raw materials via changeOrderStatus
+
+        //If Rejected, restore raw materials via changeOrderStatus
         if (status === 'Rejected') {
           console.log('Calling changeOrderStatus to restore inventory...');
           await clientOrdersService.changeOrderStatus(clientOrderId, 'Rejected', changedBy || 'System');
         }
       }
-  
+
       // Update order request status
       const { data: updatedRequest, error } = await supabase
         .from('order_requests')
@@ -459,11 +490,11 @@ export const orderRequestsService = {
         .eq('id', id)
         .select()
         .single();
-  
+
       if (error) throw error;
-  
+
       await this.addOrderRequestHistory(id, status, `Status changed to ${status}`, changedBy);
-  
+
       return updatedRequest;
     } catch (error) {
       console.error(`Error changing status for order request with ID ${id}:`, error);

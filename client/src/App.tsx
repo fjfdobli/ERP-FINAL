@@ -1,17 +1,14 @@
-import React, { useEffect, ReactNode, createContext, useState, useContext } from 'react';
+import React, { useEffect, ReactNode, createContext, useState, useContext, useMemo } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Provider } from 'react-redux';
-import { ThemeProvider } from '@mui/material/styles';
+import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import { store } from './redux/store';
 import { useAppDispatch, useAppSelector } from './redux/hooks';
 import { getCurrentUser } from './redux/slices/authSlice';
 import { supabase } from './supabaseClient';
-import defaultTheme from './theme';
 import Login from './pages/Login';
 import Register from './pages/Register';
-import AuthConfirm from './pages/AuthConfirm';
-import ResetPassword from './pages/ResetPassword';
 import DashboardLayout from './components/layout/Dashboard';
 import DashboardHome from './pages/DashboardHome';
 import ClientsList from './pages/Clients';
@@ -46,6 +43,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
 type ThemeContextType = {
   darkMode: boolean;
   setDarkMode: (value: boolean) => void;
+  toggleTheme: () => void;
   themeColor: string;
   setThemeColor: (value: string) => void;
   compactView: boolean;
@@ -56,6 +54,7 @@ type ThemeContextType = {
 export const ThemeContext = createContext<ThemeContextType>({
   darkMode: false,
   setDarkMode: () => {},
+  toggleTheme: () => {},
   themeColor: 'default',
   setThemeColor: () => {},
   compactView: false,
@@ -69,16 +68,36 @@ const ThemeContextProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const [themeColor, setThemeColor] = useState('default');
   const [compactView, setCompactView] = useState(false);
   
-  // Apply theme classes to body
+  // Toggle between dark and light modes
+  const toggleTheme = () => {
+    const newMode = !darkMode;
+    // Save user preference in localStorage for persistence
+    localStorage.setItem('dark-mode-enabled', newMode ? 'true' : 'false');
+    // Update state
+    setDarkMode(newMode);
+    console.log('Theme toggled:', newMode ? 'dark' : 'light');
+  };
+  
+  // Load theme preference from localStorage on initial load
   useEffect(() => {
-    if (darkMode) {
-      document.body.classList.add('dark-mode');
-      document.documentElement.setAttribute('data-theme', 'dark');
-    } else {
-      document.body.classList.remove('dark-mode');
-      document.documentElement.setAttribute('data-theme', 'light');
+    try {
+      const savedTheme = localStorage.getItem('dark-mode-enabled');
+      console.log('Saved theme preference:', savedTheme);
+      
+      if (savedTheme === 'true') {
+        setDarkMode(true);
+      } else if (savedTheme === 'false') {
+        setDarkMode(false);
+      } else {
+        // Check system preference if no saved preference
+        const prefersDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        setDarkMode(prefersDarkMode);
+        console.log('Using system preference:', prefersDarkMode ? 'dark' : 'light');
+      }
+    } catch (e) {
+      console.error('Error loading theme preference:', e);
     }
-  }, [darkMode]);
+  }, []);
   
   // Apply compact view
   useEffect(() => {
@@ -153,7 +172,8 @@ const ThemeContextProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   return (
     <ThemeContext.Provider value={{ 
       darkMode, 
-      setDarkMode, 
+      setDarkMode,
+      toggleTheme,
       themeColor, 
       setThemeColor, 
       compactView, 
@@ -301,8 +321,6 @@ const AppContent: React.FC = () => {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
-        <Route path="/auth/confirm" element={<AuthConfirm />} />
-        <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/" element={
           <ProtectedRoute>
             <DashboardLayout />
@@ -334,20 +352,78 @@ const AppContent: React.FC = () => {
 };
 
 const App: React.FC = () => {
-  // Create a dynamic theme using the current theme settings
-  const [muiTheme] = useState(defaultTheme);
-  
   return (
     <Provider store={store}>
       <ThemeContextProvider>
-        <ThemeProvider theme={muiTheme}>
+        <AppThemeProvider>
           <CssBaseline />
           <Router>
             <AppContent />
           </Router>
-        </ThemeProvider>
+        </AppThemeProvider>
       </ThemeContextProvider>
     </Provider>
+  );
+};
+
+// MUI Theme Provider wrapper that uses our theme context
+const AppThemeProvider: React.FC<{children: ReactNode}> = ({ children }) => {
+  const { darkMode } = useThemeContext();
+  
+  // Create MUI theme based on dark mode state
+  const theme = useMemo(() => 
+    createTheme({
+      palette: {
+        mode: darkMode ? 'dark' : 'light',
+        primary: {
+          main: '#1976d2',
+        },
+        secondary: {
+          main: '#115293',
+        },
+        background: {
+          default: darkMode ? '#121212' : '#f5f5f5',
+          paper: darkMode ? '#1e1e1e' : '#ffffff',
+        },
+      },
+      components: {
+        MuiPaper: {
+          styleOverrides: {
+            root: {
+              transition: 'background-color 0.5s ease',
+            },
+          },
+        },
+        MuiAppBar: {
+          styleOverrides: {
+            root: {
+              transition: 'background-color 0.5s ease',
+            },
+          },
+        },
+        MuiDrawer: {
+          styleOverrides: {
+            paper: {
+              transition: 'background-color 0.5s ease',
+            },
+          },
+        },
+        MuiCard: {
+          styleOverrides: {
+            root: {
+              transition: 'background-color 0.5s ease',
+            },
+          },
+        },
+      },
+    }),
+    [darkMode]
+  );
+
+  return (
+    <ThemeProvider theme={theme}>
+      {children}
+    </ThemeProvider>
   );
 };
 

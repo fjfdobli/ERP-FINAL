@@ -278,13 +278,27 @@ const OrderRequestForm: React.FC<OrderRequestFormProps> = ({
       if (product) {
         const { materialRequirements } = checkInventoryForProduct(product, itemToDelete.quantity);
 
-        for (const req of materialRequirements) {
-          const liveItem = await inventoryService.getInventoryItemById(req.materialId);
-          if (liveItem) {
-            const restoredQty = liveItem.quantity + req.quantityNeeded;
-            await onInventoryUpdate([{ id: req.materialId, newQuantity: restoredQty }]);
-            console.log(`[🟢 RESTORED] ${req.quantityNeeded} to Material ${req.materialId} → Total: ${restoredQty}`);
+        //Only restore inventory if the request was already approved
+        if (initialData?.status === 'Approved') {
+          for (const req of materialRequirements) {
+            const liveItem = await inventoryService.getInventoryItemById(req.materialId);
+
+            if (liveItem) {
+              const restoredQty = liveItem.quantity + req.quantityNeeded;
+
+              //prevent going over logical limits
+              if (restoredQty < 0) {
+                alert(`Inventory restore error: Material ${req.materialId} would drop below 0`);
+                return;
+              }
+
+              await onInventoryUpdate([{ id: req.materialId, newQuantity: restoredQty }]);
+              console.log(`[RESTORED] ${req.quantityNeeded} to Material ${req.materialId} → Total: ${restoredQty}`);
+            }
           }
+        } else {
+          // Skip restore and validation during Pending request edits
+          console.log(`[NO RESTORE] Request not approved — skip restoring inventory`);
         }
       }
     }
@@ -558,18 +572,22 @@ const OrderRequestForm: React.FC<OrderRequestFormProps> = ({
               const remainingStock = rawMaterial.quantity;
               if (requiredQty > remainingStock) {
                 outOfStockErrors.push(`${material.materialName} (need ${requiredQty}, have ${remainingStock})`);
-              } else if (remainingStock - requiredQty <= rawMaterial.minStockLevel) {
+              } else if (remainingStock - requiredQty <= rawMaterial.min_stock) {
                 lowStockWarnings.push(`${material.materialName} (low stock: ${remainingStock})`);
               }
             }
 
-            if (outOfStockErrors.length > 0) {
-              alert(`Cannot set quantity to ${quantity}. Insufficient inventory:\n${outOfStockErrors.join('\n')}`);
-              return; // ❌ Stop here, do not update currentItem
-            }
+            if (initialData?.status === 'Approved') {
+              if (outOfStockErrors.length > 0) {
+                alert(`Cannot set quantity to ${quantity}. Insufficient inventory:\n${outOfStockErrors.join('\n')}`);
+                return;
+              }
 
-            if (lowStockWarnings.length > 0) {
-              alert(`Warning: This quantity will result in low stock:\n${lowStockWarnings.join('\n')}`);
+              if (lowStockWarnings.length > 0) {
+                alert(`Warning: This quantity will result in low stock:\n${lowStockWarnings.join('\n')}`);
+              }
+            } else {
+              console.log('Request not approved — inventory validation skipped');
             }
 
             //Update state ONLY if no inventory problems
@@ -624,17 +642,17 @@ const OrderRequestForm: React.FC<OrderRequestFormProps> = ({
     for (const item of items) {
       const product = products.find(p => p.id === item.product_actual_id);
       if (!product) continue;
-    
+
       const check = checkInventoryForProduct(product, item.quantity);
       if (!check.hasEnoughInventory) {
         alert(`Cannot submit: Not enough inventory for ${item.product_name}:\n${check.outOfStockItems.join('\n')}`);
         return;
       }
-    
+
       for (const req of check.materialRequirements) {
         const alreadyRestored = inventoryRestoresRef.current.some(r => r.id === req.materialId);
         if (alreadyRestored) continue; // skip deduction if already restored on delete
-    
+
         inventoryDeductions.push({
           id: req.materialId,
           newQuantity: req.available - req.quantityNeeded
@@ -678,14 +696,10 @@ const OrderRequestForm: React.FC<OrderRequestFormProps> = ({
       }
     });
 
-    console.log('[✔] FINAL INVENTORY UPDATES:', finalInventoryUpdates);
-    console.log('[🧪 RESTORE DELTAS]', inventoryRestoresRef.current);
-
     try {
-      await onInventoryUpdate(finalInventoryUpdates); //Persist inventory changes
-      inventoryRestoresRef.current = []; //Reset restore tracker after successful write
+      console.log('[SKIPPED] Inventory update handled server-side on approval');
     } catch (error) {
-      alert('Inventory update failed. Please try again.');
+      alert('Unexpected inventory update error. Please check the console.');
       console.error('Inventory update error:', error);
       return;
     }
@@ -1222,7 +1236,7 @@ const OrderRequestsList: React.FC = () => {
     if (filterMonth && request.date.substring(0, 7) !== filterMonth) {
       return false;
     }
-    
+
     // Then filter by search term
     if (!searchTerm.trim()) return true;
 
@@ -1239,7 +1253,7 @@ const OrderRequestsList: React.FC = () => {
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(e.target.value);
   };
-  
+
   const handleMonthChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFilterMonth(e.target.value);
   };
@@ -1399,12 +1413,6 @@ const OrderRequestsList: React.FC = () => {
 
       if (isClientInactive(client_id)) {
         throw new Error('Cannot create or update order for inactive client');
-      }
-
-      //Restore raw materials here before saving the order
-      if (finalInventoryUpdates.length > 0) {
-        console.log('Applying inventory delta updates...', finalInventoryUpdates);
-        await handleInventoryUpdate(finalInventoryUpdates);
       }
 
       const cleanedItems = items.map((item: any) => {

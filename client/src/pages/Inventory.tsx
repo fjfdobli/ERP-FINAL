@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Box, Typography, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, TextField, InputAdornment, Chip, LinearProgress, Dialog, DialogTitle, DialogContent, DialogActions, CircularProgress, Snackbar, Alert, FormControl, InputLabel, Select, MenuItem, SelectChangeEvent, Grid, Divider, IconButton, Tooltip } from '@mui/material';
+import { Box, Typography, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, TextField, InputAdornment, Chip, LinearProgress, Dialog, DialogTitle, DialogContent, DialogActions, CircularProgress, Snackbar, Alert, FormControl, InputLabel, Select, MenuItem, SelectChangeEvent, Grid, Divider, IconButton, Tooltip, FormControlLabel, Switch } from '@mui/material';
 import { Add as AddIcon, Search as SearchIcon, Edit as EditIcon, Delete as DeleteIcon, Visibility as VisibilityIcon } from '@mui/icons-material';
 import { useDispatch, useSelector } from 'react-redux';
 import {
@@ -32,6 +32,9 @@ const InventoryList: React.FC = () => {
   const activeSuppliers = useSelector(selectActiveSuppliers);
   const activeEmployees = useSelector(selectActiveEmployees);
   const transactions = useSelector(selectInventoryTransactions);
+  
+  // Define a system user for automated transactions (ID: 1)
+  const systemUser = { id: 1, name: 'System (Automated)' };
 
   const [searchTerm, setSearchTerm] = useState('');
   const [showLowStock, setShowLowStock] = useState(false);
@@ -41,6 +44,8 @@ const InventoryList: React.FC = () => {
   const [editItemDialogOpen, setEditItemDialogOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
+  const [newItemSubtype, setNewItemSubtype] = useState('');
+  const [editItemSubtype, setEditItemSubtype] = useState('');
   const [adjustmentAmount, setAdjustmentAmount] = useState(1);
   const [adjustmentType, setAdjustmentType] = useState<'add' | 'remove'>('add');
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>('');
@@ -48,6 +53,7 @@ const InventoryList: React.FC = () => {
   // For date picker
   const [transactionDate, setTransactionDate] = useState<string>(new Date().toISOString().slice(0, 16));
   const [transactionDateObj, setTransactionDateObj] = useState<Date>(new Date());
+  const [customDate, setCustomDate] = useState(false);
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [snackbarSeverity, setSnackbarSeverity] = useState<'success' | 'error'>('success');
@@ -72,6 +78,14 @@ const InventoryList: React.FC = () => {
     unitPrice: 0,
     supplierId: ''
   });
+
+  const otherItemSubtypes = [
+    { id: 'machinery', name: 'Machinery' },
+    { id: 'lubricants', name: 'Lubricants' },
+    { id: 'electrical', name: 'Electrical'},
+    { id: 'tools', name: 'Tools'},
+    { id: 'hardware', name:'Hardware'}
+  ];
 
   useEffect(() => {
     // Fetch inventory data on component mount
@@ -120,9 +134,8 @@ const InventoryList: React.FC = () => {
 
     // Set current date (without time)
     const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0);
-    setTransactionDateObj(today);
-    setTransactionDate(today.toISOString().slice(0, 16));
+    setTransactionDateObj(now);
+    setTransactionDate(now.toISOString().slice(0, 16));
 
     // Set default selections based on type
     if (type === 'add' && activeSuppliers.length > 0) {
@@ -218,15 +231,35 @@ const InventoryList: React.FC = () => {
         return;
       }
 
+      if (newItem.itemType === 'other' && !newItemSubtype.trim()) {
+        setSnackbarMessage('Please specify a subtype for "Other" item type');
+        setSnackbarSeverity('error');
+        setSnackbarOpen(true);
+        return;
+      }
+
+      if (
+        !newItem.itemName ||
+        !newItem.itemType ||
+        !newItem.quantity ||
+        (newItem.itemType === 'other' && !newItemSubtype.trim())
+      ) {
+        setSnackbarMessage('Please fill out all required fields');
+        setSnackbarSeverity('error');
+        setSnackbarOpen(true);
+        return;
+      }
+
+
       // Convert to the proper format for creating an inventory item
       await dispatch(createInventoryItem({
         itemName: newItem.itemName,
-        itemType: newItem.itemType,
+        itemType: newItem.itemType === 'other' ? newItemSubtype : newItem.itemType,
         quantity: newItem.quantity,
         minStockLevel: newItem.minStockLevel,
         unitPrice: newItem.unitPrice,
         supplierId: newItem.supplierId ? Number(newItem.supplierId) : undefined,
-        sku: '' // Pass empty string for SKU field
+        sku: '',
       })).unwrap();
 
       setSnackbarMessage('Inventory item created successfully');
@@ -255,7 +288,7 @@ const InventoryList: React.FC = () => {
         data: { quantity: newQuantity }
       })).unwrap();
 
-      console.log("📦 Simulated inventory transaction", {
+      console.log("Simulated inventory transaction", {
         inventoryId: selectedItem.id,
         transactionType: adjustmentType === 'add' ? 'stock_in' : 'stock_out',
         quantity: adjustmentAmount,
@@ -266,7 +299,10 @@ const InventoryList: React.FC = () => {
           ? `Manual stock in by Admin`
           : `Manual stock out by Admin`,
         notes: `${adjustmentType === 'add' ? 'Stock In' : 'Stock Out'} transaction`,
-        transactionDate: new Date(transactionDate).toISOString()
+        transactionDate: customDate
+          ? new Date(transactionDate).toISOString()
+          : new Date().toISOString()
+
       });
 
       // Then add a transaction record
@@ -279,10 +315,13 @@ const InventoryList: React.FC = () => {
           isSupplier: adjustmentType === 'add',
           type: 'manual',
           reason: adjustmentType === 'add'
-            ? `Manual stock in by Admin`
-            : `Manual stock out by Admin`,
+            ? `Manual stock in from supplier: ${activeSuppliers.find(s => s.id === Number(selectedSupplierId))?.name || 'Unknown'}`
+            : `Manual stock out to employee: ${activeEmployees.find(e => e.id === Number(selectedEmployeeId))?.name || 'Unknown'}`,
           notes: `${adjustmentType === 'add' ? 'Stock In' : 'Stock Out'} transaction`,
-          transactionDate: new Date(transactionDate).toISOString()
+          transactionDate: customDate
+            ? new Date(transactionDate).toISOString()
+            : new Date().toISOString()
+
         }
       })).unwrap();
 
@@ -365,12 +404,11 @@ const InventoryList: React.FC = () => {
         id: Number(editingItem.id),
         data: {
           itemName: editingItem.itemName,
-          itemType: editingItem.itemType,
+          itemType: editingItem.itemType === 'other' ? editItemSubtype : editingItem.itemType,
           quantity: editingItem.quantity,
           minStockLevel: editingItem.minStockLevel,
           unitPrice: editingItem.unitPrice,
           supplierId: editingItem.supplierId ? Number(editingItem.supplierId) : undefined,
-          sku: '' // Pass empty string for SKU field
         }
       })).unwrap();
 
@@ -601,21 +639,55 @@ const InventoryList: React.FC = () => {
               }}
               autoFocus
             />
-
-            <TextField
-              label="Transaction Date"
-              type="date"
-              fullWidth
-              margin="normal"
-              value={transactionDateObj.toISOString().split('T')[0]}
-              onChange={handleDateChange}
-              InputLabelProps={{
-                shrink: true,
-              }}
-              inputProps={{
-                max: new Date().toISOString().split('T')[0]
-              }}
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={customDate}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCustomDate(e.target.checked)}
+                  color="primary"
+                />
+              }
+              label="Use custom date & time"
             />
+
+            {customDate ? (
+              <TextField
+                label="Transaction Date & Time"
+                type="datetime-local"
+                fullWidth
+                margin="normal"
+                value={transactionDate}
+                onChange={(e) => {
+                  setTransactionDate(e.target.value);
+                  setTransactionDateObj(new Date(e.target.value));
+                }}
+                InputLabelProps={{
+                  shrink: true
+                }}
+              />
+            ) : (
+              <TextField
+                label="Transaction Date & Time"
+                type="text"
+                fullWidth
+                margin="normal"
+                value={new Date().toLocaleString('en-US', {
+                  timeZone: 'Asia/Manila',
+                  hour12: true,
+                  year: 'numeric',
+                  month: '2-digit',
+                  day: '2-digit',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })}
+                InputProps={{
+                  readOnly: true
+                }}
+                InputLabelProps={{
+                  shrink: true
+                }}
+              />
+            )}
 
             {adjustmentType === 'add' ? (
               <FormControl fullWidth margin="normal">
@@ -719,6 +791,26 @@ const InventoryList: React.FC = () => {
                 </FormControl>
               </Grid>
 
+              {newItem.itemType === 'other' && (
+                <Grid item xs={12} md={6}>
+                  <FormControl fullWidth>
+                    <InputLabel id="subtype-label">Specify Subtype</InputLabel>
+                    <Select
+                      labelId="subtype-label"
+                      value={newItemSubtype}
+                      onChange={(e) => setNewItemSubtype(e.target.value)}
+                      label="Specify Subtype"
+                    >
+                      {otherItemSubtypes.map((subtype) => (
+                        <MenuItem key={subtype.id} value={subtype.id}>
+                          {subtype.name}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+              )}
+
               <Grid item xs={12} md={6}>
                 <FormControl fullWidth>
                   <InputLabel id="supplier-label">Supplier</InputLabel>
@@ -797,7 +889,7 @@ const InventoryList: React.FC = () => {
             onClick={handleSaveNewItem}
             variant="contained"
             color="primary"
-            disabled={!newItem.itemName || !newItem.itemType}
+            disabled={!newItem.itemName || !newItem.itemType || (newItem.itemType === 'other' && !newItemSubtype.trim())}
           >
             Save Item
           </Button>
@@ -865,12 +957,14 @@ const InventoryList: React.FC = () => {
                           transactions.map((transaction) => (
                             <TableRow key={transaction.id}>
                               <TableCell align='center'>
-                                {new Date(transaction.transactionDate).toLocaleDateString()}
-                                {' '}
-                                {new Date(transaction.transactionDate).toLocaleTimeString([], {
+                                {new Date(transaction.transactionDate).toLocaleString('en-US', {
+                                  timeZone: 'Asia/Manila',
+                                  hour12: true,
+                                  year: 'numeric',
+                                  month: 'numeric',
+                                  day: 'numeric',
                                   hour: '2-digit',
-                                  minute: '2-digit',
-                                  hour12: true
+                                  minute: '2-digit'
                                 })}
                               </TableCell>
                               <TableCell align='center'>
@@ -882,12 +976,19 @@ const InventoryList: React.FC = () => {
                               </TableCell>
                               <TableCell align='center'>{transaction.quantity}</TableCell>
                               <TableCell>
-                                {transaction.isSupplier
-                                  ? activeSuppliers.find(s => s.id === transaction.createdBy)?.name || 'Unknown Supplier'
-                                  : activeEmployees.find(e => e.id === transaction.createdBy)?.name || 'Unknown Employee'
+                                {
+                                  // First check if this is the system ID
+                                  transaction.createdBy === systemUser.id
+                                  ? systemUser.name
+                                  : (
+                                    // Then check if it's a supplier or employee
+                                    transaction.isSupplier
+                                    ? activeSuppliers.find(s => s.id === transaction.createdBy)?.name || 'Unknown Supplier'
+                                    : activeEmployees.find(e => e.id === transaction.createdBy)?.name || 'Unknown Employee'
+                                  )
                                 }
                               </TableCell>
-                              <TableCell align='center'>{transaction.reason || '-'}</TableCell>
+                              <TableCell>{transaction.reason || '-'}</TableCell>
                             </TableRow>
                           ))
                         )}
@@ -947,6 +1048,26 @@ const InventoryList: React.FC = () => {
                   </Select>
                 </FormControl>
               </Grid>
+
+              {editingItem.itemType === 'other' && (
+                <Grid item xs={12} md={6}>
+                  <FormControl fullWidth>
+                    <InputLabel id="edit-subtype-label">Specify Subtype</InputLabel>
+                    <Select
+                      labelId="edit-subtype-label"
+                      value={editItemSubtype}
+                      onChange={(e) => setEditItemSubtype(e.target.value)}
+                      label="Specify Subtype"
+                    >
+                      {otherItemSubtypes.map((subtype) => (
+                        <MenuItem key={subtype.id} value={subtype.id}>
+                          {subtype.name}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+              )}
 
               <Grid item xs={12} md={6}>
                 <FormControl fullWidth>
@@ -1044,6 +1165,9 @@ const InventoryList: React.FC = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseDeleteConfirm}>Cancel</Button>
+          <Button onClick={handleConfirmDelete} color="error" variant="contained">
+            Delete
+          </Button>
         </DialogActions>
       </Dialog>
 

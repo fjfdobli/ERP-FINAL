@@ -34,6 +34,7 @@ import { fetchClients } from '../redux/slices/clientsSlice';
 import { fetchSuppliers } from '../redux/slices/suppliersSlice';
 import { fetchMachinery, fetchMachineryStats, fetchMaintenanceRecords } from '../redux/slices/machinerySlice';
 import { fetchAttendance } from '../redux/slices/attendanceSlice';
+import { fetchSupplierOrders } from '../redux/slices/orderSupplierSlice';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import * as XLSX from 'xlsx';
@@ -129,6 +130,7 @@ const ReportsList: React.FC = () => {
   const clientOrdersState = useAppSelector((state) => state.orders || {});
   const machineryState = useAppSelector((state) => state.machinery || {});
   const attendanceState = useAppSelector((state) => state.attendance || {});
+  const orderSupplierState = useAppSelector((state) => state.orderSupplier || {});
   
   const [loading, setLoading] = useState<boolean>(false);
   const [tabValue, setTabValue] = useState(0);
@@ -1382,15 +1384,6 @@ const ReportsList: React.FC = () => {
       extraFilters: ['employeeId', 'status']
     },
     {
-      id: 'dtr',
-      name: 'Daily Time Record (DTR)',
-      description: 'Individual employee daily time records with attendance summary',
-      icon: <CalendarIcon color="primary" />,
-      availableFormats: ['pdf', 'excel', 'csv'],
-      generateReport: generateDTR,
-      extraFilters: ['employeeId']
-    },
-    {
       id: 'printing_jobs',
       name: 'Printing Jobs Report',
       description: 'Detailed report of printing jobs with quantities, prices, and statuses',
@@ -1423,7 +1416,8 @@ const ReportsList: React.FC = () => {
         dispatch(fetchClientOrders()),
         dispatch(fetchInventory()),
         dispatch(fetchPayrolls({ startDate, endDate })),
-        dispatch(fetchAttendance({ startDate, endDate }))
+        dispatch(fetchAttendance({ startDate, endDate })),
+        dispatch(fetchSupplierOrders())
       ]);
       
       // Update dashboard data
@@ -1445,6 +1439,7 @@ const ReportsList: React.FC = () => {
     const suppliers = suppliersState.items || [];
     const machinery = machineryState.machinery || [];
     const clientOrders = clientOrdersState.clientOrders || [];
+    const supplierOrders = orderSupplierState.supplierOrders || [];
     const inventory = inventoryState.inventoryItems || [];
     
     // Calculate active orders
@@ -1468,6 +1463,20 @@ const ReportsList: React.FC = () => {
     // Calculate expenses this month from payroll
     const payrollExpenses = (payrollState.payrollRecords || []).reduce((sum: number, record: any) => 
       sum + (record.netSalary || 0), 0);
+    
+    // Calculate supplier order expenses this month (Purchase Orders)
+    const supplierOrderExpenses = supplierOrders.reduce((sum: number, order: any) => {
+      if (order.date && isWithinInterval(parseISO(order.date), {
+        start: startOfMonth(new Date()),
+        end: endOfMonth(new Date())
+      })) {
+        return sum + (order.total_amount || 0);
+      }
+      return sum;
+    }, 0);
+    
+    // Calculate total expenses (payroll + supplier orders)
+    const totalExpensesThisMonth = payrollExpenses + supplierOrderExpenses;
     
     // Calculate pending payments
     const pendingPayments = clientOrders.reduce((sum: number, order: any) => {
@@ -1500,7 +1509,7 @@ const ReportsList: React.FC = () => {
       totalMachinery: machinery.length,
       activeOrders,
       revenueThisMonth,
-      expensesThisMonth: payrollExpenses,
+      expensesThisMonth: totalExpensesThisMonth,
       pendingPayments,
       lowStockItems,
       upcomingMaintenance
@@ -1643,7 +1652,8 @@ const ReportsList: React.FC = () => {
         attendance: attendanceState.attendanceRecords || [],
         payrollRecords: payrollState.payrollRecords || [],
         clients: clientsState.items || [],
-        suppliers: suppliersState.items || []
+        suppliers: suppliersState.items || [],
+        supplierOrders: orderSupplierState.supplierOrders || []
       };
       
       // Get filters for this report type
@@ -1792,6 +1802,27 @@ const ReportsList: React.FC = () => {
                           <Typography variant="h5" color="error.main">
                             {formatCurrency(dashboardData.expensesThisMonth)}
                           </Typography>
+                          <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column' }}>
+                            <Typography variant="caption" color="text.secondary">
+                              Breakdown:
+                            </Typography>
+                            <Typography variant="caption" sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                              <span>Payroll:</span> 
+                              <span>{formatCurrency(payrollState.payrollRecords?.reduce((sum, r) => sum + (r.netSalary || 0), 0) || 0)}</span>
+                            </Typography>
+                            <Typography variant="caption" sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                              <span>Supplier Orders:</span> 
+                              <span>{formatCurrency(orderSupplierState.supplierOrders?.reduce((sum, o) => {
+                                if (o.date && isWithinInterval(parseISO(o.date), {
+                                  start: startOfMonth(new Date()),
+                                  end: endOfMonth(new Date())
+                                })) {
+                                  return sum + (o.total_amount || 0);
+                                }
+                                return sum;
+                              }, 0) || 0)}</span>
+                            </Typography>
+                          </Box>
                         </Grid>
                         
                         <Grid item xs={12}>
@@ -1875,7 +1906,7 @@ const ReportsList: React.FC = () => {
                     <Divider />
                     <CardContent>
                       <Grid container spacing={2}>
-                        <Grid item xs={12} md={3}>
+                        <Grid item xs={12} md={4}>
                           <Button 
                             variant="outlined" 
                             startIcon={<ExcelIcon />}
@@ -1891,7 +1922,7 @@ const ReportsList: React.FC = () => {
                           </Button>
                         </Grid>
                         
-                        <Grid item xs={12} md={3}>
+                        <Grid item xs={12} md={4}>
                           <Button 
                             variant="outlined" 
                             startIcon={<ExcelIcon />}
@@ -1906,7 +1937,7 @@ const ReportsList: React.FC = () => {
                           </Button>
                         </Grid>
                         
-                        <Grid item xs={12} md={3}>
+                        <Grid item xs={12} md={4}>
                           <Button 
                             variant="outlined" 
                             startIcon={<ExcelIcon />}
@@ -1918,21 +1949,6 @@ const ReportsList: React.FC = () => {
                             sx={{ py: 1 }}
                           >
                             Printing Jobs Report
-                          </Button>
-                        </Grid>
-                        
-                        <Grid item xs={12} md={3}>
-                          <Button 
-                            variant="outlined" 
-                            startIcon={<ExcelIcon />}
-                            fullWidth
-                            onClick={() => {
-                              setReportFilters(prev => ({...prev, format: 'excel'}));
-                              handleGenerateReport('dtr');
-                            }}
-                            sx={{ py: 1 }}
-                          >
-                            Generate DTR
                           </Button>
                         </Grid>
                       </Grid>

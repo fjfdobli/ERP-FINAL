@@ -228,7 +228,7 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({
     }
 
     try {
-      // ✅ Submit payment and refresh the dialog
+      //Submit payment and refresh the dialog
       await onAddPayment(
         {
           order_id: order.id!,
@@ -247,7 +247,7 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({
         }
       );
 
-      // ✅ Reset form after success
+      //Reset form after success
       setPaymentAmount('');
       setPaymentNotes('');
       setPaymentCode('');
@@ -284,7 +284,12 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({
   // Helper function to handle stock in when order is received
   const handleReceiveItems = async () => {
     try {
-      // Create an inventory transaction for each item
+      const isFullPayment = (order.remaining_amount ?? 0) <= 0;
+      const paidAmount = order.paid_amount ?? 0;
+      const paymentText = isFullPayment
+        ? 'for full payment'
+        : `for partial payment of ₱${paidAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
+
       for (const item of order.items) {
         await dispatch(addInventoryTransaction({
           inventoryId: item.inventory_id,
@@ -293,14 +298,14 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({
             quantity: item.quantity,
             createdBy: order.supplier_id,
             isSupplier: true,
-            notes: `Stock in from Purchase Order ${order.order_id}`,
-            type: 'Stock in from Purchase Order ${order.order_id}',
-            reason: `Received from supplier ${order.suppliers?.name || 'Unknown'} for PO ${order.order_id}`
+            type: 'supplier_order',
+            reason: `Auto stock-in from supplier ${order.suppliers?.name || 'Unknown'} ${paymentText}`,
+            notes: `Received item for PO ${order.order_id} — ${paymentText}`,
+            transactionDate: new Date().toISOString()
           }
         })).unwrap();
       }
 
-      // Change order status to Received
       onStatusChange(order.id!, 'Received');
       onClose();
     } catch (error) {
@@ -388,9 +393,9 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({
                   const getFilteredStatuses = (currentStatus: string): string[] => {
                     const allowedMap: Record<string, string[]> = {
                       'Pending': ['Approved', 'Partially Paid', 'Rejected'],
-                      'Approved': ['Partially Paid', 'Completed', 'Pending'],
-                      'Partially Paid': ['Pending', 'Completed', 'Received'],
-                      'Received': ['Completed', 'Partially Paid'],
+                      'Approved': ['Partially Paid', 'Paid', 'Pending'],
+                      'Partially Paid': ['Paid', 'Pending'],
+                      'Paid': ['Completed'],
                       'Completed': [],
                       'Rejected': []
                     };
@@ -949,6 +954,7 @@ const OrderSupplier: React.FC = () => {
   const inventoryLoading = useSelector(selectInventoryLoading);
   const orderSupplierLoading = useSelector(selectOrderSupplierLoading);
   const loading = suppliersLoading || inventoryLoading || orderSupplierLoading;
+  const [filterMonth, setFilterMonth] = useState<string>(new Date().toISOString().substring(0, 7));
 
   const [activeTab, setActiveTab] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
@@ -979,7 +985,7 @@ const OrderSupplier: React.FC = () => {
     if (!currentEditItem || !orderToEdit) return;
 
     const { inventory_id, quantity, unit_price, index, item_type, otherType } = currentEditItem;
-    
+
     // Determine the final item type value
     const finalItemType = item_type === 'other' && otherType ? otherType : item_type || 'piece';
 
@@ -1057,7 +1063,7 @@ const OrderSupplier: React.FC = () => {
         .filter(order => order.supplier_id === supplier.id)
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
 
-      return !latestOrder || ['Completed', 'Rejected'].includes(latestOrder.status);
+      return !latestOrder || ['Completed', 'Rejected', 'Paid'].includes(latestOrder.status);
     });
   };
 
@@ -1070,18 +1076,30 @@ const OrderSupplier: React.FC = () => {
     setSearchTerm(e.target.value);
   };
 
-  const filterOrders = (orders: SupplierOrder[]) => {
-    if (!searchTerm.trim()) return orders;
+  const handleMonthChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFilterMonth(e.target.value);
+  };
 
+  const filterOrders = (orders: SupplierOrder[]) => {
     const searchLower = searchTerm.toLowerCase();
-    return orders.filter(order => {
+
+    // First, filter by month (if set)
+    const filteredByDate = filterMonth
+      ? orders.filter(order => order.date?.substring(0, 7) === filterMonth)
+      : orders;
+
+    // Then, filter by search term
+    if (!searchLower.trim()) return filteredByDate;
+
+    return filteredByDate.filter(order => {
       const orderIdMatch = order.order_id.toLowerCase().includes(searchLower);
       const supplierMatch = suppliers.find(s => s.id === order.supplier_id)?.name.toLowerCase().includes(searchLower) || false;
       const statusMatch = order.status.toLowerCase().includes(searchLower);
-
       return orderIdMatch || supplierMatch || statusMatch;
     });
   };
+
+  const filteredOrders = filterOrders(supplierOrders);
 
   const filterQuotations = (quotations: QuotationRequest[]) => {
     if (!searchTerm.trim()) return quotations;
@@ -1156,15 +1174,15 @@ const OrderSupplier: React.FC = () => {
     }
 
     try {
-      // 1. Update status
+      //Update status
       await dispatch(updateSupplierOrder({ id: orderId, data: updateData })).unwrap();
 
-      // 2. Fetch full PO with items
+      //Fetch full PO with items
       const fullOrder = await orderSupplierService.getSupplierOrderById(orderId);
 
-      // 3. Stock in if completed and not already processed
+      //Stock in if paid and not already processed
       if (
-        newStatus === 'Completed' &&
+        newStatus === 'Paid' &&
         fullOrder?.items?.length &&
         !stockedInOrders.has(fullOrder.id!)
       ) {
@@ -1172,10 +1190,8 @@ const OrderSupplier: React.FC = () => {
           const currentItem = inventoryItems.find(i => i.id === item.inventory_id);
           const newQty = (currentItem?.quantity || 0) + item.quantity;
 
-          // Update inventory quantity
           await inventoryService.updateInventoryItem(item.inventory_id, { quantity: newQty });
 
-          // Log stock-in transaction
           await dispatch(addInventoryTransaction({
             inventoryId: item.inventory_id,
             transactionData: {
@@ -1183,7 +1199,9 @@ const OrderSupplier: React.FC = () => {
               quantity: item.quantity,
               createdBy: fullOrder.supplier_id,
               isSupplier: true,
-              notes: `Auto stock-in from completed PO ${fullOrder.order_id}`,
+              type: 'supplier_order',
+              reason: `Auto stock-in from completed payment — Supplier: ${fullOrder.suppliers?.name || 'Unknown'}`,
+              notes: `Stocked in for fully paid order ${fullOrder.order_id}`,
               transactionDate: new Date().toISOString()
             }
           })).unwrap();
@@ -1191,7 +1209,7 @@ const OrderSupplier: React.FC = () => {
 
         setStockedInOrders(prev => new Set(prev).add(fullOrder.id!));
 
-        // ✅ Show snackbar for stock-in success
+        //Show snackbar for stock-in success
         setSnackbar({
           open: true,
           message: `Order marked as Completed. Items have been stocked in to inventory.`,
@@ -1888,10 +1906,10 @@ const OrderSupplier: React.FC = () => {
       return;
     }
 
-    const itemType = currentItem.item_type === 'other' && currentItem.otherType 
-      ? currentItem.otherType 
+    const itemType = currentItem.item_type === 'other' && currentItem.otherType
+      ? currentItem.otherType
       : currentItem.item_type;
-      
+
     const newItem = {
       inventory_id: currentItem.inventory_id,
       inventory_name: selectedItem.itemName,
@@ -2510,7 +2528,7 @@ const OrderSupplier: React.FC = () => {
               </TableCell>
             </TableRow>
           ) : (
-            filterOrders(orders).map((order) => {
+            filterOrders(supplierOrders).map((order) => {
               const supplier = suppliers.find(s => s.id === order.supplier_id);
               return (
                 <TableRow key={order.id}>
@@ -2680,6 +2698,15 @@ const OrderSupplier: React.FC = () => {
             ),
           }}
         />
+        <TextField
+          label="Filter by Month"
+          type="month"
+          value={filterMonth}
+          onChange={handleMonthChange}
+          size="small"
+          sx={{ minWidth: 160 }}
+          InputLabelProps={{ shrink: true }}
+        />
       </Box>
 
       {loading ? (
@@ -2720,7 +2747,7 @@ const OrderSupplier: React.FC = () => {
         handleUpdateOrderItem={handleUpdateOrderItem}
         handleCancelEditItem={handleCancelEditItem}
         setSelectedOrder={setSelectedOrder}
-        
+
       />
 
 

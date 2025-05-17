@@ -54,10 +54,13 @@ export const clientOrdersService = {
 
       if (error) throw error;
 
-      // Get the order to calculate the new paid and remaining amounts
+      // Get the order with client info to calculate the new paid and remaining amounts
       const { data: order, error: orderError } = await supabase
         .from('client_orders')
-        .select('amount')
+        .select(`
+          *,
+          clients(id, name, "contactPerson", status)
+        `)
         .eq('id', orderPayment.order_id)
         .single();
 
@@ -72,8 +75,16 @@ export const clientOrdersService = {
       if (paymentsError) throw paymentsError;
 
       // Calculate total paid amount
-      const paidAmount = payments.reduce((sum, payment) => sum + payment.amount, 0);
-      const remainingAmount = order.amount - paidAmount;
+      const paidAmount = payments.reduce((sum, payment) => sum + (payment.amount || 0), 0);
+      const previousPaidAmount = paidAmount - orderPayment.amount; // Amount before this payment
+      const remainingAmount = (order.amount || 0) - paidAmount;
+      
+      console.log(`Payment details: Previous paid: ${previousPaidAmount}, Current payment: ${orderPayment.amount}, Total paid: ${paidAmount}, Total: ${order.amount || 0}, Remaining: ${remainingAmount}`);
+
+      // Calculate payment ratios for inventory adjustment
+      const previousRatio = order.amount && order.amount > 0 ? previousPaidAmount / order.amount : 0;
+      const currentRatio = order.amount && order.amount > 0 ? paidAmount / order.amount : 0;
+      console.log(`Payment ratios: Previous: ${(previousRatio * 100).toFixed(1)}%, Current: ${(currentRatio * 100).toFixed(1)}%`);
 
       // Update the order with new payment information
       const status = remainingAmount <= 0 ? 'Completed' : 'Partially Paid';
@@ -108,6 +119,99 @@ export const clientOrdersService = {
           'Order automatically marked as completed after full payment',
           'System'
         );
+      }
+      
+      // Handle inventory adjustments for partial payments
+      // Only do this if order status is already Approved or Partially Paid
+      if (order.status === 'Approved' || order.status === 'Partially Paid') {
+        console.log(`Processing inventory adjustments for order ${order.id} after payment`);
+        
+        // Get order items
+        const { data: orderItems, error: itemsError } = await supabase
+          .from('client_order_items')
+          .select('*')
+          .eq('order_id', order.id);
+
+        if (itemsError) {
+          console.error(`Error fetching order items for client order ${order.id}:`, itemsError);
+        } else if (orderItems && orderItems.length > 0) {
+          console.log(`Found ${orderItems.length} items to process for partial stock-out after payment`);
+          
+          // Process each item in the order
+          for (const item of orderItems) {
+            console.log(`Processing item: ${item.product_name} (ID: ${item.product_id}), Quantity: ${item.quantity}`);
+            
+            try {
+              // Get the product profile
+              const productProfile = await productProfileService.getProductById(item.product_id);
+              
+              if (!productProfile || !productProfile.materials || productProfile.materials.length === 0) {
+                console.log(`No materials defined for product ${item.product_name}`);
+                continue;
+              }
+              
+              // Process each material
+              for (const material of productProfile.materials) {
+                const materialId = material.materialId;
+                const materialName = material.materialName || 'Unknown Material';
+                const requiredPerUnit = Number(material.quantityRequired) || 0;
+                
+                if (requiredPerUnit <= 0) continue;
+                
+                const totalQtyNeeded = requiredPerUnit * item.quantity;
+                
+                // Calculate what should be stocked out based on payment ratios
+                const shouldHaveBeenStockedOut = Math.floor(totalQtyNeeded * (previousRatio || 0));
+                const shouldBeStockedOut = Math.floor(totalQtyNeeded * (currentRatio || 0));
+                const qtyToStockOut = Math.max(0, shouldBeStockedOut - shouldHaveBeenStockedOut);
+                
+                console.log(`Material ${materialName}: Total needed: ${totalQtyNeeded}, Previously stocked out: ${shouldHaveBeenStockedOut}, Should be stocked out now: ${shouldBeStockedOut}`);
+                console.log(`Need to stock out additional ${qtyToStockOut} units`);
+                
+                if (qtyToStockOut <= 0) {
+                  console.log(`No additional stock-out needed for ${materialName}`);
+                  continue;
+                }
+                
+                // Get current inventory
+                const inventoryItem = await inventoryService.getInventoryItemById(materialId);
+                if (!inventoryItem) {
+                  console.error(`Inventory item not found for material ID ${materialId}`);
+                  continue;
+                }
+                
+                const currentQty = inventoryItem.quantity || 0;
+                
+                // Update inventory
+                const newQty = Math.max(0, currentQty - qtyToStockOut);
+                await inventoryService.updateInventoryItem(materialId, {
+                  quantity: newQty
+                });
+                
+                // Record transaction
+                const systemUserId = 1;
+                const clientName = order.clients?.name || 'Unknown Client';
+                const paymentPercentage = `${((currentRatio || 0) * 100).toFixed(1)}%`;
+                
+                await inventoryService.addTransaction({
+                  inventoryId: materialId,
+                  transactionType: 'stock_out',
+                  quantity: qtyToStockOut,
+                  createdBy: systemUserId,
+                  isSupplier: false,
+                  type: 'partial_payment',
+                  reason: `Additional stock-out after payment (${paymentPercentage} paid total)`,
+                  notes: `Additional stock-out for payment on order ${order.order_id} — Client: ${clientName}, Product: ${item.product_name}`,
+                  transactionDate: new Date().toISOString()
+                });
+                
+                console.log(`Successfully stocked out ${qtyToStockOut} additional units of ${materialName}`);
+              }
+            } catch (error) {
+              console.error(`Error processing partial stock-out for ${item.product_name}:`, error);
+            }
+          }
+        }
       }
 
       return payment;
@@ -214,71 +318,265 @@ export const clientOrdersService = {
   },
 
   // Change order status (e.g., to Completed, Rejected, or back to Pending)
-  // Change order status (e.g., to Completed, Rejected, or back to Pending)
   async changeOrderStatus(id: number, status: string, changedBy?: string): Promise<ClientOrder> {
     try {
       const currentOrder = await this.getClientOrderById(id);
       console.log(`Changing order ${id} status to ${status}`);
       console.log(`Current order has ${currentOrder.items?.length || 0} items`);
 
-      //Perform stock-out only on approval
+      // Perform stock-out only on approval
       if (status === 'Approved') {
-        for (const item of currentOrder.items || []) {
-          const productProfile = await productProfileService.getProductById(item.product_id);
-          if (!productProfile || !productProfile.materials) continue;
-
-          for (const material of productProfile.materials) {
-            const materialId = material.materialId;
-            const deductQty = material.quantityRequired * item.quantity;
-
-            const inventoryItem = await inventoryService.getInventoryItemById(materialId);
-            const currentQty = inventoryItem?.quantity || 0;
-
-            await inventoryService.updateInventoryItem(materialId, {
-              quantity: currentQty - deductQty
-            });
-
-            await inventoryService.addTransaction({
-              inventoryId: materialId,
-              transactionType: 'stock_out',
-              quantity: deductQty,
-              createdBy: currentOrder.client_id,
-              isSupplier: false,
-              notes: `Stocked out for client order ${currentOrder.order_id} approval`,
-              transactionDate: new Date().toISOString()
-            });
-          }
-        }
-      }
-
-      //Restore inventory for Pending or Rejected
-      if (status === 'Pending') {
+        console.log(`Performing stock-out for approved order ${id}`);
+        
+        // Get order items from the database to ensure we have the most up-to-date information
         const { data: orderItems, error: itemsError } = await supabase
           .from('client_order_items')
           .select('*')
           .eq('order_id', id);
 
-        if (itemsError) throw itemsError;
+        if (itemsError) {
+          console.error(`Error fetching order items for client order ${id}:`, itemsError);
+          throw itemsError;
+        }
+        
+        console.log(`Found ${orderItems?.length || 0} items to process for stock-out`);
+
+        // Process each item in the order
+        for (const item of orderItems || []) {
+          console.log(`Processing item: ${item.product_name} (ID: ${item.product_id}), Quantity: ${item.quantity}`);
+          
+          try {
+            // Get the product profile to find required materials
+            const productProfile = await productProfileService.getProductById(item.product_id);
+            
+            if (!productProfile) {
+              console.error(`Product profile not found for product ID ${item.product_id}`);
+              continue;
+            }
+            
+            console.log(`Product profile details:`, JSON.stringify(productProfile, null, 2));
+            
+            if (!productProfile.materials || productProfile.materials.length === 0) {
+              console.log(`No materials defined for product ${item.product_name} (ID: ${item.product_id})`);
+              continue;
+            }
+            
+            console.log(`Product ${item.product_name} requires ${productProfile.materials.length} materials:`, 
+                        JSON.stringify(productProfile.materials.map(m => ({
+                          id: m.materialId,
+                          name: m.materialName,
+                          qty: m.quantityRequired
+                        })), null, 2));
+
+            // Process each required material for the product
+            for (const material of productProfile.materials) {
+              const materialId = material.materialId;
+              const materialName = material.materialName || 'Unknown Material';
+              const requiredPerUnit = Number(material.quantityRequired) || 0;
+              
+              if (requiredPerUnit <= 0) {
+                console.warn(`Required quantity for material ${materialName} is zero or invalid. Skipping.`);
+                continue;
+              }
+              
+              // Calculate total quantity needed
+              const totalDeductQty = requiredPerUnit * item.quantity;
+              
+              console.log(`Material: ${materialName} (ID: ${materialId}), Required: ${requiredPerUnit} per unit × ${item.quantity} ordered = ${totalDeductQty} total needed`);
+              
+              // Calculate payment ratio for partial stock-out
+              // For orders that have already received payments
+              let deductQty = totalDeductQty;
+              
+              // Check if we need to apply partial payment logic
+              if (currentOrder.paid_amount !== undefined && currentOrder.paid_amount > 0 && currentOrder.amount > 0) {
+                const paymentRatio = currentOrder.paid_amount / currentOrder.amount;
+                console.log(`Order has payment ratio: ${paymentRatio.toFixed(4)} (${currentOrder.paid_amount} / ${currentOrder.amount})`);
+                
+                // Check if this is a subsequent partial payment (already has some stock-out)
+                const { data: existingTransactions, error: txError } = await supabase
+                  .from('inventory_transactions')
+                  .select('quantity')
+                  .eq('inventoryId', materialId)
+                  .eq('transactionType', 'stock_out')
+                  .like('notes', `%${currentOrder.order_id}%`);
+                  
+                if (txError) {
+                  console.error(`Error checking existing transactions for material ${materialId}:`, txError);
+                } else {
+                  // Calculate what has already been stocked out
+                  const alreadyDeducted = existingTransactions?.reduce((sum, tx) => sum + tx.quantity, 0) || 0;
+                  console.log(`Already deducted ${alreadyDeducted} units of ${materialName} for this order`);
+                  
+                  // Calculate what should be deducted in total based on payment ratio
+                  const shouldBeDeducted = Math.floor(totalDeductQty * paymentRatio);
+                  console.log(`Should have deducted ${shouldBeDeducted} units based on payment ratio ${paymentRatio}`);
+                  
+                  // Calculate what needs to be deducted now
+                  deductQty = Math.max(0, shouldBeDeducted - alreadyDeducted);
+                  console.log(`Need to deduct ${deductQty} more units in this transaction`);
+                }
+              } else {
+                console.log(`No partial payments - deducting full quantity: ${deductQty}`);
+              }
+              
+              // Skip if nothing to deduct (already deducted for previous payments)
+              if (deductQty <= 0) {
+                console.log(`Nothing to deduct for ${materialName} - already deducted for previous payments`);
+                continue;
+              }
+
+              // Get current inventory level for this material
+              const inventoryItem = await inventoryService.getInventoryItemById(materialId);
+              
+              if (!inventoryItem) {
+                console.error(`Inventory item not found for material ID ${materialId}`);
+                continue;
+              }
+              
+              const currentQty = inventoryItem.quantity || 0;
+              console.log(`Current inventory for ${materialName}: ${currentQty} units`);
+              
+              if (currentQty < deductQty) {
+                console.warn(`WARNING: Insufficient inventory for ${materialName}. Needed: ${deductQty}, Available: ${currentQty}`);
+                // Continue with stock-out even if insufficient - this is a business decision
+                // Alternatively, we could throw an error here to prevent approval with insufficient inventory
+              }
+
+              // Update inventory level
+              const newQty = Math.max(0, currentQty - deductQty); // Prevent negative inventory
+              console.log(`Updating inventory for ${materialName} (ID: ${materialId}) from ${currentQty} to ${newQty}`);
+              
+              try {
+                const result = await inventoryService.updateInventoryItem(materialId, {
+                  quantity: newQty
+                });
+                console.log(`Inventory update result:`, result);
+              } catch (invError) {
+                console.error(`Error updating inventory for ${materialName}:`, invError);
+                continue;
+              }
+
+              // Record the transaction
+              const clientName = currentOrder.clients?.name || 'Unknown Client';
+              try {
+                // Use a system/administrator ID instead of client_id for automated transactions
+                // This could be a special user ID reserved for the system (e.g., ID 1 for "System")
+                // or you could use the ID of the person who approved the order (if available)
+                const systemUserId = 1; // Assuming ID 1 is reserved for "System" or "Admin"
+                
+                // Determine if this is a partial stock-out
+                const isPartial = currentOrder.paid_amount !== undefined && 
+                                 currentOrder.amount > 0 && 
+                                 currentOrder.paid_amount < currentOrder.amount;
+                
+                const paymentInfo = isPartial 
+                  ? ` (Partial: ${(((currentOrder.paid_amount || 0) / currentOrder.amount) * 100).toFixed(1)}% paid)`
+                  : '';
+                
+                await inventoryService.addTransaction({
+                  inventoryId: materialId,
+                  transactionType: 'stock_out',
+                  quantity: deductQty,
+                  createdBy: systemUserId, // Use system ID instead of client_id
+                  isSupplier: false,
+                  type: isPartial ? 'partial_client_order' : 'client_order',
+                  reason: `Auto stock-out for client order ${currentOrder.order_id} - ${item.product_name}${paymentInfo}`,
+                  notes: `Automated stock-out for order ${currentOrder.order_id}${paymentInfo} — Client: ${clientName}, Product: ${item.product_name}${changedBy ? `, Approved by: ${changedBy}` : ''}`,
+                  transactionDate: new Date().toISOString()
+                });
+                console.log(`Recorded stock-out transaction for ${materialName}: ${deductQty} units`);
+              } catch (txError) {
+                console.error(`Error recording transaction for ${materialName}:`, txError);
+              }
+            }
+          } catch (error) {
+            console.error(`Error processing product ${item.product_name} for stock-out:`, error);
+          }
+        }
+        
+        console.log(`Completed stock-out processing for order ${id}`);
+      }
+
+      // Restore inventory for Pending or Rejected
+      if (status === 'Pending' || status === 'Rejected') {
+        console.log(`Restoring inventory for order ${id} changing to ${status}`);
+        
+        const { data: orderItems, error: itemsError } = await supabase
+          .from('client_order_items')
+          .select('*')
+          .eq('order_id', id);
+
+        if (itemsError) {
+          console.error(`Error fetching order items for client order ${id}:`, itemsError);
+          throw itemsError;
+        }
+        
+        console.log(`Found ${orderItems?.length || 0} items to process for inventory restoration`);
 
         for (const item of orderItems || []) {
+          console.log(`Processing item for restoration: ${item.product_name} (ID: ${item.product_id}), Quantity: ${item.quantity}`);
+          
           const productProfile = await productProfileService.getProductById(item.product_id);
-          if (!productProfile || !productProfile.materials) continue;
+          
+          if (!productProfile || !productProfile.materials) {
+            console.log(`No materials defined for product ${item.product_name} (ID: ${item.product_id})`);
+            continue;
+          }
 
           for (const material of productProfile.materials) {
             const materialId = material.materialId;
+            const materialName = material.materialName || 'Unknown Material';
             const returnQty = material.quantityRequired * item.quantity;
+            
+            console.log(`Material for restoration: ${materialName} (ID: ${materialId}), Returning: ${returnQty} units`);
 
             const inventoryItem = await inventoryService.getInventoryItemById(materialId);
-            const currentQty = inventoryItem?.quantity || 0;
-
-            await inventoryService.updateInventoryItem(material.materialId, {
-              quantity: currentQty + returnQty
+            
+            if (!inventoryItem) {
+              console.error(`Inventory item not found for material ID ${materialId}`);
+              continue;
+            }
+            
+            const currentQty = inventoryItem.quantity || 0;
+            const newQty = currentQty + returnQty;
+            
+            // Update inventory level
+            await inventoryService.updateInventoryItem(materialId, {
+              quantity: newQty
             });
+            
+            console.log(`Updated inventory for ${materialName} from ${currentQty} to ${newQty}`);
+
+            // Record the transaction
+            const clientName = currentOrder.clients?.name || 'Unknown Client';
+            const reason = status === 'Pending' 
+              ? `Stock restored due to client order reverting to Pending — Client: ${clientName}`
+              : `Stock restored due to client order being rejected — Client: ${clientName}`;
+            
+            // Use a system/administrator ID for automated transactions
+            const systemUserId = 1; // Assuming ID 1 is reserved for "System" or "Admin"
+              
+            await inventoryService.addTransaction({
+              inventoryId: materialId,
+              transactionType: 'stock_in',
+              quantity: returnQty,
+              createdBy: systemUserId, // Use system ID instead of client_id
+              isSupplier: false,
+              type: 'revert',
+              reason: reason,
+              notes: `Automated stock return for ${status.toLowerCase()} client order ${currentOrder.order_id}, Product: ${item.product_name}${changedBy ? `, Changed by: ${changedBy}` : ''}`,
+              transactionDate: new Date().toISOString()
+            });
+            
+            console.log(`Recorded stock-in revert transaction for ${materialName}: ${returnQty} units`);
           }
         }
 
         // Restore request if reverting to Pending
         if (status === 'Pending' && currentOrder.request_id) {
+          console.log(`Restoring order request for order ${id} with request_id ${currentOrder.request_id}`);
+          
           const { data: existingRequest, error: requestError } = await supabase
             .from('order_requests')
             .select('*')
@@ -288,6 +586,8 @@ export const clientOrdersService = {
           if (requestError && requestError.code !== 'PGRST116') throw requestError;
 
           if (existingRequest) {
+            console.log(`Found existing request ${currentOrder.request_id}, updating it`);
+            
             await supabase
               .from('order_requests')
               .update({
@@ -320,8 +620,12 @@ export const clientOrdersService = {
                 .from('order_requests')
                 .update({ total_amount: totalAmount })
                 .eq('id', currentOrder.request_id);
+                
+              console.log(`Restored ${orderRequestItems.length} items to request ${currentOrder.request_id}`);
             }
           } else {
+            console.log(`Request ${currentOrder.request_id} not found, creating a new request`);
+            
             const totalAmount = orderItems?.reduce((sum, item) => sum + (item.total_price || 0), 0) || 0;
 
             const { data: newRequest, error: createError } = await supabase
@@ -341,6 +645,8 @@ export const clientOrdersService = {
               .single();
 
             if (createError) throw createError;
+            
+            console.log(`Created new request with ID ${newRequest.id}`);
 
             if (orderItems && orderItems.length > 0) {
               const orderRequestItems = orderItems.map((item: any) => ({
@@ -355,17 +661,22 @@ export const clientOrdersService = {
               }));
 
               await supabase.from('order_request_items').insert(orderRequestItems);
+              console.log(`Added ${orderRequestItems.length} items to new request ${newRequest.id}`);
             }
 
             await supabase
               .from('client_orders')
               .update({ request_id: newRequest.id })
               .eq('id', id);
+              
+            console.log(`Updated client order ${id} with new request_id ${newRequest.id}`);
           }
         }
       }
 
-      //Final status update
+      // Final status update
+      console.log(`Updating client order ${id} status to ${status}`);
+      
       const { error: updateError } = await supabase
         .from('client_orders')
         .update({
@@ -377,6 +688,7 @@ export const clientOrdersService = {
       if (updateError) throw updateError;
 
       await this.addOrderHistory(id, status, `Status changed to ${status}`, changedBy || 'Admin');
+      console.log(`Successfully updated client order ${id} status to ${status}`);
 
       return this.getClientOrderById(id);
     } catch (error) {

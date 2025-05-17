@@ -259,6 +259,9 @@ export const inventoryService = {
    * Get active employees for stock-out transactions
    */
   async getActiveEmployees(): Promise<any[]> {
+    // First ensure we have the system user (ID=1)
+    await this.ensureSystemUserExists();
+    
     const { data, error } = await supabase
       .from('employees')
       .select('id, firstName, lastName')
@@ -270,10 +273,67 @@ export const inventoryService = {
       throw new Error(error.message);
     }
 
-    // Format employee names
-    return (data || []).map(emp => ({
+    // Add the system user to the list
+    const systemUser = {
+      id: 1,
+      name: 'System (Automated)'
+    };
+
+    // Format employee names and include system user
+    const formattedEmployees = (data || []).map(emp => ({
       id: emp.id,
       name: `${emp.firstName} ${emp.lastName}`
     }));
+
+    // Only add system user if not already in the list
+    if (!formattedEmployees.some(emp => emp.id === 1)) {
+      formattedEmployees.unshift(systemUser);
+    }
+
+    return formattedEmployees;
+  },
+  
+  /**
+   * Ensure that the system user (ID=1) exists in the employees table
+   * This is important for automated transactions
+   */
+  async ensureSystemUserExists(): Promise<void> {
+    try {
+      // Check if system user exists
+      const { data, error } = await supabase
+        .from('employees')
+        .select('id')
+        .eq('id', 1)
+        .single();
+      
+      if (error && error.code !== 'PGRST116') {
+        // PGRST116 is "row not found" which is expected if system user doesn't exist
+        console.error('Error checking for system user:', error);
+        return;
+      }
+      
+      // If system user doesn't exist, create it
+      if (!data) {
+        const { error: insertError } = await supabase
+          .from('employees')
+          .insert({
+            id: 1,
+            firstName: 'System',
+            lastName: 'Automated',
+            email: 'system@erp.local',
+            position: 'System',
+            status: 'Active',
+            startDate: new Date().toISOString()
+          });
+          
+        if (insertError) {
+          console.error('Error creating system user:', insertError);
+        } else {
+          console.log('System user created successfully');
+        }
+      }
+    } catch (error) {
+      console.error('Unexpected error ensuring system user exists:', error);
+    }
   }
 };

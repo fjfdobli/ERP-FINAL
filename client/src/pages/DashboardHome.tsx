@@ -10,13 +10,16 @@ import { fetchPayrolls } from '../redux/slices/payrollSlice';
 import { fetchMachinery, fetchMachineryStats } from '../redux/slices/machinerySlice';
 import { fetchSuppliers } from '../redux/slices/suppliersSlice';
 import { fetchOrderRequests } from '../redux/slices/orderRequestSlice';
+import { fetchSupplierOrders } from '../redux/slices/orderSupplierSlice';
+import { fetchTechnicians } from '../redux/slices/techniciansSlice';
+import { fetchProducts } from '../redux/slices/productProfileSlice';
 import { format, parseISO, startOfMonth, endOfMonth, subMonths, isToday, isBefore } from 'date-fns';
 import { 
   Box, Grid, Paper, Typography, Divider, List, ListItem, ListItemText, Card, CardContent, 
   CardHeader, Avatar, IconButton, Button, Chip, useTheme, LinearProgress, Alert,
   Stack, Badge, Tabs, Tab, ListItemAvatar, ListItemButton, Menu, MenuItem, 
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, CircularProgress,
-  Skeleton, Link, Snackbar, Slide, Fade
+  Skeleton, Link, Snackbar, Slide, Fade, Rating, Tooltip, Backdrop, AvatarGroup
 } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import MuiTooltip, { TooltipProps } from '@mui/material/Tooltip';
@@ -27,8 +30,10 @@ import {
   Circle as CircleIcon, CalendarMonth as CalendarIcon, Paid as PaidIcon, Build as BuildIcon, 
   Construction as ConstructionIcon, ShoppingCart as ShoppingCartIcon, Notifications as NotificationsIcon,
   CheckCircle as CheckCircleIcon, PriorityHigh as PriorityHighIcon, Refresh as RefreshIcon, 
-  DashboardCustomize as DashboardCustomizeIcon,FilterAlt as FilterAltIcon, DateRange as DateRangeIcon, 
-  RequestQuote as RequestIcon, Sync as SyncIcon
+  DashboardCustomize as DashboardCustomizeIcon, FilterAlt as FilterAltIcon, DateRange as DateRangeIcon, 
+  RequestQuote as RequestIcon, Sync as SyncIcon, Engineering as EngineeringIcon, Star as StarIcon,
+  Print as PrintIcon, Category as CategoryIcon, LocalPrintshop as LocalPrintshopIcon, 
+  HourglassEmpty as HourglassEmptyIcon, Assignment as AssignmentIcon
 } from '@mui/icons-material';
 import { 
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, 
@@ -265,6 +270,9 @@ const DashboardHome: React.FC = () => {
   const suppliers = suppliersState?.items || [];
   const suppliersLoading = suppliersState?.status === 'loading' || false;
   const { orderRequests, loading: orderRequestsLoading } = useAppSelector(state => state.orderRequest || { orderRequests: [], loading: false });
+  const { supplierOrders, isLoading: supplierOrdersLoading } = useAppSelector(state => state.orderSupplier || { supplierOrders: [], isLoading: false });
+  const { technicians, isLoading: techniciansLoading } = useAppSelector(state => state.technicians || { technicians: [], isLoading: false });
+  const { products, isLoading: productsLoading } = useAppSelector(state => state.productProfile || { products: [], isLoading: false });
   
   // Local state
   const [tabValue, setTabValue] = useState(0);
@@ -413,7 +421,10 @@ const DashboardHome: React.FC = () => {
         dispatch(fetchMachinery({})),
         dispatch(fetchMachineryStats()),
         dispatch(fetchSuppliers()),
-        dispatch(fetchOrderRequests())
+        dispatch(fetchOrderRequests()),
+        dispatch(fetchSupplierOrders()),
+        dispatch(fetchTechnicians({})),
+        dispatch(fetchProducts())
       ]);
       
       // Log timestamp for monitoring refresh activity
@@ -710,11 +721,13 @@ const DashboardHome: React.FC = () => {
       return {
         name: months[monthIndex],
         revenue: 0,
-        expenses: 0
+        expenses: 0,
+        payrollExpenses: 0,
+        supplierOrderExpenses: 0
       };
     });
     
-    // Populate with real data from orders
+    // Populate with real data from client orders (revenue)
     if (orders && orders.length > 0) {
       // Group by month and calculate revenue
       orders.forEach((order: any) => {
@@ -732,8 +745,55 @@ const DashboardHome: React.FC = () => {
           
           if (orderMonth === monthIndex && orderYear === currentYear + yearOffset) {
             result[i].revenue += (order.amount || 0);
-            // Estimate expenses as 65% of revenue for this example
-            result[i].expenses += (order.amount || 0) * 0.65;
+            break;
+          }
+        }
+      });
+    }
+    
+    // Add supplier orders as expenses (purchase orders)
+    if (supplierOrders && supplierOrders.length > 0) {
+      supplierOrders.forEach((order: any) => {
+        if (!order.date) return;
+        
+        const orderDate = new Date(order.date);
+        const orderMonth = orderDate.getMonth();
+        const orderYear = orderDate.getFullYear();
+        const currentYear = new Date().getFullYear();
+        
+        // Only consider orders from the last 6 months
+        for (let i = 0; i < 6; i++) {
+          const monthIndex = (currentMonth - 5 + i + 12) % 12;
+          const yearOffset = monthIndex > currentMonth ? -1 : 0;
+          
+          if (orderMonth === monthIndex && orderYear === currentYear + yearOffset) {
+            result[i].supplierOrderExpenses += (order.total_amount || 0);
+            result[i].expenses += (order.total_amount || 0);
+            break;
+          }
+        }
+      });
+    }
+    
+    // Add payroll expenses
+    if (payrollRecords && payrollRecords.length > 0) {
+      payrollRecords.forEach((record: any) => {
+        if (!record.startDate || !record.endDate) return;
+        
+        // Use the end date of the payroll period
+        const payrollDate = new Date(record.endDate);
+        const payrollMonth = payrollDate.getMonth();
+        const payrollYear = payrollDate.getFullYear();
+        const currentYear = new Date().getFullYear();
+        
+        // Only consider payroll from the last 6 months
+        for (let i = 0; i < 6; i++) {
+          const monthIndex = (currentMonth - 5 + i + 12) % 12;
+          const yearOffset = monthIndex > currentMonth ? -1 : 0;
+          
+          if (payrollMonth === monthIndex && payrollYear === currentYear + yearOffset) {
+            result[i].payrollExpenses += (record.netSalary || 0);
+            result[i].expenses += (record.netSalary || 0);
             break;
           }
         }
@@ -741,7 +801,7 @@ const DashboardHome: React.FC = () => {
     }
     
     return result;
-  }, [orders]);
+  }, [orders, supplierOrders, payrollRecords]);
 
   // Real chart data based on actual data
   const realChartData = useMemo(() => {
@@ -992,32 +1052,92 @@ const DashboardHome: React.FC = () => {
       </Snackbar>
       
       {/* Header with title, welcome message, and action buttons */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Box>
-          <Typography variant="h4" component="h1" gutterBottom fontWeight="bold">
+      <Box 
+        sx={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'flex-start',
+          mb: 4,
+          pb: 3,
+          borderBottom: '1px solid rgba(25, 118, 210, 0.1)',
+          position: 'relative'
+        }}
+      >
+        <Box sx={{ position: 'relative', zIndex: 1 }}>
+          <Typography 
+            variant="h4" 
+            component="h1" 
+            gutterBottom 
+            sx={{
+              fontWeight: 700,
+              color: 'primary.main',
+              fontSize: { xs: '1.75rem', sm: '2.25rem' },
+              mb: 1,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1.5
+            }}
+          >
+            <PrintIcon 
+              sx={{ 
+                fontSize: { xs: '2rem', sm: '2.5rem' },
+                bgcolor: 'primary.main',
+                color: 'white',
+                p: 0.8,
+                borderRadius: '12px',
+                boxShadow: '0 4px 12px rgba(25, 118, 210, 0.2)'
+              }}
+            />
             Dashboard
           </Typography>
-          <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            <Typography variant="body1" color="text.secondary">
-              Welcome back! Here's an overview of your business performance.
+
+          <Box sx={{ 
+            display: 'flex', 
+            flexDirection: { xs: 'column', sm: 'row' },
+            alignItems: { xs: 'flex-start', sm: 'center' }
+          }}>
+            <Typography 
+              variant="body1" 
+              sx={{ 
+                color: 'text.secondary',
+                fontSize: '1rem',
+                fontWeight: 500,
+                mb: { xs: 1.5, sm: 0 }
+              }}
+            >
+              Welcome back! Here's an overview of your printing business performance.
             </Typography>
             
-            <Stack direction="row" spacing={1} sx={{ ml: 2 }}>
+            <Stack 
+              direction="row" 
+              spacing={1.5} 
+              sx={{ 
+                ml: { xs: 0, sm: 2 },
+                mt: { xs: 1, sm: 0 }
+              }}
+            >
               {autoRefreshEnabled && (
                 <Chip 
                   size="small"
                   label={`Auto-refresh: ${refreshInterval/1000}s`}
                   color="primary"
-                  variant="outlined"
                   icon={<SyncIcon fontSize="small" />}
                   sx={{ 
-                    height: 24,
+                    height: 28,
+                    fontSize: '0.75rem',
+                    fontWeight: 500,
                     animation: autoRefreshEnabled ? 'pulse 2s infinite' : 'none',
                     '@keyframes pulse': {
-                      '0%': { opacity: 0.7 },
+                      '0%': { opacity: 0.8 },
                       '50%': { opacity: 1 },
-                      '100%': { opacity: 0.7 }
-                    }
+                      '100%': { opacity: 0.8 }
+                    },
+                    bgcolor: 'rgba(25, 118, 210, 0.15)',
+                    border: '1px solid rgba(25, 118, 210, 0.3)',
+                    '& .MuiChip-icon': {
+                      color: 'primary.main'
+                    },
+                    color: 'primary.main'
                   }}
                 />
               )}
@@ -1026,20 +1146,45 @@ const DashboardHome: React.FC = () => {
                 <Chip
                   size="small"
                   label={`Last updated: ${lastUpdateTime.toLocaleTimeString()}`}
-                  color="default"
                   variant="outlined"
                   icon={<RefreshIcon fontSize="small" />}
-                  sx={{ height: 24 }}
+                  sx={{ 
+                    height: 28,
+                    fontSize: '0.75rem',
+                    fontWeight: 500,
+                    borderColor: 'rgba(0, 0, 0, 0.1)',
+                    bgcolor: 'rgba(0, 0, 0, 0.02)'
+                  }}
                 />
               )}
             </Stack>
           </Box>
         </Box>
         
-        <Stack direction="row" spacing={1}>
-          <CustomTooltip title="Filter">
-            <IconButton onClick={handleFilterClick}>
-              <FilterAltIcon />
+        <Stack 
+          direction="row" 
+          spacing={1}
+          sx={{
+            '& .MuiIconButton-root': {
+              transition: 'all 0.2s ease',
+              borderRadius: 2,
+              bgcolor: 'rgba(25, 118, 210, 0.05)',
+              border: '1px solid rgba(25, 118, 210, 0.1)',
+              color: 'primary.main',
+              '&:hover': {
+                bgcolor: 'rgba(25, 118, 210, 0.1)',
+                transform: 'translateY(-2px)',
+                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.05)'
+              }
+            }
+          }}
+        >
+          <CustomTooltip title="Filter Data">
+            <IconButton 
+              onClick={handleFilterClick}
+              sx={{ padding: 1.2 }}
+            >
+              <FilterAltIcon fontSize="small" />
             </IconButton>
           </CustomTooltip>
           
@@ -1074,9 +1219,26 @@ const DashboardHome: React.FC = () => {
             </MenuItem>
           </Menu>
           
-          <Badge badgeContent={unreadNotificationsCount} color="error">
-            <IconButton onClick={handleNotificationClick}>
-              <NotificationsIcon />
+          <Badge 
+            badgeContent={unreadNotificationsCount} 
+            color="error"
+            sx={{
+              '& .MuiBadge-badge': {
+                fontSize: '0.6rem',
+                height: '18px',
+                minWidth: '18px',
+                top: 8,
+                right: 8,
+                padding: '0 4px',
+                boxShadow: '0 2px 5px rgba(0,0,0,0.15)'
+              }
+            }}
+          >
+            <IconButton 
+              onClick={handleNotificationClick}
+              sx={{ padding: 1.2 }}
+            >
+              <NotificationsIcon fontSize="small" />
             </IconButton>
           </Badge>
           
@@ -1085,19 +1247,77 @@ const DashboardHome: React.FC = () => {
             open={Boolean(notificationsMenuAnchor)}
             onClose={handleNotificationClose}
             PaperProps={{
-              style: {
+              elevation: 3,
+              sx: {
                 maxHeight: 400,
                 width: 360,
+                overflow: 'visible',
+                borderRadius: 2,
+                mt: 1,
+                boxShadow: '0 8px 24px rgba(0, 0, 0, 0.12)',
+                border: '1px solid rgba(0, 0, 0, 0.06)',
+                '&::before': {
+                  content: '""',
+                  display: 'block',
+                  position: 'absolute',
+                  top: 0,
+                  right: 14,
+                  width: 10,
+                  height: 10,
+                  bgcolor: 'background.paper',
+                  transform: 'translateY(-50%) rotate(45deg)',
+                  zIndex: 0,
+                  borderTop: '1px solid rgba(0, 0, 0, 0.06)',
+                  borderLeft: '1px solid rgba(0, 0, 0, 0.06)',
+                },
               },
             }}
+            transformOrigin={{ horizontal: 'right', vertical: 'top' }}
+            anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
           >
-            <Box sx={{ px: 2, py: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Typography variant="subtitle1" fontWeight="bold">Notifications</Typography>
-              <Button size="small" onClick={markAllNotificationsAsRead}>
+            <Box 
+              sx={{ 
+                px: 2.5, 
+                py: 1.5, 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center',
+                borderBottom: '1px solid rgba(0, 0, 0, 0.06)',
+                background: 'linear-gradient(to right, rgba(25, 118, 210, 0.05), rgba(25, 118, 210, 0.01))',
+                borderTopLeftRadius: 2,
+                borderTopRightRadius: 2
+              }}
+            >
+              <Typography 
+                variant="subtitle1" 
+                sx={{
+                  fontWeight: 600,
+                  color: 'primary.main',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1
+                }}
+              >
+                <NotificationsIcon fontSize="small" />
+                Notifications
+              </Typography>
+              <Button 
+                size="small" 
+                onClick={markAllNotificationsAsRead}
+                sx={{
+                  textTransform: 'none',
+                  fontWeight: 500,
+                  fontSize: '0.75rem',
+                  color: 'primary.main',
+                  '&:hover': {
+                    backgroundColor: 'rgba(25, 118, 210, 0.08)'
+                  }
+                }}
+              >
                 Mark all as read
               </Button>
             </Box>
-            <Divider />
+            <Divider sx={{ m: 0 }} />
             {notifications.length === 0 ? (
               <Box sx={{ py: 4, textAlign: 'center' }}>
                 <Typography variant="body2" color="text.secondary">
@@ -1249,13 +1469,49 @@ const DashboardHome: React.FC = () => {
       </Box>
 
       {/* Tabs for different dashboard sections */}
-      <Paper sx={{ boxShadow: 'none', border: '1px solid rgba(0, 0, 0, 0.08)', mb: 4 }}>
+      <Paper sx={{ 
+        borderRadius: 3,
+        boxShadow: '0 4px 20px rgba(0, 0, 0, 0.05)',
+        border: '1px solid rgba(25, 118, 210, 0.1)',
+        mb: 4,
+        overflow: 'hidden',
+        position: 'relative',
+        background: 'linear-gradient(to right, rgba(25, 118, 210, 0.03), rgba(25, 118, 210, 0.01))'
+      }}>
         <Tabs 
           value={tabValue} 
           onChange={handleTabChange} 
           variant="scrollable"
           scrollButtons="auto"
-          sx={{ borderBottom: 1, borderColor: 'divider' }}
+          TabIndicatorProps={{
+            style: {
+              height: '3px',
+              borderRadius: '3px',
+              background: 'linear-gradient(90deg, #1565C0, #1976D2, #1E88E5)'
+            }
+          }}
+          sx={{ 
+            borderBottom: '1px solid rgba(0, 0, 0, 0.05)',
+            '& .MuiTab-root': {
+              minHeight: 56,
+              fontWeight: 500,
+              textTransform: 'none',
+              letterSpacing: 0.3,
+              fontSize: '0.95rem',
+              opacity: 0.7,
+              '&.Mui-selected': {
+                opacity: 1,
+                color: 'primary.main',
+                fontWeight: 600
+              },
+              '&:hover': {
+                opacity: 0.9,
+                color: 'primary.main',
+                backgroundColor: 'rgba(25, 118, 210, 0.04)'  
+              },
+            },
+            px: 1
+          }}
         >
           <Tab icon={<DashboardCustomizeIcon />} label="Overview" />
           <Tab icon={<OrdersIcon />} label="Orders & Clients" />
@@ -1269,33 +1525,131 @@ const DashboardHome: React.FC = () => {
           <Grid container spacing={3}>
             {/* Monthly Revenue Chart */}
             <Grid item xs={12} md={6}>
-              <Card sx={{ height: '100%', boxShadow: 'none', border: '1px solid rgba(0, 0, 0, 0.08)' }}>
-                <CardHeader
-                  title="Revenue vs Expenses"
-                  subheader="Monthly comparison"
-                  action={
-                    <IconButton size="small" onClick={handleRefresh}>
-                      <RefreshIcon fontSize="small" />
-                    </IconButton>
+              <Card 
+                sx={{ 
+                  height: '100%', 
+                  borderRadius: 3,
+                  boxShadow: '0 8px 24px rgba(0, 0, 0, 0.08)',
+                  border: '1px solid rgba(25, 118, 210, 0.1)',
+                  transition: 'transform 0.3s ease, box-shadow 0.3s ease',
+                  overflow: 'hidden',
+                  '&:hover': {
+                    boxShadow: '0 12px 28px rgba(0, 0, 0, 0.12)',
+                    transform: 'translateY(-4px)'
+                  },
+                  position: 'relative',
+                  '&::before': {
+                    content: '""',
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    height: '4px',
+                    background: 'linear-gradient(90deg, #1565C0, #1976D2, #1E88E5)',
                   }
+                }}
+              >
+                <CardHeader
+                  title={
+                    <Typography variant="h6" sx={{ 
+                      fontWeight: 600, 
+                      fontSize: '1.1rem',
+                      color: 'primary.main',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 1
+                    }}>
+                      <TrendingUpIcon fontSize="small" /> Revenue vs Expenses
+                    </Typography>
+                  }
+                  subheader={
+                    <Typography variant="body2" sx={{ 
+                      color: 'text.secondary',
+                      fontSize: '0.85rem',
+                      mt: 0.5
+                    }}>
+                      Monthly comparison
+                    </Typography>
+                  }
+                  action={
+                    <Tooltip title="Refresh data">
+                      <IconButton 
+                        size="small" 
+                        onClick={handleRefresh}
+                        sx={{ 
+                          bgcolor: 'rgba(25, 118, 210, 0.08)',
+                          '&:hover': {
+                            bgcolor: 'rgba(25, 118, 210, 0.15)',
+                          }
+                        }}
+                      >
+                        <RefreshIcon fontSize="small" color="primary" />
+                      </IconButton>
+                    </Tooltip>
+                  }
+                  sx={{
+                    borderBottom: '1px solid rgba(0, 0, 0, 0.05)',
+                    background: 'linear-gradient(to right, rgba(25, 118, 210, 0.04), rgba(25, 118, 210, 0.01))',
+                    pb: 1.5
+                  }}
                 />
-                <CardContent>
+                <CardContent sx={{ pt: 2 }}>
                   {refreshing ? (
-                    <Box sx={{ height: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <CircularProgress />
+                    <Box sx={{ 
+                      height: 300, 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'center',
+                      flexDirection: 'column',
+                      gap: 2
+                    }}>
+                      <CircularProgress size={40} />
+                      <Typography variant="body2" color="text.secondary">
+                        Loading chart data...
+                      </Typography>
                     </Box>
                   ) : (
-                    <Box sx={{ height: 300 }}>
+                    <Box sx={{ 
+                      height: 300,
+                      pt: 1,
+                      px: 1,
+                      borderRadius: 2,
+                      bgcolor: 'rgba(25, 118, 210, 0.02)'
+                    }}>
                       <ResponsiveContainer width="100%" height="100%">
                         <AreaChart
                           data={chartData.monthlyRevenueData}
                           margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
                         >
-                          <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                          <XAxis dataKey="name" />
-                          <YAxis tickFormatter={(value) => `₱${value/1000}k`} />
-                          <RechartsTooltip formatter={(value) => formatCurrency(Number(value))} />
-                          <Legend />
+                          <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
+                          <XAxis 
+                            dataKey="name" 
+                            tick={{ fill: 'rgba(0, 0, 0, 0.7)', fontSize: 12 }}
+                            axisLine={{ stroke: 'rgba(0, 0, 0, 0.1)' }}
+                            tickLine={{ stroke: 'rgba(0, 0, 0, 0.1)' }}
+                          />
+                          <YAxis 
+                            tickFormatter={(value) => `₱${value/1000}k`} 
+                            tick={{ fill: 'rgba(0, 0, 0, 0.7)', fontSize: 12 }}
+                            axisLine={{ stroke: 'rgba(0, 0, 0, 0.1)' }}
+                            tickLine={{ stroke: 'rgba(0, 0, 0, 0.1)' }}
+                          />
+                          <RechartsTooltip 
+                            formatter={(value) => formatCurrency(Number(value))}
+                            contentStyle={{ 
+                              borderRadius: '8px', 
+                              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+                              border: 'none'
+                            }}
+                          />
+                          <Legend 
+                            iconType="circle" 
+                            iconSize={10}
+                            wrapperStyle={{ 
+                              paddingTop: 15, 
+                              fontSize: '12px' 
+                            }}
+                          />
                           <Area 
                             type="monotone" 
                             dataKey="revenue" 
@@ -1303,6 +1657,8 @@ const DashboardHome: React.FC = () => {
                             stroke={theme.palette.success.main} 
                             fill={theme.palette.success.light} 
                             name="Revenue"
+                            strokeWidth={2}
+                            activeDot={{ r: 6, strokeWidth: 2, stroke: '#fff' }}
                           />
                           <Area 
                             type="monotone" 
@@ -1311,6 +1667,8 @@ const DashboardHome: React.FC = () => {
                             stroke={theme.palette.error.main} 
                             fill={theme.palette.error.light} 
                             name="Expenses"
+                            strokeWidth={2}
+                            activeDot={{ r: 6, strokeWidth: 2, stroke: '#fff' }}
                           />
                         </AreaChart>
                       </ResponsiveContainer>
@@ -1322,36 +1680,130 @@ const DashboardHome: React.FC = () => {
 
             {/* Order Status Pie Chart */}
             <Grid item xs={12} md={6}>
-              <Card sx={{ height: '100%', boxShadow: 'none', border: '1px solid rgba(0, 0, 0, 0.08)' }}>
-                <CardHeader
-                  title="Order Status"
-                  subheader="Distribution of orders by status"
-                  action={
-                    <IconButton size="small" onClick={handleRefresh}>
-                      <RefreshIcon fontSize="small" />
-                    </IconButton>
+              <Card 
+                sx={{ 
+                  height: '100%', 
+                  borderRadius: 3,
+                  boxShadow: '0 8px 24px rgba(0, 0, 0, 0.08)',
+                  border: '1px solid rgba(25, 118, 210, 0.1)',
+                  transition: 'transform 0.3s ease, box-shadow 0.3s ease',
+                  overflow: 'hidden',
+                  '&:hover': {
+                    boxShadow: '0 12px 28px rgba(0, 0, 0, 0.12)',
+                    transform: 'translateY(-4px)'
+                  },
+                  position: 'relative',
+                  '&::before': {
+                    content: '""',
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    height: '4px',
+                    background: 'linear-gradient(90deg, #1565C0, #1976D2, #1E88E5)',
                   }
+                }}
+              >
+                <CardHeader
+                  title={
+                    <Typography variant="h6" sx={{ 
+                      fontWeight: 600, 
+                      fontSize: '1.1rem',
+                      color: 'primary.main',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 1
+                    }}>
+                      <OrdersIcon fontSize="small" /> Order Status
+                    </Typography>
+                  }
+                  subheader={
+                    <Typography variant="body2" sx={{ 
+                      color: 'text.secondary',
+                      fontSize: '0.85rem',
+                      mt: 0.5
+                    }}>
+                      Distribution of orders by status
+                    </Typography>
+                  }
+                  action={
+                    <Tooltip title="Refresh data">
+                      <IconButton 
+                        size="small" 
+                        onClick={handleRefresh}
+                        sx={{ 
+                          bgcolor: 'rgba(25, 118, 210, 0.08)',
+                          '&:hover': {
+                            bgcolor: 'rgba(25, 118, 210, 0.15)',
+                          }
+                        }}
+                      >
+                        <RefreshIcon fontSize="small" color="primary" />
+                      </IconButton>
+                    </Tooltip>
+                  }
+                  sx={{
+                    borderBottom: '1px solid rgba(0, 0, 0, 0.05)',
+                    background: 'linear-gradient(to right, rgba(25, 118, 210, 0.04), rgba(25, 118, 210, 0.01))',
+                    pb: 1.5
+                  }}
                 />
-                <CardContent>
+                <CardContent sx={{ pt: 2 }}>
                   {ordersLoading || refreshing ? (
-                    <Box sx={{ height: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <CircularProgress />
+                    <Box sx={{ 
+                      height: 300, 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'center',
+                      flexDirection: 'column',
+                      gap: 2
+                    }}>
+                      <CircularProgress size={40} />
+                      <Typography variant="body2" color="text.secondary">
+                        Loading order data...
+                      </Typography>
                     </Box>
                   ) : (chartData.orderStatusData.length === 0) ? (
-                    <Box sx={{ height: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column' }}>
-                      <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
+                    <Box sx={{ 
+                      height: 300, 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'center', 
+                      flexDirection: 'column',
+                      bgcolor: 'rgba(25, 118, 210, 0.02)',
+                      borderRadius: 2,
+                      p: 3
+                    }}>
+                      <OrdersIcon sx={{ fontSize: 40, color: 'text.secondary', mb: 2, opacity: 0.7 }} />
+                      <Typography variant="body1" color="text.secondary" sx={{ mb: 2, fontWeight: 500 }}>
                         No orders found
                       </Typography>
                       <Button 
                         variant="contained" 
                         size="small" 
                         onClick={() => navigate('/orders/clients')}
+                        sx={{
+                          borderRadius: 2,
+                          boxShadow: '0 4px 12px rgba(25, 118, 210, 0.2)',
+                          px: 2,
+                          py: 1,
+                          textTransform: 'none',
+                          fontWeight: 500
+                        }}
                       >
                         Create New Order
                       </Button>
                     </Box>
                   ) : (
-                    <Box sx={{ height: 300, display: 'flex', justifyContent: 'center' }}>
+                    <Box sx={{ 
+                      height: 300, 
+                      display: 'flex', 
+                      justifyContent: 'center',
+                      pt: 1,
+                      px: 1,
+                      borderRadius: 2,
+                      bgcolor: 'rgba(25, 118, 210, 0.02)'
+                    }}>
                       <ResponsiveContainer width="100%" height="100%">
                         <PieChart>
                           <Pie
@@ -1363,9 +1815,15 @@ const DashboardHome: React.FC = () => {
                             paddingAngle={5}
                             dataKey="value"
                             label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                            labelLine={false}
                           >
                             {chartData.orderStatusData.map((entry, index) => (
-                              <Cell key={`cell-${index}`} fill={entry.color} />
+                              <Cell 
+                                key={`cell-${index}`} 
+                                fill={entry.color} 
+                                stroke="rgba(255,255,255,0.5)"
+                                strokeWidth={1}
+                              />
                             ))}
                           </Pie>
                           <RechartsTooltip formatter={(value) => `${value} orders`} />
