@@ -229,7 +229,7 @@ const DashboardLayout: React.FC = () => {
           }}
         >
           <Avatar
-            src={user.avatar || undefined}
+            src={user.avatar || localStorage.getItem('user_avatar') || undefined}
             alt={user.firstName || user.email}
             sx={{ 
               width: { xs: 60, md: 70 }, 
@@ -248,7 +248,7 @@ const DashboardLayout: React.FC = () => {
             }}
             onClick={handleProfileClick}
           >
-            {!user.avatar && getInitial(user.firstName || user.email || 'U')}
+            {!(user.avatar || localStorage.getItem('user_avatar')) && getInitial(user.firstName || user.email || 'U')}
           </Avatar>
           
           <Typography 
@@ -670,7 +670,7 @@ const DashboardLayout: React.FC = () => {
             endIcon={isXsScreen ? undefined : <KeyboardArrowDown />}
           >
             <Avatar
-              src={user?.avatar || undefined}
+              src={user?.avatar || localStorage.getItem('user_avatar') || undefined}
               alt={user?.firstName || user?.email}
               sx={{ 
                 width: 36, 
@@ -684,7 +684,7 @@ const DashboardLayout: React.FC = () => {
                 boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
               }}
             >
-              {getInitial(user?.firstName || user?.email || 'U')}
+              {!(user?.avatar || localStorage.getItem('user_avatar')) && getInitial(user?.firstName || user?.email || 'U')}
             </Avatar>
             
             {!isXsScreen && (
@@ -772,7 +772,7 @@ const DashboardLayout: React.FC = () => {
               borderColor: darkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'
             }}>
               <Avatar
-                src={user?.avatar || undefined}
+                src={user?.avatar || localStorage.getItem('user_avatar') || undefined}
                 alt={user?.firstName || user?.email}
                 sx={{ 
                   width: 60, 
@@ -787,7 +787,7 @@ const DashboardLayout: React.FC = () => {
                   boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
                 }}
               >
-                {getInitial(user?.firstName || user?.email || 'U')}
+                {!(user?.avatar || localStorage.getItem('user_avatar')) && getInitial(user?.firstName || user?.email || 'U')}
               </Avatar>
               
               <Box sx={{ textAlign: 'center' }}>

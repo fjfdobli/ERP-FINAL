@@ -235,7 +235,7 @@ const Profile: React.FC = () => {
             }}
           >
             <Avatar 
-              src={user.avatar || undefined}
+              src={user.avatar || localStorage.getItem('user_avatar') || undefined}
               onClick={handleAvatarClick}
               sx={{
                 width: 96, 
@@ -249,7 +249,7 @@ const Profile: React.FC = () => {
                 border: isEditing ? '2px solid #1976d2' : 'none'
               }}
             >
-              {!user.avatar && getInitials()}
+              {!(user.avatar || localStorage.getItem('user_avatar')) && getInitials()}
             </Avatar>
             
             {isEditing && (
