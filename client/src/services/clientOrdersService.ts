@@ -200,7 +200,7 @@ export const clientOrdersService = {
                   createdBy: systemUserId,
                   isSupplier: false,
                   type: 'partial_payment',
-                  reason: `Additional stock-out after payment (${paymentPercentage} paid total)`,
+                  reason: `Additional stock-out after payment (${paymentPercentage} paid total) by ${clientName}`,
                   notes: `Additional stock-out for payment on order ${order.order_id} — Client: ${clientName}, Product: ${item.product_name}`,
                   transactionDate: new Date().toISOString()
                 });

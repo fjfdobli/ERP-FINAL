@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Box, Typography, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, TextField, InputAdornment, CircularProgress, Dialog, DialogTitle, DialogContent, DialogActions, Grid, Snackbar, Alert, FormControl, InputLabel, Select, SelectChangeEvent, MenuItem, Chip, IconButton, Tooltip, Tabs, Tab, Divider, Card, CardContent, List, ListItem, ListItemText, ListItemIcon, Link, LinearProgress, Avatar, ImageList, ImageListItem } from '@mui/material';
+import { Box, Typography, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, TextField, InputAdornment, CircularProgress, Dialog, DialogTitle, DialogContent, DialogActions, Grid, Snackbar, Alert, FormControl, InputLabel, Select, SelectChangeEvent, MenuItem, Chip, IconButton, Tooltip, Tabs, Tab, Divider, Card, CardContent, List, ListItem, ListItemText, ListItemIcon, Link, LinearProgress, Avatar, ImageList, ImageListItem, Portal } from '@mui/material';
 import { Add as AddIcon, Search as SearchIcon, Refresh as RefreshIcon, History as HistoryIcon, ConstructionOutlined as ConstructionIcon, ReceiptLong as ReceiptLongIcon, Build as BuildIcon, Edit as EditIcon, Delete as DeleteIcon, CheckCircle as CheckCircleIcon, Warning as WarningIcon, Error as ErrorIcon, Info as InfoIcon, DoDisturb as DoDisturbIcon, EventNote as EventNoteIcon, Engineering as EngineeringIcon, Handyman as HandymanIcon, PhotoCamera as PhotoCameraIcon, CloudUpload as CloudUploadIcon, SwapHoriz as SwapHorizIcon, Timer as TimerIcon, Person as PersonIcon } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { useAppDispatch, useAppSelector } from '../redux/hooks';
 import { fetchMachinery, createMachinery, updateMachinery, deleteMachinery, fetchMaintenanceRecords, createMaintenanceRecord, updateMaintenanceRecord, deleteMaintenanceRecord, fetchMachineryStats, fetchMaintenanceCostSummary, uploadMachineryImage, uploadMultipleMachineryImages, fetchStatusHistory, createStatusHistory, updateStatusHistory, deleteStatusHistory } from '../redux/slices/machinerySlice';
-import { selectAllTechnicians, fetchTechnicians } from '../redux/slices/techniciansSlice';
+import { selectAllTechnicians, fetchTechnicians, assignMachineryToTechnician, getAssignedMachinery } from '../redux/slices/techniciansSlice';
 import { selectAllEmployees, fetchEmployees } from '../redux/slices/employeesSlice';
 import { Machinery as MachineryType, MachineryFilters, MaintenanceRecord, StatusHistoryRecord } from '../services/machineryService';
 import { format, parseISO, addMonths, isBefore, isAfter, formatDistance } from 'date-fns';
@@ -79,9 +79,9 @@ interface StatusHistoryFormData {
 
 const MachineryList: React.FC = () => {
   const dispatch = useAppDispatch();
-  const { 
+  const {
     machinery, currentMachinery, maintenanceRecords, statusHistory,
-    machineryStats, isLoading 
+    machineryStats, isLoading
   } = useAppSelector((state: any) => state.machinery || {
     machinery: [],
     currentMachinery: null,
@@ -94,7 +94,7 @@ const MachineryList: React.FC = () => {
   // Get technicians and employees data for dropdown selections
   const technicians = useAppSelector(selectAllTechnicians);
   const employees = useAppSelector(selectAllEmployees);
-  
+
   const [loading, setLoading] = useState<boolean>(false);
   const [tabValue, setTabValue] = useState(0);
   const [searchTerm, setSearchTerm] = useState<string>('');
@@ -106,7 +106,10 @@ const MachineryList: React.FC = () => {
   const [selectedMaintenance, setSelectedMaintenance] = useState<MaintenanceRecord | null>(null);
   const [selectedStatusHistory, setSelectedStatusHistory] = useState<StatusHistoryRecord | null>(null);
   const [machineryDetailsOpen, setMachineryDetailsOpen] = useState<boolean>(false);
-  
+  const [customType, setCustomType] = useState('');
+  const [customManufacturer, setCustomManufacturer] = useState('');
+
+
   const [machineryForm, setMachineryForm] = useState<MachineryFormData>({
     name: '',
     type: '',
@@ -124,11 +127,11 @@ const MachineryList: React.FC = () => {
     imageUrl: null,
     imageUrls: []
   });
-  
+
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [imageUploading, setImageUploading] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
+
   const [maintenanceForm, setMaintenanceForm] = useState<MaintenanceFormData>({
     machineryId: 0,
     date: new Date(),
@@ -139,7 +142,7 @@ const MachineryList: React.FC = () => {
     notes: '',
     imageUrls: []
   });
-  
+
   const [statusHistoryForm, setStatusHistoryForm] = useState<StatusHistoryFormData>({
     machineryId: 0,
     date: new Date(),
@@ -150,7 +153,7 @@ const MachineryList: React.FC = () => {
     notes: '',
     imageUrls: []
   });
-  
+
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
     message: string;
@@ -254,13 +257,16 @@ const MachineryList: React.FC = () => {
   const handleOpenMachineryDialog = (machinery?: MachineryType) => {
     if (machinery) {
       setSelectedMachinery(machinery);
-      
+
+      const isOtherType = !machineryTypes.includes(machinery.type);
+      const isOtherManufacturer = !machinery.manufacturer || !manufacturers.includes(machinery.manufacturer);
+
       setMachineryForm({
         name: machinery.name,
-        type: machinery.type,
+        type: isOtherType ? 'Other' : machinery.type,
         model: machinery.model,
         serialNumber: machinery.serialNumber,
-        manufacturer: machinery.manufacturer || '',
+        manufacturer: isOtherManufacturer ? 'Other' : (machinery.manufacturer || ''),
         purchaseDate: machinery.purchaseDate ? parseISO(machinery.purchaseDate) : null,
         purchasePrice: machinery.purchasePrice,
         lastMaintenanceDate: machinery.lastMaintenanceDate ? parseISO(machinery.lastMaintenanceDate) : null,
@@ -273,6 +279,11 @@ const MachineryList: React.FC = () => {
         imageUrl: machinery.imageUrl,
         imageUrls: machinery.imageUrls || (machinery.imageUrl ? [machinery.imageUrl] : [])
       });
+
+      setCustomManufacturer(isOtherManufacturer ? (machinery.manufacturer || '') : '');
+      setCustomType(isOtherType ? machinery.type : '');
+
+
     } else {
       setSelectedMachinery(null);
       setMachineryForm({
@@ -310,8 +321,17 @@ const MachineryList: React.FC = () => {
     }));
   };
 
-  const handleMachinerySelectChange = (e: any) => {
+  const handleMachinerySelectChange = (e: SelectChangeEvent<string>) => {
     const { name, value } = e.target;
+
+    if (name === 'type') {
+      if (value === 'Other') setCustomType('');
+    }
+
+    if (name === 'manufacturer') {
+      if (value === 'Other') setCustomManufacturer('');
+    }
+
     setMachineryForm(prev => ({
       ...prev,
       [name]: value
@@ -324,16 +344,16 @@ const MachineryList: React.FC = () => {
       [name]: date
     }));
   };
-  
+
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       // Convert FileList to array and add to existing files
       const newFiles = Array.from(e.target.files);
       setImageFiles(prev => [...prev, ...newFiles]);
-      
+
       // Create preview URLs for the new images
       const newImageUrls = newFiles.map(file => URL.createObjectURL(file));
-      
+
       // Update the form with new image URLs
       setMachineryForm(prev => {
         const updatedImageUrls = [...(prev.imageUrls || []), ...newImageUrls];
@@ -346,7 +366,7 @@ const MachineryList: React.FC = () => {
       });
     }
   };
-  
+
   const handleRemoveImage = (index: number) => {
     // Remove the image file
     setImageFiles(prev => {
@@ -354,7 +374,7 @@ const MachineryList: React.FC = () => {
       newFiles.splice(index, 1);
       return newFiles;
     });
-    
+
     // Remove the image URL from the form
     setMachineryForm(prev => {
       const newImageUrls = [...(prev.imageUrls || [])];
@@ -367,10 +387,10 @@ const MachineryList: React.FC = () => {
       };
     });
   };
-  
+
   const handleUploadImages = async (machineryId: number) => {
     if (imageFiles.length === 0) return null;
-    
+
     setImageUploading(true);
     try {
       // Use the multiple image upload function
@@ -378,7 +398,7 @@ const MachineryList: React.FC = () => {
         files: imageFiles,
         machineryId
       })).unwrap();
-      
+
       setImageUploading(false);
       showSnackbar(`${imageUrls.length} images uploaded successfully`, 'success');
       return imageUrls;
@@ -391,23 +411,26 @@ const MachineryList: React.FC = () => {
 
   const handleMachinerySubmit = async () => {
     setLoading(true);
-    
+
     try {
-      const { 
-        name, type, model, serialNumber, manufacturer, purchaseDate, purchasePrice,
+      const {
+        name, model, serialNumber, purchaseDate, purchasePrice,
         lastMaintenanceDate, nextMaintenanceDate, status, location, specifications, notes,
         imageUrls
       } = machineryForm;
-      
+
+      const type = machineryForm.type === 'Other' ? customType : machineryForm.type;
+      const manufacturer = machineryForm.manufacturer === 'Other' ? customManufacturer : machineryForm.manufacturer;
+
       if (!name || !type || !model || !serialNumber) {
         showSnackbar('Name, Type, Model, and Serial Number are required', 'error');
         setLoading(false);
         return;
       }
-      
+
       let finalImageUrls = imageUrls || [];
       let finalMainImageUrl = finalImageUrls[0] || null;
-      
+
       if (selectedMachinery) {
         // For existing machinery, check if we need to upload new images
         if (imageFiles.length > 0) {
@@ -416,7 +439,7 @@ const MachineryList: React.FC = () => {
             // Combine existing persisted images with new uploaded ones
             const existingPersistedImages = (selectedMachinery.imageUrls || [])
               .filter(url => !url.startsWith('blob:')); // Filter out any blob URLs
-            
+
             finalImageUrls = [...existingPersistedImages, ...newImageUrls];
             finalMainImageUrl = finalImageUrls[0];
           }
@@ -424,17 +447,17 @@ const MachineryList: React.FC = () => {
           // No new images to upload, keep existing persisted images
           finalImageUrls = (selectedMachinery.imageUrls || [])
             .filter(url => !url.startsWith('blob:'));
-          
+
           if (selectedMachinery.imageUrl && !selectedMachinery.imageUrl.startsWith('blob:')) {
             // Make sure the main image is included if it's not a blob URL
             if (!finalImageUrls.includes(selectedMachinery.imageUrl)) {
               finalImageUrls = [selectedMachinery.imageUrl, ...finalImageUrls];
             }
           }
-          
+
           finalMainImageUrl = finalImageUrls[0] || null;
         }
-        
+
         const machineryData = {
           name,
           type,
@@ -452,7 +475,7 @@ const MachineryList: React.FC = () => {
           imageUrl: finalMainImageUrl,
           imageUrls: finalImageUrls
         };
-        
+
         await dispatch(updateMachinery({ id: selectedMachinery.id, data: machineryData as any })).unwrap();
         showSnackbar('Machinery updated successfully', 'success');
       } else {
@@ -474,29 +497,29 @@ const MachineryList: React.FC = () => {
           imageUrl: null, // Initially created without image
           imageUrls: [] // Initially created without images
         };
-        
+
         const createdMachinery = await dispatch(createMachinery(machineryData as any)).unwrap();
-        
+
         // Now upload the images if available
         if (imageFiles.length > 0 && createdMachinery.id) {
           finalImageUrls = await handleUploadImages(createdMachinery.id) || [];
           finalMainImageUrl = finalImageUrls[0] || null;
-          
+
           // Update the newly created machinery with the image URLs
           if (finalImageUrls.length > 0) {
-            await dispatch(updateMachinery({ 
-              id: createdMachinery.id, 
-              data: { 
+            await dispatch(updateMachinery({
+              id: createdMachinery.id,
+              data: {
                 imageUrl: finalMainImageUrl,
                 imageUrls: finalImageUrls
-              } 
+              }
             })).unwrap();
           }
         }
-        
+
         showSnackbar('Machinery created successfully', 'success');
       }
-      
+
       handleCloseMachineryDialog();
       fetchData();
     } catch (error: any) {
@@ -508,18 +531,33 @@ const MachineryList: React.FC = () => {
   };
 
   const handleOpenMaintenanceDialog = (machineryId: number, maintenance?: MaintenanceRecord) => {
-    // First, get the machinery details
     const machine = machinery.find((m: MachineryType) => m.id === machineryId);
     if (!machine) {
       showSnackbar('Machinery not found', 'error');
       return;
     }
-    
+
     setSelectedMachinery(machine);
-    
+
+    //Block new maintenance if there is an uncompleted one
+    if (!maintenance) {
+      const hasOngoing = maintenanceRecords.some(
+        (r: MaintenanceRecord) =>
+          r.machineryId === machineryId && !r.is_completed
+      );
+
+      if (hasOngoing) {
+        showSnackbar(
+          'This machinery is already under maintenance and cannot have another record until it is completed.',
+          'warning'
+        );
+        return;
+      }
+    }
+
     if (maintenance) {
       setSelectedMaintenance(maintenance);
-      
+
       setMaintenanceForm({
         machineryId: maintenance.machineryId,
         date: parseISO(maintenance.date),
@@ -541,8 +579,10 @@ const MachineryList: React.FC = () => {
         notes: ''
       });
     }
+
     setMaintenanceDialogOpen(true);
   };
+
 
   const handleCloseMaintenanceDialog = () => {
     setMaintenanceDialogOpen(false);
@@ -575,7 +615,7 @@ const MachineryList: React.FC = () => {
       }));
     }
   };
-  
+
   const handleOpenStatusHistoryDialog = (machineryId: number, statusHistory?: StatusHistoryRecord) => {
     // First, get the machinery details
     const machine = machinery.find((m: MachineryType) => m.id === machineryId);
@@ -583,12 +623,12 @@ const MachineryList: React.FC = () => {
       showSnackbar('Machinery not found', 'error');
       return;
     }
-    
+
     setSelectedMachinery(machine);
-    
+
     if (statusHistory) {
       setSelectedStatusHistory(statusHistory);
-      
+
       setStatusHistoryForm({
         machineryId: statusHistory.machineryId,
         date: parseISO(statusHistory.date),
@@ -649,16 +689,16 @@ const MachineryList: React.FC = () => {
 
   const handleStatusHistorySubmit = async () => {
     setLoading(true);
-    
+
     try {
       const { machineryId, date, previousStatus, newStatus, reason, changedBy, notes, imageUrls } = statusHistoryForm;
-      
+
       if (!reason || !changedBy) {
         showSnackbar('Reason and Changed By are required', 'error');
         setLoading(false);
         return;
       }
-      
+
       const statusHistoryData = {
         machineryId,
         date: format(date, 'yyyy-MM-dd'),
@@ -669,14 +709,14 @@ const MachineryList: React.FC = () => {
         notes: notes || null,
         imageUrls: imageUrls || []
       };
-      
+
       let statusUpdateSuccess = false;
-      
+
       try {
         if (selectedStatusHistory) {
-          await dispatch(updateStatusHistory({ 
-            id: selectedStatusHistory.id, 
-            data: statusHistoryData as any 
+          await dispatch(updateStatusHistory({
+            id: selectedStatusHistory.id,
+            data: statusHistoryData as any
           })).unwrap();
           showSnackbar('Status history record updated successfully', 'success');
           statusUpdateSuccess = true;
@@ -695,7 +735,7 @@ const MachineryList: React.FC = () => {
           throw statusError; // Re-throw if it's a different error
         }
       }
-      
+
       // Always update the machinery's status when adding a new status record
       if (!selectedStatusHistory && selectedMachinery) {
         try {
@@ -711,11 +751,11 @@ const MachineryList: React.FC = () => {
           showSnackbar(machineryError.message || 'Failed to update machinery status', 'error');
         }
       }
-      
+
       handleCloseStatusHistoryDialog();
       // Refresh machinery data to get updated status
       fetchData();
-      
+
       // Only try to refresh status history if the previous operation was successful
       if (statusUpdateSuccess && currentMachinery) {
         try {
@@ -734,16 +774,16 @@ const MachineryList: React.FC = () => {
 
   const handleMaintenanceSubmit = async () => {
     setLoading(true);
-    
+
     try {
       const { machineryId, date, type, description, cost, performedBy, notes, imageUrls } = maintenanceForm;
-      
+
       if (!description || !performedBy) {
         showSnackbar('Description and Performed By are required', 'error');
         setLoading(false);
         return;
       }
-      
+
       const maintenanceData = {
         machineryId,
         date: format(date, 'yyyy-MM-dd'),
@@ -754,37 +794,70 @@ const MachineryList: React.FC = () => {
         notes: notes || null,
         imageUrls: imageUrls || []
       };
-      
+
       if (selectedMaintenance) {
-        await dispatch(updateMaintenanceRecord({ 
-          id: selectedMaintenance.id, 
-          data: maintenanceData as any 
+        await dispatch(updateMaintenanceRecord({
+          id: selectedMaintenance.id,
+          data: maintenanceData
         })).unwrap();
         showSnackbar('Maintenance record updated successfully', 'success');
       } else {
-        await dispatch(createMaintenanceRecord(maintenanceData as any)).unwrap();
+        await dispatch(createMaintenanceRecord(maintenanceData)).unwrap();
         showSnackbar('Maintenance record created successfully', 'success');
-        
-        // If this is a new record, also update the machinery's last maintenance date
+
+        // ✅ Update maintenance dates on machinery
         if (selectedMachinery) {
-          dispatch(updateMachinery({
+          await dispatch(updateMachinery({
             id: selectedMachinery.id,
             data: {
               lastMaintenanceDate: format(date, 'yyyy-MM-dd'),
-              // Calculate next maintenance date (3 months from now by default)
               nextMaintenanceDate: format(addMonths(date, 3), 'yyyy-MM-dd')
             }
-          }));
+          })).unwrap();
         }
       }
-      
-      handleCloseMaintenanceDialog();
-      // Refresh machinery data to get updated maintenance dates
-      fetchData();
-      // Also refresh maintenance records if we're viewing a specific machinery
-      if (currentMachinery) {
-        dispatch(fetchMaintenanceRecords(currentMachinery.id));
+
+      // ✅ Match technician accurately by full name
+      const selectedTechnician = technicians.find(tech =>
+        `${tech.first_name ?? tech.firstName} ${tech.last_name ?? tech.lastName}` === performedBy
+      );
+
+      if (selectedMachinery) {
+        const otherTechnicians = technicians.filter(tech => tech.id !== selectedTechnician?.id);
+        for (const tech of otherTechnicians) {
+          if (tech.assigned_machinery?.includes(selectedMachinery.id)) {
+            const updatedMachinery = tech.assigned_machinery.filter(id => id !== selectedMachinery.id);
+            await dispatch(assignMachineryToTechnician({
+              technicianId: tech.id,
+              machineryIds: updatedMachinery
+            })).unwrap();
+          }
+        }
       }
+
+      // ✅ Assign if needed AND fetch their assigned machinery
+      if (selectedMachinery && selectedTechnician) {
+        const alreadyAssigned = selectedTechnician.assigned_machinery?.includes(selectedMachinery.id);
+
+        if (!alreadyAssigned) {
+          await dispatch(assignMachineryToTechnician({
+            technicianId: selectedTechnician.id,
+            machineryIds: [
+              ...(selectedTechnician.assigned_machinery || []),
+              selectedMachinery.id
+            ]
+          })).unwrap();
+
+          showSnackbar(`Machinery assigned to ${performedBy}`, 'info');
+        }
+
+        // 🆕 Ensure technician profile reflects latest assignments & maintenance
+        await dispatch(getAssignedMachinery(selectedTechnician.id)).unwrap();
+        await dispatch(fetchMaintenanceRecords(selectedMachinery.id)).unwrap();
+      }
+
+      handleCloseMaintenanceDialog();
+      fetchData(); // refresh full app state
     } catch (error: any) {
       console.error('Error saving maintenance record:', error);
       showSnackbar(error.message || 'Failed to save maintenance record', 'error');
@@ -797,10 +870,10 @@ const MachineryList: React.FC = () => {
     try {
       setLoading(true);
       setSelectedMachinery(machinery);
-      
+
       // Fetch maintenance records first
       await dispatch(fetchMaintenanceRecords(machinery.id)).unwrap();
-      
+
       // Try to fetch status history, but continue even if it fails
       try {
         await dispatch(fetchStatusHistory(machinery.id)).unwrap();
@@ -809,7 +882,7 @@ const MachineryList: React.FC = () => {
         // Clear status history to avoid showing stale data
         dispatch({ type: 'machinery/fetchStatusHistory/fulfilled', payload: [] });
       }
-      
+
       setMachineryDetailsOpen(true);
       setLoading(false);
     } catch (error: any) {
@@ -845,8 +918,29 @@ const MachineryList: React.FC = () => {
       setLoading(true);
       try {
         await dispatch(deleteMaintenanceRecord(id)).unwrap();
+
+        // Unassign machinery from technician if it was linked
+        const record = maintenanceRecords.find((r: MaintenanceRecord) => r.id === id);
+
+        if (record) {
+          const tech = technicians.find(t =>
+            `${t.first_name || t.firstName} ${t.last_name || t.lastName}` === record.performedBy
+          );
+
+          if (tech && tech.assigned_machinery?.includes(record.machineryId)) {
+            const updatedMachinery = tech.assigned_machinery.filter(mid => mid !== record.machineryId);
+
+            await dispatch(assignMachineryToTechnician({
+              technicianId: tech.id,
+              machineryIds: updatedMachinery
+            })).unwrap();
+
+            showSnackbar(`Machinery unassigned from ${record.performedBy}`, 'info');
+          }
+        }
+
         showSnackbar('Maintenance record deleted successfully', 'success');
-        
+
         // Refresh maintenance records if we're viewing a specific machinery
         if (selectedMachinery) {
           dispatch(fetchMaintenanceRecords(selectedMachinery.id));
@@ -859,14 +953,14 @@ const MachineryList: React.FC = () => {
       }
     }
   };
-  
+
   const handleDeleteStatusHistory = async (id: number) => {
     if (window.confirm('Are you sure you want to delete this status history record?')) {
       setLoading(true);
       try {
         await dispatch(deleteStatusHistory(id)).unwrap();
         showSnackbar('Status history record deleted successfully', 'success');
-        
+
         // Refresh status history records if we're viewing a specific machinery
         if (selectedMachinery) {
           dispatch(fetchStatusHistory(selectedMachinery.id));
@@ -890,7 +984,7 @@ const MachineryList: React.FC = () => {
   const getStatusChip = (status: string) => {
     let color: 'default' | 'success' | 'error' | 'warning' | 'info' = 'default';
     let icon = null;
-    
+
     switch (status) {
       case 'Operational':
         color = 'success';
@@ -913,9 +1007,9 @@ const MachineryList: React.FC = () => {
         icon = <DoDisturbIcon fontSize="small" />;
         break;
     }
-    
+
     return (
-      <Chip 
+      <Chip
         label={status}
         color={color}
         size="small"
@@ -928,7 +1022,7 @@ const MachineryList: React.FC = () => {
   const getMaintenanceTypeChip = (type: string) => {
     let color: 'default' | 'success' | 'error' | 'warning' | 'info' = 'default';
     let icon = null;
-    
+
     switch (type) {
       case 'Scheduled':
         color = 'info';
@@ -947,9 +1041,9 @@ const MachineryList: React.FC = () => {
         icon = <WarningIcon fontSize="small" />;
         break;
     }
-    
+
     return (
-      <Chip 
+      <Chip
         label={type}
         color={color}
         size="small"
@@ -971,29 +1065,29 @@ const MachineryList: React.FC = () => {
     if (!machinery.nextMaintenanceDate) {
       return { text: 'No scheduled maintenance', color: 'text.secondary' };
     }
-    
+
     const today = new Date();
     const nextDate = parseISO(machinery.nextMaintenanceDate);
-    
+
     if (isBefore(nextDate, today)) {
-      return { 
-        text: `Overdue by ${formatDistance(nextDate, today)}`, 
-        color: 'error.main' 
+      return {
+        text: `Overdue by ${formatDistance(nextDate, today)}`,
+        color: 'error.main'
       };
     }
-    
+
     // Check if due within 30 days
     const thirtyDaysFromNow = addMonths(today, 1);
     if (isBefore(nextDate, thirtyDaysFromNow)) {
-      return { 
-        text: `Due in ${formatDistance(today, nextDate)}`, 
-        color: 'warning.main' 
+      return {
+        text: `Due in ${formatDistance(today, nextDate)}`,
+        color: 'warning.main'
       };
     }
-    
-    return { 
-      text: `Scheduled for ${format(nextDate, 'MMM d, yyyy')}`, 
-      color: 'success.main' 
+
+    return {
+      text: `Scheduled for ${format(nextDate, 'MMM d, yyyy')}`,
+      color: 'success.main'
     };
   };
 
@@ -1001,12 +1095,12 @@ const MachineryList: React.FC = () => {
   const filteredMachinery = machinery?.filter((machine: MachineryType) => {
     // Apply search term
     if (searchTerm && !machine.name.toLowerCase().includes(searchTerm.toLowerCase()) &&
-        !machine.model.toLowerCase().includes(searchTerm.toLowerCase()) &&
-        !machine.serialNumber.toLowerCase().includes(searchTerm.toLowerCase()) &&
-        !(machine.manufacturer && machine.manufacturer.toLowerCase().includes(searchTerm.toLowerCase()))) {
+      !machine.model.toLowerCase().includes(searchTerm.toLowerCase()) &&
+      !machine.serialNumber.toLowerCase().includes(searchTerm.toLowerCase()) &&
+      !(machine.manufacturer && machine.manufacturer.toLowerCase().includes(searchTerm.toLowerCase()))) {
       return false;
     }
-    
+
     // Apply filters
     if (filters.type && machine.type !== filters.type) {
       return false;
@@ -1017,7 +1111,7 @@ const MachineryList: React.FC = () => {
     if (filters.manufacturer && machine.manufacturer !== filters.manufacturer) {
       return false;
     }
-    
+
     return true;
   });
 
@@ -1027,8 +1121,8 @@ const MachineryList: React.FC = () => {
         <Typography variant="h4" component="h1" fontWeight="bold">
           Machinery
         </Typography>
-        <Button 
-          variant="contained" 
+        <Button
+          variant="contained"
           startIcon={<AddIcon />}
           onClick={() => handleOpenMachineryDialog()}
         >
@@ -1043,7 +1137,7 @@ const MachineryList: React.FC = () => {
           <Tab icon={<SwapHorizIcon />} label="Status History" />
           <Tab icon={<ReceiptLongIcon />} label="Overview & Stats" />
         </Tabs>
-        
+
         <TabPanel value={tabValue} index={0}>
           <Box sx={{ mb: 3 }}>
             <Grid container spacing={2} alignItems="center">
@@ -1064,7 +1158,7 @@ const MachineryList: React.FC = () => {
                   }}
                 />
               </Grid>
-              
+
               <Grid item xs={12} sm={6} md={3}>
                 <FormControl fullWidth size="small">
                   <InputLabel id="type-filter-label">Type</InputLabel>
@@ -1081,7 +1175,7 @@ const MachineryList: React.FC = () => {
                   </Select>
                 </FormControl>
               </Grid>
-              
+
               <Grid item xs={12} sm={6} md={3}>
                 <FormControl fullWidth size="small">
                   <InputLabel id="status-filter-label">Status</InputLabel>
@@ -1098,9 +1192,9 @@ const MachineryList: React.FC = () => {
                   </Select>
                 </FormControl>
               </Grid>
-              
+
               <Grid item xs={12} sm={6} md={3}>
-                <Button 
+                <Button
                   variant="outlined"
                   color="primary"
                   onClick={fetchData}
@@ -1112,7 +1206,7 @@ const MachineryList: React.FC = () => {
               </Grid>
             </Grid>
           </Box>
-          
+
           {(loading || isLoading) ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
               <CircularProgress />
@@ -1124,31 +1218,31 @@ const MachineryList: React.FC = () => {
                   <TableRow>
                     <TableCell><strong>Image</strong></TableCell>
                     <TableCell><strong>Name</strong></TableCell>
-                    <TableCell><strong>Type</strong></TableCell>
-                    <TableCell><strong>Model</strong></TableCell>
-                    <TableCell><strong>Serial Number</strong></TableCell>
-                    <TableCell><strong>Status</strong></TableCell>
-                    <TableCell><strong>Next Maintenance</strong></TableCell>
-                    <TableCell><strong>Actions</strong></TableCell>
+                    <TableCell align='center'><strong>Type</strong></TableCell>
+                    <TableCell align='center'><strong>Model</strong></TableCell>
+                    <TableCell align='center'><strong>Serial Number</strong></TableCell>
+                    <TableCell align='center'><strong>Status</strong></TableCell>
+                    <TableCell align='center'><strong>Next Maintenance</strong></TableCell>
+                    <TableCell align='center'><strong>Actions</strong></TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {filteredMachinery && filteredMachinery.length > 0 ? (
                     filteredMachinery.map((machine: MachineryType) => {
                       const maintenanceStatus = getMaintenanceStatusText(machine);
-                      
+
                       return (
                         <TableRow key={machine.id}>
                           <TableCell>
                             {machine.imageUrl ? (
-                              <Avatar 
-                                src={machine.imageUrl} 
+                              <Avatar
+                                src={machine.imageUrl}
                                 alt={machine.name}
                                 variant="rounded"
                                 sx={{ width: 40, height: 40 }}
                               />
                             ) : (
-                              <Avatar 
+                              <Avatar
                                 variant="rounded"
                                 sx={{ width: 40, height: 40, bgcolor: 'grey.300' }}
                               >
@@ -1157,7 +1251,7 @@ const MachineryList: React.FC = () => {
                             )}
                           </TableCell>
                           <TableCell>
-                            <Link 
+                            <Link
                               component="button"
                               variant="body1"
                               onClick={() => handleOpenMachineryDetails(machine)}
@@ -1167,35 +1261,35 @@ const MachineryList: React.FC = () => {
                               {machine.name}
                             </Link>
                           </TableCell>
-                          <TableCell>{machine.type}</TableCell>
-                          <TableCell>{machine.model}</TableCell>
-                          <TableCell>{machine.serialNumber}</TableCell>
-                          <TableCell>{getStatusChip(machine.status)}</TableCell>
-                          <TableCell>
+                          <TableCell align='center'>{machine.type}</TableCell>
+                          <TableCell align='center'>{machine.model}</TableCell>
+                          <TableCell align='center'>{machine.serialNumber}</TableCell>
+                          <TableCell align='center'>{getStatusChip(machine.status)}</TableCell>
+                          <TableCell align='center'>
                             <Typography variant="body2" color={maintenanceStatus.color}>
                               {maintenanceStatus.text}
                             </Typography>
                           </TableCell>
-                          <TableCell>
-                            <Box sx={{ display: 'flex', gap: 1 }}>
-                              <Button 
-                                size="small" 
+                          <TableCell align='center'>
+                            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 1 }}>
+                              <Button
+                                size="small"
                                 color="info"
                                 variant="outlined"
                                 onClick={() => handleOpenMaintenanceDialog(machine.id)}
                               >
                                 Maintenance
                               </Button>
-                              <Button 
-                                size="small" 
+                              <Button
+                                size="small"
                                 color="primary"
                                 variant="outlined"
                                 onClick={() => handleOpenMachineryDialog(machine)}
                               >
                                 Edit
                               </Button>
-                              <Button 
-                                size="small" 
+                              <Button
+                                size="small"
                                 color="error"
                                 variant="outlined"
                                 onClick={() => handleDelete(machine.id)}
@@ -1219,7 +1313,7 @@ const MachineryList: React.FC = () => {
             </TableContainer>
           )}
         </TabPanel>
-        
+
         <TabPanel value={tabValue} index={1}>
           <Box sx={{ mb: 3 }}>
             <Typography variant="h6" gutterBottom>
@@ -1228,9 +1322,9 @@ const MachineryList: React.FC = () => {
             <Typography variant="body2" color="text.secondary" paragraph>
               Select a machinery from the Machinery List tab to view its maintenance history, or view all maintenance records below.
             </Typography>
-            
-            <Button 
-              variant="outlined" 
+
+            <Button
+              variant="outlined"
               onClick={() => dispatch(fetchMaintenanceRecords(undefined))}
               startIcon={<RefreshIcon />}
               sx={{ mt: 2 }}
@@ -1238,7 +1332,7 @@ const MachineryList: React.FC = () => {
               Load All Maintenance Records
             </Button>
           </Box>
-          
+
           {(loading || isLoading) ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
               <CircularProgress />
@@ -1261,12 +1355,12 @@ const MachineryList: React.FC = () => {
                   {maintenanceRecords && maintenanceRecords.length > 0 ? (
                     maintenanceRecords.map((record: MaintenanceRecord) => {
                       const machineInfo = machinery?.find((m: MachineryType) => m.id === record.machineryId);
-                      
+
                       return (
                         <TableRow key={record.id}>
                           <TableCell>
                             {machineInfo ? (
-                              <Link 
+                              <Link
                                 component="button"
                                 variant="body1"
                                 onClick={() => handleOpenMachineryDetails(machineInfo)}
@@ -1279,24 +1373,24 @@ const MachineryList: React.FC = () => {
                           <TableCell>{format(parseISO(record.date), 'MMM d, yyyy')}</TableCell>
                           <TableCell>{getMaintenanceTypeChip(record.type)}</TableCell>
                           <TableCell>
-                            {record.description.length > 50 ? 
-                              `${record.description.substring(0, 50)}...` : 
+                            {record.description.length > 50 ?
+                              `${record.description.substring(0, 50)}...` :
                               record.description}
                           </TableCell>
                           <TableCell>{record.performedBy}</TableCell>
                           <TableCell>{formatCurrency(record.cost)}</TableCell>
                           <TableCell>
                             <Box sx={{ display: 'flex', gap: 1 }}>
-                              <Button 
-                                size="small" 
+                              <Button
+                                size="small"
                                 color="primary"
                                 variant="outlined"
                                 onClick={() => record.machineryId && handleOpenMaintenanceDialog(record.machineryId, record)}
                               >
                                 Edit
                               </Button>
-                              <Button 
-                                size="small" 
+                              <Button
+                                size="small"
                                 color="error"
                                 variant="outlined"
                                 onClick={() => handleDeleteMaintenanceRecord(record.id)}
@@ -1320,7 +1414,7 @@ const MachineryList: React.FC = () => {
             </TableContainer>
           )}
         </TabPanel>
-        
+
         <TabPanel value={tabValue} index={2}>
           <Box sx={{ mb: 3 }}>
             <Typography variant="h6" gutterBottom>
@@ -1329,9 +1423,9 @@ const MachineryList: React.FC = () => {
             <Typography variant="body2" color="text.secondary" paragraph>
               Select a machinery from the Machinery List tab to view its status history, or view all status history records below.
             </Typography>
-            
-            <Button 
-              variant="outlined" 
+
+            <Button
+              variant="outlined"
               onClick={() => {
                 try {
                   dispatch(fetchStatusHistory(undefined));
@@ -1346,7 +1440,7 @@ const MachineryList: React.FC = () => {
               Load All Status History Records
             </Button>
           </Box>
-          
+
           {(loading || isLoading) ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
               <CircularProgress />
@@ -1369,12 +1463,12 @@ const MachineryList: React.FC = () => {
                   {statusHistory && statusHistory.length > 0 ? (
                     statusHistory.map((record: StatusHistoryRecord) => {
                       const machineInfo = machinery?.find((m: MachineryType) => m.id === record.machineryId);
-                      
+
                       return (
                         <TableRow key={record.id}>
                           <TableCell>
                             {machineInfo ? (
-                              <Link 
+                              <Link
                                 component="button"
                                 variant="body1"
                                 onClick={() => handleOpenMachineryDetails(machineInfo)}
@@ -1388,23 +1482,23 @@ const MachineryList: React.FC = () => {
                           <TableCell>{getStatusChip(record.previousStatus)}</TableCell>
                           <TableCell>{getStatusChip(record.newStatus)}</TableCell>
                           <TableCell>
-                            {record.reason.length > 50 ? 
-                              `${record.reason.substring(0, 50)}...` : 
+                            {record.reason.length > 50 ?
+                              `${record.reason.substring(0, 50)}...` :
                               record.reason}
                           </TableCell>
                           <TableCell>{record.changedBy}</TableCell>
                           <TableCell>
                             <Box sx={{ display: 'flex', gap: 1 }}>
-                              <Button 
-                                size="small" 
+                              <Button
+                                size="small"
                                 color="primary"
                                 variant="outlined"
                                 onClick={() => record.machineryId && handleOpenStatusHistoryDialog(record.machineryId, record)}
                               >
                                 Edit
                               </Button>
-                              <Button 
-                                size="small" 
+                              <Button
+                                size="small"
                                 color="error"
                                 variant="outlined"
                                 onClick={() => handleDeleteStatusHistory(record.id)}
@@ -1428,14 +1522,14 @@ const MachineryList: React.FC = () => {
             </TableContainer>
           )}
         </TabPanel>
-        
+
         <TabPanel value={tabValue} index={3}>
           <Grid container spacing={3}>
             <Grid item xs={12} md={8}>
               <Typography variant="h6" gutterBottom>
                 Machinery Stats
               </Typography>
-              
+
               {machineryStats ? (
                 <Grid container spacing={2}>
                   <Grid item xs={6} sm={4}>
@@ -1450,7 +1544,7 @@ const MachineryList: React.FC = () => {
                       </CardContent>
                     </Card>
                   </Grid>
-                  
+
                   <Grid item xs={6} sm={4}>
                     <Card>
                       <CardContent>
@@ -1463,7 +1557,7 @@ const MachineryList: React.FC = () => {
                       </CardContent>
                     </Card>
                   </Grid>
-                  
+
                   <Grid item xs={6} sm={4}>
                     <Card>
                       <CardContent>
@@ -1476,7 +1570,7 @@ const MachineryList: React.FC = () => {
                       </CardContent>
                     </Card>
                   </Grid>
-                  
+
                   <Grid item xs={6} sm={3}>
                     <Card>
                       <CardContent>
@@ -1489,7 +1583,7 @@ const MachineryList: React.FC = () => {
                       </CardContent>
                     </Card>
                   </Grid>
-                  
+
                   <Grid item xs={6} sm={3}>
                     <Card>
                       <CardContent>
@@ -1502,7 +1596,7 @@ const MachineryList: React.FC = () => {
                       </CardContent>
                     </Card>
                   </Grid>
-                  
+
                   <Grid item xs={6} sm={3}>
                     <Card>
                       <CardContent>
@@ -1515,7 +1609,7 @@ const MachineryList: React.FC = () => {
                       </CardContent>
                     </Card>
                   </Grid>
-                  
+
                   <Grid item xs={6} sm={3}>
                     <Card>
                       <CardContent>
@@ -1534,29 +1628,29 @@ const MachineryList: React.FC = () => {
                   <CircularProgress />
                 </Box>
               )}
-              
+
               <Box sx={{ mt: 4 }}>
                 <Typography variant="h6" gutterBottom>
                   Machinery by Type
                 </Typography>
-                
+
                 {machinery && machinery.length > 0 ? (
                   <>
                     {machineryTypes.map(type => {
                       const count = machinery.filter((m: MachineryType) => m.type === type).length;
                       if (count === 0) return null;
-                      
+
                       const percentage = (count / machinery.length) * 100;
-                      
+
                       return (
                         <Box key={type} sx={{ mb: 2 }}>
                           <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
                             <Typography variant="body2">{type}</Typography>
                             <Typography variant="body2">{count} ({percentage.toFixed(1)}%)</Typography>
                           </Box>
-                          <LinearProgress 
-                            variant="determinate" 
-                            value={percentage} 
+                          <LinearProgress
+                            variant="determinate"
+                            value={percentage}
                             sx={{ height: 8, borderRadius: 4 }}
                           />
                         </Box>
@@ -1570,23 +1664,23 @@ const MachineryList: React.FC = () => {
                 )}
               </Box>
             </Grid>
-            
+
             <Grid item xs={12} md={4}>
               <Paper sx={{ p: 2 }}>
                 <Typography variant="h6" gutterBottom>
                   Maintenance Due Soon
                 </Typography>
-                
+
                 {machinery && machinery.length > 0 ? (
                   <List>
                     {machinery
                       .filter((machine: MachineryType) => {
                         if (!machine.nextMaintenanceDate) return false;
-                        
+
                         const today = new Date();
                         const nextMonth = addMonths(today, 1);
                         const nextDate = parseISO(machine.nextMaintenanceDate);
-                        
+
                         return isBefore(nextDate, nextMonth) && machine.status !== 'Retired';
                       })
                       .sort((a: MachineryType, b: MachineryType) => {
@@ -1597,15 +1691,15 @@ const MachineryList: React.FC = () => {
                       .slice(0, 5)
                       .map((machine: MachineryType) => {
                         const maintenanceStatus = getMaintenanceStatusText(machine);
-                        
+
                         return (
-                          <ListItem 
-                            key={machine.id} 
+                          <ListItem
+                            key={machine.id}
                             divider
                             secondaryAction={
-                              <Button 
-                                size="small" 
-                                variant="outlined" 
+                              <Button
+                                size="small"
+                                variant="outlined"
                                 startIcon={<BuildIcon />}
                                 onClick={() => handleOpenMaintenanceDialog(machine.id)}
                               >
@@ -1616,8 +1710,8 @@ const MachineryList: React.FC = () => {
                             <ListItemIcon>
                               <EngineeringIcon color="primary" />
                             </ListItemIcon>
-                            <ListItemText 
-                              primary={machine.name} 
+                            <ListItemText
+                              primary={machine.name}
                               secondary={
                                 <Typography variant="body2" color={maintenanceStatus.color}>
                                   {maintenanceStatus.text}
@@ -1628,47 +1722,47 @@ const MachineryList: React.FC = () => {
                         );
                       })
                     }
-                    
+
                     {machinery.filter((machine: MachineryType) => {
                       if (!machine.nextMaintenanceDate) return false;
-                      
+
                       const today = new Date();
                       const nextMonth = addMonths(today, 1);
                       const nextDate = parseISO(machine.nextMaintenanceDate);
-                      
+
                       return isBefore(nextDate, nextMonth) && machine.status !== 'Retired';
                     }).length === 0 && (
-                      <Typography variant="body2" color="text.secondary" align="center" sx={{ py: 2 }}>
-                        No machinery due for maintenance soon
-                      </Typography>
-                    )}
+                        <Typography variant="body2" color="text.secondary" align="center" sx={{ py: 2 }}>
+                          No machinery due for maintenance soon
+                        </Typography>
+                      )}
                   </List>
                 ) : (
                   <Typography variant="body2" color="text.secondary" align="center" sx={{ py: 2 }}>
                     No machinery data available
                   </Typography>
                 )}
-                
+
                 <Divider sx={{ my: 2 }} />
-                
+
                 <Typography variant="h6" gutterBottom>
                   Recent Maintenances
                 </Typography>
-                
+
                 {maintenanceRecords && maintenanceRecords.length > 0 ? (
                   <List>
                     {maintenanceRecords
                       .slice(0, 5)
                       .map((record: MaintenanceRecord) => {
                         const machineInfo = machinery?.find((m: MachineryType) => m.id === record.machineryId);
-                        
+
                         return (
                           <ListItem key={record.id} divider>
                             <ListItemIcon>
                               <HandymanIcon color="info" />
                             </ListItemIcon>
-                            <ListItemText 
-                              primary={machineInfo?.name || `Machine ID: ${record.machineryId}`} 
+                            <ListItemText
+                              primary={machineInfo?.name || `Machine ID: ${record.machineryId}`}
                               secondary={
                                 <>
                                   <Typography variant="body2">
@@ -1685,7 +1779,7 @@ const MachineryList: React.FC = () => {
                         );
                       })
                     }
-                    
+
                     {maintenanceRecords.length === 0 && (
                       <Typography variant="body2" color="text.secondary" align="center" sx={{ py: 2 }}>
                         No recent maintenance records
@@ -1708,7 +1802,7 @@ const MachineryList: React.FC = () => {
         <DialogTitle>
           {selectedMachinery ? `Edit Machinery: ${selectedMachinery.name}` : 'Add New Machinery'}
         </DialogTitle>
-        
+
         <DialogContent>
           <Grid container spacing={3} sx={{ mt: 1 }}>
             {/* Multiple Image Upload Section */}
@@ -1716,13 +1810,13 @@ const MachineryList: React.FC = () => {
               <Typography variant="subtitle1" gutterBottom>
                 Machinery Images
               </Typography>
-              
+
               <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 2 }}>
                 {/* Image Gallery */}
-                <Box sx={{ 
-                  display: 'flex', 
-                  flexWrap: 'wrap', 
-                  gap: 2, 
+                <Box sx={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: 2,
                   justifyContent: 'center',
                   mb: 2,
                   width: '100%'
@@ -1730,19 +1824,19 @@ const MachineryList: React.FC = () => {
                   {(machineryForm.imageUrls && machineryForm.imageUrls.length > 0) ? (
                     machineryForm.imageUrls.map((imageUrl, index) => (
                       <Box key={index} sx={{ position: 'relative' }}>
-                        <Avatar 
-                          src={imageUrl} 
+                        <Avatar
+                          src={imageUrl}
                           alt={`${machineryForm.name} image ${index + 1}`}
                           variant="rounded"
                           sx={{ width: 120, height: 120, border: '1px solid #eee' }}
                         />
-                        <IconButton 
-                          size="small" 
-                          color="error" 
+                        <IconButton
+                          size="small"
+                          color="error"
                           onClick={() => handleRemoveImage(index)}
-                          sx={{ 
-                            position: 'absolute', 
-                            top: -10, 
+                          sx={{
+                            position: 'absolute',
+                            top: -10,
                             right: -10,
                             bgcolor: 'background.paper',
                             boxShadow: 1,
@@ -1754,12 +1848,12 @@ const MachineryList: React.FC = () => {
                       </Box>
                     ))
                   ) : (
-                    <Box 
-                      sx={{ 
-                        width: 120, 
-                        height: 120, 
-                        display: 'flex', 
-                        alignItems: 'center', 
+                    <Box
+                      sx={{
+                        width: 120,
+                        height: 120,
+                        display: 'flex',
+                        alignItems: 'center',
                         justifyContent: 'center',
                         border: '1px dashed #ccc',
                         borderRadius: 1
@@ -1768,17 +1862,17 @@ const MachineryList: React.FC = () => {
                       <PhotoCameraIcon color="disabled" sx={{ fontSize: 40 }} />
                     </Box>
                   )}
-                  
+
                   {/* Add New Image Box */}
-                  <Box 
-                    component="label" 
+                  <Box
+                    component="label"
                     htmlFor="image-upload"
-                    sx={{ 
-                      width: 120, 
-                      height: 120, 
-                      display: 'flex', 
+                    sx={{
+                      width: 120,
+                      height: 120,
+                      display: 'flex',
                       flexDirection: 'column',
-                      alignItems: 'center', 
+                      alignItems: 'center',
                       justifyContent: 'center',
                       border: '1px dashed #ccc',
                       borderRadius: 1,
@@ -1794,7 +1888,7 @@ const MachineryList: React.FC = () => {
                     </Typography>
                   </Box>
                 </Box>
-                
+
                 <input
                   type="file"
                   accept="image/*"
@@ -1805,17 +1899,17 @@ const MachineryList: React.FC = () => {
                   ref={fileInputRef}
                   onChange={handleImageChange}
                 />
-                
-                <Button 
-                  variant="outlined" 
-                  component="label" 
+
+                <Button
+                  variant="outlined"
+                  component="label"
                   htmlFor="image-upload"
                   startIcon={<CloudUploadIcon />}
                   disabled={imageUploading}
                 >
                   {imageUploading ? 'Uploading...' : 'Add Images'}
                 </Button>
-                
+
                 {imageUploading && (
                   <Box sx={{ display: 'flex', alignItems: 'center', mt: 1 }}>
                     <CircularProgress size={16} sx={{ mr: 1 }} />
@@ -1824,15 +1918,15 @@ const MachineryList: React.FC = () => {
                     </Typography>
                   </Box>
                 )}
-                
+
                 <Typography variant="caption" color="text.secondary" mt={1}>
                   You can upload multiple images of the machinery, including close-ups of specific parts.
                 </Typography>
               </Box>
-              
+
               <Divider sx={{ my: 2 }} />
             </Grid>
-            
+
             <Grid item xs={12} md={6}>
               <TextField
                 name="name"
@@ -1843,7 +1937,7 @@ const MachineryList: React.FC = () => {
                 onChange={handleMachineryInputChange}
               />
             </Grid>
-            
+
             <Grid item xs={12} md={6}>
               <FormControl fullWidth required>
                 <InputLabel id="type-label">Type</InputLabel>
@@ -1859,8 +1953,22 @@ const MachineryList: React.FC = () => {
                   ))}
                 </Select>
               </FormControl>
+
+
+              {machineryForm.type === 'Other' && (
+                <TextField
+                  name="customType"
+                  label="Specify Other Type"
+                  fullWidth
+                  value={customType}
+                  onChange={(e) => setCustomType(e.target.value)}
+                  margin='normal'
+                  size='small'
+                />
+              )}
             </Grid>
-            
+
+
             <Grid item xs={12} md={6}>
               <TextField
                 name="model"
@@ -1871,7 +1979,7 @@ const MachineryList: React.FC = () => {
                 onChange={handleMachineryInputChange}
               />
             </Grid>
-            
+
             <Grid item xs={12} md={6}>
               <TextField
                 name="serialNumber"
@@ -1882,7 +1990,7 @@ const MachineryList: React.FC = () => {
                 onChange={handleMachineryInputChange}
               />
             </Grid>
-            
+
             <Grid item xs={12} md={6}>
               <FormControl fullWidth>
                 <InputLabel id="manufacturer-label">Manufacturer</InputLabel>
@@ -1898,8 +2006,20 @@ const MachineryList: React.FC = () => {
                   ))}
                 </Select>
               </FormControl>
+
+              {machineryForm.manufacturer === 'Other' && (
+                <TextField
+                  name="customManufacturer"
+                  label="Specify Other Manufacturer"
+                  fullWidth
+                  value={customManufacturer}
+                  onChange={(e) => setCustomManufacturer(e.target.value)}
+                  margin='normal'
+                  size='small'
+                />
+              )}
             </Grid>
-            
+
             <Grid item xs={12} md={6}>
               <FormControl fullWidth>
                 <InputLabel id="status-label">Status</InputLabel>
@@ -1916,14 +2036,14 @@ const MachineryList: React.FC = () => {
                 </Select>
               </FormControl>
             </Grid>
-            
+
             <Grid item xs={12}>
               <Divider sx={{ my: 1 }} />
               <Typography variant="subtitle1" gutterBottom>
                 Purchase & Maintenance Information
               </Typography>
             </Grid>
-            
+
             <Grid item xs={12} md={6}>
               <LocalizationProvider dateAdapter={AdapterDateFns}>
                 <DatePicker
@@ -1934,7 +2054,7 @@ const MachineryList: React.FC = () => {
                 />
               </LocalizationProvider>
             </Grid>
-            
+
             <Grid item xs={12} md={6}>
               <TextField
                 name="purchasePrice"
@@ -1948,7 +2068,7 @@ const MachineryList: React.FC = () => {
                 }}
               />
             </Grid>
-            
+
             <Grid item xs={12} md={6}>
               <LocalizationProvider dateAdapter={AdapterDateFns}>
                 <DatePicker
@@ -1959,7 +2079,7 @@ const MachineryList: React.FC = () => {
                 />
               </LocalizationProvider>
             </Grid>
-            
+
             <Grid item xs={12} md={6}>
               <LocalizationProvider dateAdapter={AdapterDateFns}>
                 <DatePicker
@@ -1970,14 +2090,14 @@ const MachineryList: React.FC = () => {
                 />
               </LocalizationProvider>
             </Grid>
-            
+
             <Grid item xs={12}>
               <Divider sx={{ my: 1 }} />
               <Typography variant="subtitle1" gutterBottom>
                 Additional Information
               </Typography>
             </Grid>
-            
+
             <Grid item xs={12} md={6}>
               <TextField
                 name="location"
@@ -1987,7 +2107,7 @@ const MachineryList: React.FC = () => {
                 onChange={handleMachineryInputChange}
               />
             </Grid>
-            
+
             <Grid item xs={12}>
               <TextField
                 name="specifications"
@@ -2000,7 +2120,7 @@ const MachineryList: React.FC = () => {
                 placeholder="Enter technical specifications, capabilities, and other details"
               />
             </Grid>
-            
+
             <Grid item xs={12}>
               <TextField
                 name="notes"
@@ -2017,9 +2137,9 @@ const MachineryList: React.FC = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseMachineryDialog}>Cancel</Button>
-          <Button 
-            onClick={handleMachinerySubmit} 
-            variant="contained" 
+          <Button
+            onClick={handleMachinerySubmit}
+            variant="contained"
             color="primary"
             disabled={loading}
           >
@@ -2040,7 +2160,7 @@ const MachineryList: React.FC = () => {
             </Typography>
           </Box>
         )}
-        
+
         <DialogContent>
           <Grid container spacing={3} sx={{ mt: 1 }}>
             <Grid item xs={12} md={6}>
@@ -2053,7 +2173,7 @@ const MachineryList: React.FC = () => {
                 />
               </LocalizationProvider>
             </Grid>
-            
+
             <Grid item xs={12} md={6}>
               <FormControl fullWidth>
                 <InputLabel id="maintenance-type-label">Maintenance Type</InputLabel>
@@ -2070,7 +2190,7 @@ const MachineryList: React.FC = () => {
                 </Select>
               </FormControl>
             </Grid>
-            
+
             <Grid item xs={12}>
               <TextField
                 name="description"
@@ -2084,7 +2204,7 @@ const MachineryList: React.FC = () => {
                 placeholder="Describe the maintenance work performed"
               />
             </Grid>
-            
+
             <Grid item xs={12} md={6}>
               <FormControl fullWidth required>
                 <InputLabel id="performed-by-label">Performed By</InputLabel>
@@ -2106,7 +2226,7 @@ const MachineryList: React.FC = () => {
                 </Select>
               </FormControl>
             </Grid>
-            
+
             <Grid item xs={12} md={6}>
               <TextField
                 name="cost"
@@ -2120,7 +2240,7 @@ const MachineryList: React.FC = () => {
                 }}
               />
             </Grid>
-            
+
             <Grid item xs={12}>
               <Typography variant="subtitle2" gutterBottom>
                 Images (Optional)
@@ -2128,29 +2248,29 @@ const MachineryList: React.FC = () => {
               <Typography variant="caption" color="text.secondary">
                 Add images showing the maintenance work or parts replaced.
               </Typography>
-              
+
               <Box sx={{ mt: 2, display: 'flex', flexWrap: 'wrap', gap: 2 }}>
                 {/* Display existing images */}
                 {maintenanceForm.imageUrls && maintenanceForm.imageUrls.map((url, index) => (
                   <Box key={index} sx={{ position: 'relative' }}>
-                    <Avatar 
-                      src={url} 
+                    <Avatar
+                      src={url}
                       alt={`Maintenance documentation ${index + 1}`}
                       variant="rounded"
                       sx={{ width: 100, height: 100, border: '1px solid #eee' }}
                     />
-                    <IconButton 
-                      size="small" 
-                      color="error" 
+                    <IconButton
+                      size="small"
+                      color="error"
                       onClick={() => {
                         setMaintenanceForm(prev => ({
                           ...prev,
                           imageUrls: prev.imageUrls?.filter((_, i) => i !== index) || []
                         }));
                       }}
-                      sx={{ 
-                        position: 'absolute', 
-                        top: -10, 
+                      sx={{
+                        position: 'absolute',
+                        top: -10,
                         right: -10,
                         bgcolor: 'background.paper',
                         boxShadow: 1
@@ -2160,15 +2280,15 @@ const MachineryList: React.FC = () => {
                     </IconButton>
                   </Box>
                 ))}
-                
+
                 {/* Image upload placeholder */}
-                <Box 
-                  component="label" 
+                <Box
+                  component="label"
                   htmlFor="maintenance-image-upload"
-                  sx={{ 
-                    width: 100, 
-                    height: 100, 
-                    border: '1px dashed #ccc', 
+                  sx={{
+                    width: 100,
+                    height: 100,
+                    border: '1px dashed #ccc',
                     borderRadius: 1,
                     display: 'flex',
                     flexDirection: 'column',
@@ -2183,7 +2303,7 @@ const MachineryList: React.FC = () => {
                     Add Image
                   </Typography>
                 </Box>
-                
+
                 <input
                   type="file"
                   accept="image/*"
@@ -2195,20 +2315,20 @@ const MachineryList: React.FC = () => {
                       try {
                         setLoading(true);
                         const file = e.target.files[0];
-                        
+
                         // We need to actually upload the image to get a permanent URL
                         if (selectedMachinery) {
                           const imageUrl = await dispatch(uploadMachineryImage({
                             file,
                             machineryId: selectedMachinery.id
                           })).unwrap();
-                          
+
                           // Add the real URL from the server
                           setMaintenanceForm(prev => ({
                             ...prev,
                             imageUrls: [...(prev.imageUrls || []), imageUrl]
                           }));
-                          
+
                           showSnackbar('Image uploaded successfully', 'success');
                         } else {
                           showSnackbar('Please select a machinery first', 'error');
@@ -2224,7 +2344,7 @@ const MachineryList: React.FC = () => {
                 />
               </Box>
             </Grid>
-            
+
             <Grid item xs={12}>
               <TextField
                 name="notes"
@@ -2241,9 +2361,9 @@ const MachineryList: React.FC = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseMaintenanceDialog}>Cancel</Button>
-          <Button 
-            onClick={handleMaintenanceSubmit} 
-            variant="contained" 
+          <Button
+            onClick={handleMaintenanceSubmit}
+            variant="contained"
             color="primary"
             disabled={loading}
           >
@@ -2264,7 +2384,7 @@ const MachineryList: React.FC = () => {
             </Typography>
           </Box>
         )}
-        
+
         <DialogContent>
           <Grid container spacing={3} sx={{ mt: 1 }}>
             <Grid item xs={12} md={6}>
@@ -2277,7 +2397,7 @@ const MachineryList: React.FC = () => {
                 />
               </LocalizationProvider>
             </Grid>
-            
+
             <Grid item xs={12} md={6}>
               <FormControl fullWidth required>
                 <InputLabel id="changed-by-label">Changed By</InputLabel>
@@ -2300,9 +2420,9 @@ const MachineryList: React.FC = () => {
                 </Select>
               </FormControl>
             </Grid>
-            
+
             <Grid item xs={12} md={6}>
-              <FormControl fullWidth>
+              <FormControl fullWidth required disabled>
                 <InputLabel id="previous-status-label">Previous Status</InputLabel>
                 <Select
                   labelId="previous-status-label"
@@ -2322,7 +2442,7 @@ const MachineryList: React.FC = () => {
                 </Select>
               </FormControl>
             </Grid>
-            
+
             <Grid item xs={12} md={6}>
               <FormControl fullWidth>
                 <InputLabel id="new-status-label">New Status</InputLabel>
@@ -2344,7 +2464,7 @@ const MachineryList: React.FC = () => {
                 </Select>
               </FormControl>
             </Grid>
-            
+
             <Grid item xs={12}>
               <TextField
                 name="reason"
@@ -2358,7 +2478,7 @@ const MachineryList: React.FC = () => {
                 placeholder="Explain why the status was changed"
               />
             </Grid>
-            
+
             <Grid item xs={12}>
               <Typography variant="subtitle2" gutterBottom>
                 Images (Optional)
@@ -2366,29 +2486,29 @@ const MachineryList: React.FC = () => {
               <Typography variant="caption" color="text.secondary">
                 Add images showing the machinery condition or other visual documentation.
               </Typography>
-              
+
               <Box sx={{ mt: 2, display: 'flex', flexWrap: 'wrap', gap: 2 }}>
                 {/* Display existing images */}
                 {statusHistoryForm.imageUrls && statusHistoryForm.imageUrls.map((url, index) => (
                   <Box key={index} sx={{ position: 'relative' }}>
-                    <Avatar 
-                      src={url} 
+                    <Avatar
+                      src={url}
                       alt={`Status documentation ${index + 1}`}
                       variant="rounded"
                       sx={{ width: 100, height: 100, border: '1px solid #eee' }}
                     />
-                    <IconButton 
-                      size="small" 
-                      color="error" 
+                    <IconButton
+                      size="small"
+                      color="error"
                       onClick={() => {
                         setStatusHistoryForm(prev => ({
                           ...prev,
                           imageUrls: prev.imageUrls?.filter((_, i) => i !== index) || []
                         }));
                       }}
-                      sx={{ 
-                        position: 'absolute', 
-                        top: -10, 
+                      sx={{
+                        position: 'absolute',
+                        top: -10,
                         right: -10,
                         bgcolor: 'background.paper',
                         boxShadow: 1
@@ -2398,15 +2518,15 @@ const MachineryList: React.FC = () => {
                     </IconButton>
                   </Box>
                 ))}
-                
+
                 {/* Image upload placeholder */}
-                <Box 
-                  component="label" 
+                <Box
+                  component="label"
                   htmlFor="status-image-upload"
-                  sx={{ 
-                    width: 100, 
-                    height: 100, 
-                    border: '1px dashed #ccc', 
+                  sx={{
+                    width: 100,
+                    height: 100,
+                    border: '1px dashed #ccc',
                     borderRadius: 1,
                     display: 'flex',
                     flexDirection: 'column',
@@ -2421,7 +2541,7 @@ const MachineryList: React.FC = () => {
                     Add Image
                   </Typography>
                 </Box>
-                
+
                 <input
                   type="file"
                   accept="image/*"
@@ -2433,20 +2553,20 @@ const MachineryList: React.FC = () => {
                       try {
                         setLoading(true);
                         const file = e.target.files[0];
-                        
+
                         // We need to actually upload the image to get a permanent URL
                         if (selectedMachinery) {
                           const imageUrl = await dispatch(uploadMachineryImage({
                             file,
                             machineryId: selectedMachinery.id
                           })).unwrap();
-                          
+
                           // Add the real URL from the server
                           setStatusHistoryForm(prev => ({
                             ...prev,
                             imageUrls: [...(prev.imageUrls || []), imageUrl]
                           }));
-                          
+
                           showSnackbar('Image uploaded successfully', 'success');
                         } else {
                           showSnackbar('Please select a machinery first', 'error');
@@ -2462,7 +2582,7 @@ const MachineryList: React.FC = () => {
                 />
               </Box>
             </Grid>
-            
+
             <Grid item xs={12}>
               <TextField
                 name="notes"
@@ -2479,9 +2599,9 @@ const MachineryList: React.FC = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseStatusHistoryDialog}>Cancel</Button>
-          <Button 
-            onClick={handleStatusHistorySubmit} 
-            variant="contained" 
+          <Button
+            onClick={handleStatusHistorySubmit}
+            variant="contained"
             color="primary"
             disabled={loading}
           >
@@ -2497,15 +2617,15 @@ const MachineryList: React.FC = () => {
             <DialogTitle>
               {selectedMachinery.name}
               <Box component="span" sx={{ ml: 1, display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
-                <Chip 
+                <Chip
                   label={selectedMachinery.type}
-                  size="small" 
+                  size="small"
                   color="primary"
                 />
                 {getStatusChip(selectedMachinery.status)}
               </Box>
             </DialogTitle>
-            
+
             <DialogContent>
               <Grid container spacing={3}>
                 <Grid item xs={12} md={6}>
@@ -2513,29 +2633,29 @@ const MachineryList: React.FC = () => {
                     <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
                       Machine Details
                     </Typography>
-                    
+
                     {/* Display machinery images gallery if available */}
                     {((selectedMachinery.imageUrls && selectedMachinery.imageUrls.length > 0) || selectedMachinery.imageUrl) && (
                       <Box sx={{ mb: 3 }}>
                         <Typography variant="subtitle2" color="text.secondary" gutterBottom>
                           Machinery Images
                         </Typography>
-                        
-                        <Box sx={{ 
-                          display: 'flex', 
-                          flexWrap: 'wrap', 
-                          gap: 2, 
-                          justifyContent: 'flex-start' 
+
+                        <Box sx={{
+                          display: 'flex',
+                          flexWrap: 'wrap',
+                          gap: 2,
+                          justifyContent: 'flex-start'
                         }}>
                           {/* Display images from imageUrls array if available */}
                           {selectedMachinery.imageUrls && selectedMachinery.imageUrls.map((imageUrl, index) => (
-                            <Box 
+                            <Box
                               key={index}
                               component="img"
                               src={imageUrl}
                               alt={`${selectedMachinery.name} image ${index + 1}`}
-                              sx={{ 
-                                width: 150, 
+                              sx={{
+                                width: 150,
                                 height: 150,
                                 objectFit: 'cover',
                                 borderRadius: 1,
@@ -2548,15 +2668,15 @@ const MachineryList: React.FC = () => {
                               }}
                             />
                           ))}
-                          
+
                           {/* If no imageUrls but has imageUrl (backward compatibility) */}
                           {(!selectedMachinery.imageUrls || selectedMachinery.imageUrls.length === 0) && selectedMachinery.imageUrl && (
-                            <Box 
+                            <Box
                               component="img"
                               src={selectedMachinery.imageUrl}
                               alt={selectedMachinery.name}
-                              sx={{ 
-                                width: 150, 
+                              sx={{
+                                width: 150,
                                 height: 150,
                                 objectFit: 'cover',
                                 borderRadius: 1,
@@ -2567,80 +2687,80 @@ const MachineryList: React.FC = () => {
                         </Box>
                       </Box>
                     )}
-                    
+
                     <Grid container spacing={2} sx={{ mt: 1 }}>
                       <Grid item xs={12} sm={6}>
                         <Typography variant="body2" color="text.secondary">Model</Typography>
                         <Typography variant="body1">{selectedMachinery.model}</Typography>
                       </Grid>
-                      
+
                       <Grid item xs={12} sm={6}>
                         <Typography variant="body2" color="text.secondary">Serial Number</Typography>
                         <Typography variant="body1">{selectedMachinery.serialNumber}</Typography>
                       </Grid>
-                      
+
                       <Grid item xs={12} sm={6}>
                         <Typography variant="body2" color="text.secondary">Manufacturer</Typography>
                         <Typography variant="body1">{selectedMachinery.manufacturer}</Typography>
                       </Grid>
-                      
+
                       <Grid item xs={12} sm={6}>
                         <Typography variant="body2" color="text.secondary">Location</Typography>
                         <Typography variant="body1">{selectedMachinery.location || 'Not specified'}</Typography>
                       </Grid>
-                      
+
                       <Grid item xs={12} sm={6}>
                         <Typography variant="body2" color="text.secondary">Purchase Date</Typography>
                         <Typography variant="body1">
-                          {selectedMachinery.purchaseDate ? 
-                            format(parseISO(selectedMachinery.purchaseDate), 'MMM d, yyyy') : 
+                          {selectedMachinery.purchaseDate ?
+                            format(parseISO(selectedMachinery.purchaseDate), 'MMM d, yyyy') :
                             'Not specified'}
                         </Typography>
                       </Grid>
-                      
+
                       <Grid item xs={12} sm={6}>
                         <Typography variant="body2" color="text.secondary">Purchase Price</Typography>
                         <Typography variant="body1">
-                          {selectedMachinery.purchasePrice ? 
-                            formatCurrency(selectedMachinery.purchasePrice) : 
+                          {selectedMachinery.purchasePrice ?
+                            formatCurrency(selectedMachinery.purchasePrice) :
                             'Not specified'}
                         </Typography>
                       </Grid>
-                      
+
                       <Grid item xs={12}>
                         <Divider sx={{ my: 1 }} />
                       </Grid>
-                      
+
                       <Grid item xs={12} sm={6}>
                         <Typography variant="body2" color="text.secondary">Last Maintenance</Typography>
                         <Typography variant="body1">
-                          {selectedMachinery.lastMaintenanceDate ? 
-                            format(parseISO(selectedMachinery.lastMaintenanceDate), 'MMM d, yyyy') : 
+                          {selectedMachinery.lastMaintenanceDate ?
+                            format(parseISO(selectedMachinery.lastMaintenanceDate), 'MMM d, yyyy') :
                             'Not recorded'}
                         </Typography>
                       </Grid>
-                      
+
                       <Grid item xs={12} sm={6}>
                         <Typography variant="body2" color="text.secondary">Next Maintenance Due</Typography>
-                        <Typography 
+                        <Typography
                           variant="body1"
                           color={getMaintenanceStatusText(selectedMachinery).color}
                         >
                           {getMaintenanceStatusText(selectedMachinery).text}
                         </Typography>
                       </Grid>
-                      
+
                       <Grid item xs={12}>
                         <Divider sx={{ my: 1 }} />
                       </Grid>
-                      
+
                       <Grid item xs={12}>
                         <Typography variant="body2" color="text.secondary">Technical Specifications</Typography>
                         <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap', mt: 1 }}>
                           {selectedMachinery.specifications || 'No specifications provided'}
                         </Typography>
                       </Grid>
-                      
+
                       <Grid item xs={12}>
                         <Typography variant="body2" color="text.secondary">Notes</Typography>
                         <Typography variant="body1">
@@ -2648,7 +2768,7 @@ const MachineryList: React.FC = () => {
                         </Typography>
                       </Grid>
                     </Grid>
-                    
+
                     <Box sx={{ mt: 3, display: 'flex', gap: 1 }}>
                       <Button
                         variant="outlined"
@@ -2665,7 +2785,7 @@ const MachineryList: React.FC = () => {
                       >
                         Add Status Change
                       </Button>
-                      
+
                       <Button
                         variant="outlined"
                         startIcon={<EditIcon />}
@@ -2679,23 +2799,23 @@ const MachineryList: React.FC = () => {
                     </Box>
                   </Paper>
                 </Grid>
-                
+
                 <Grid item xs={12} md={6}>
                   <Paper sx={{ p: 2 }}>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
                         Maintenance History
                       </Typography>
-                      
-                      <Button 
-                        size="small" 
+
+                      <Button
+                        size="small"
                         startIcon={<RefreshIcon />}
                         onClick={() => dispatch(fetchMaintenanceRecords(selectedMachinery.id))}
                       >
                         Refresh
                       </Button>
                     </Box>
-                    
+
                     {isLoading ? (
                       <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
                         <CircularProgress />
@@ -2715,16 +2835,16 @@ const MachineryList: React.FC = () => {
                                       {getMaintenanceTypeChip(record.type)}
                                     </Box>
                                   </Box>
-                                  
+
                                   <Typography variant="subtitle1" fontWeight="bold">
                                     {formatCurrency(record.cost)}
                                   </Typography>
                                 </Box>
-                                
+
                                 <Typography variant="body2" paragraph>
                                   {record.description}
                                 </Typography>
-                                
+
                                 {record.imageUrls && record.imageUrls.length > 0 && (
                                   <Box sx={{ mt: 2, mb: 2 }}>
                                     <Typography variant="body2" color="text.secondary" gutterBottom>
@@ -2744,30 +2864,45 @@ const MachineryList: React.FC = () => {
                                     </ImageList>
                                   </Box>
                                 )}
-                                
+
                                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                   <Typography variant="body2" color="text.secondary">
                                     Performed by: {record.performedBy}
                                   </Typography>
-                                  
-                                  <Box sx={{ display: 'flex', gap: 1 }}>
-                                    <Button 
-                                      size="small" 
-                                      color="primary"
-                                      variant="outlined"
-                                      onClick={() => handleOpenMaintenanceDialog(selectedMachinery.id, record)}
-                                    >
-                                      Edit
-                                    </Button>
-                                    <Button 
-                                      size="small" 
-                                      color="error"
-                                      variant="outlined"
-                                      onClick={() => handleDeleteMaintenanceRecord(record.id)}
-                                    >
-                                      Delete
-                                    </Button>
-                                  </Box>
+                                  <TableCell>
+                                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                                      {!record.is_completed && (
+                                        <Button
+                                          size="small"
+                                          color="primary"
+                                          variant="outlined"
+                                          onClick={() =>
+                                            record.machineryId &&
+                                            handleOpenMaintenanceDialog(record.machineryId, record)
+                                          }
+                                        >
+                                          Edit
+                                        </Button>
+                                      )}
+                                      {record.is_completed && (
+                                        <Chip
+                                          label="Completed"
+                                          icon={<CheckCircleIcon />}
+                                          color="success"
+                                          size="small"
+                                          variant="outlined"
+                                        />
+                                      )}
+                                      <Button
+                                        size="small"
+                                        color="error"
+                                        variant="outlined"
+                                        onClick={() => handleDeleteMaintenanceRecord(record.id)}
+                                      >
+                                        Delete
+                                      </Button>
+                                    </Box>
+                                  </TableCell>
                                 </Box>
                                 {record.notes && (
                                   <Typography variant="body2" color="text.secondary" sx={{ mt: 1, fontStyle: 'italic' }}>
@@ -2782,8 +2917,8 @@ const MachineryList: React.FC = () => {
                             <Typography variant="body1" color="text.secondary">
                               No maintenance records found for this machinery.
                             </Typography>
-                            <Button 
-                              variant="outlined" 
+                            <Button
+                              variant="outlined"
                               sx={{ mt: 2 }}
                               startIcon={<BuildIcon />}
                               onClick={() => handleOpenMaintenanceDialog(selectedMachinery.id)}
@@ -2801,9 +2936,9 @@ const MachineryList: React.FC = () => {
                       <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
                         Status History
                       </Typography>
-                      
-                      <Button 
-                        size="small" 
+
+                      <Button
+                        size="small"
                         startIcon={<RefreshIcon />}
                         onClick={() => {
                           try {
@@ -2817,7 +2952,7 @@ const MachineryList: React.FC = () => {
                         Refresh
                       </Button>
                     </Box>
-                    
+
                     {isLoading ? (
                       <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
                         <CircularProgress />
@@ -2839,16 +2974,16 @@ const MachineryList: React.FC = () => {
                                       {getStatusChip(record.newStatus)}
                                     </Box>
                                   </Box>
-                                  
+
                                   <Typography variant="subtitle2" color="text.secondary">
                                     By: {record.changedBy}
                                   </Typography>
                                 </Box>
-                                
+
                                 <Typography variant="body2" paragraph>
                                   <strong>Reason:</strong> {record.reason}
                                 </Typography>
-                                
+
                                 {record.imageUrls && record.imageUrls.length > 0 && (
                                   <Box sx={{ mt: 2, mb: 2 }}>
                                     <Typography variant="body2" color="text.secondary" gutterBottom>
@@ -2868,25 +3003,22 @@ const MachineryList: React.FC = () => {
                                     </ImageList>
                                   </Box>
                                 )}
-                                
+
                                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                   {record.notes && (
                                     <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
                                       Note: {record.notes}
                                     </Typography>
                                   )}
-                                  
+
                                   <Box sx={{ display: 'flex', gap: 1, ml: 'auto' }}>
-                                    <Button 
-                                      size="small" 
-                                      color="primary"
-                                      variant="outlined"
-                                      onClick={() => handleOpenStatusHistoryDialog(selectedMachinery.id, record)}
-                                    >
-                                      Edit
-                                    </Button>
-                                    <Button 
-                                      size="small" 
+                                    <Tooltip title="Editing status history is not allowed">
+                                      <span>
+                                        <Button size="small" disabled>Edit</Button>
+                                      </span>
+                                    </Tooltip>
+                                    <Button
+                                      size="small"
                                       color="error"
                                       variant="outlined"
                                       onClick={() => handleDeleteStatusHistory(record.id)}
@@ -2903,8 +3035,8 @@ const MachineryList: React.FC = () => {
                             <Typography variant="body1" color="text.secondary">
                               No status history records found for this machinery.
                             </Typography>
-                            <Button 
-                              variant="outlined" 
+                            <Button
+                              variant="outlined"
                               sx={{ mt: 2 }}
                               startIcon={<SwapHorizIcon />}
                               onClick={() => handleOpenStatusHistoryDialog(selectedMachinery.id)}
@@ -2925,21 +3057,19 @@ const MachineryList: React.FC = () => {
           </>
         )}
       </Dialog>
-
-      <Snackbar
-        open={snackbar.open}
-        autoHideDuration={6000}
-        onClose={handleCloseSnackbar}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-      >
-        <Alert 
-          onClose={handleCloseSnackbar} 
-          severity={snackbar.severity}
-          sx={{ width: '100%' }}
+      <Portal>
+        <Snackbar
+          open={snackbar.open}
+          autoHideDuration={6000}
+          onClose={handleCloseSnackbar}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+          sx={{ zIndex: 14000 }}
         >
-          {snackbar.message}
-        </Alert>
-      </Snackbar>
+          <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }}>
+            {snackbar.message}
+          </Alert>
+        </Snackbar>
+      </Portal>
     </Box>
   );
 };

@@ -1102,14 +1102,18 @@ const OrderSupplier: React.FC = () => {
   const filteredOrders = filterOrders(supplierOrders);
 
   const filterQuotations = (quotations: QuotationRequest[]) => {
-    if (!searchTerm.trim()) return quotations;
-
     const searchLower = searchTerm.toLowerCase();
-    return quotations.filter(quotation => {
+
+    const filteredByDate = filterMonth
+      ? quotations.filter(q => q.date?.substring(0, 7) === filterMonth)
+      : quotations;
+
+    if (!searchLower.trim()) return filteredByDate;
+
+    return filteredByDate.filter(quotation => {
       const requestIdMatch = quotation.request_id.toLowerCase().includes(searchLower);
       const supplierMatch = suppliers.find(s => s.id === quotation.supplier_id)?.name.toLowerCase().includes(searchLower) || false;
       const statusMatch = quotation.status.toLowerCase().includes(searchLower);
-
       return requestIdMatch || supplierMatch || statusMatch;
     });
   };

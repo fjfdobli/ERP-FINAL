@@ -14,8 +14,10 @@ import {
   Add as AddIcon, Save as SaveIcon, Search as SearchIcon,
   Phone as PhoneIcon, Email as EmailIcon,
   Work as WorkIcon, Close as CloseIcon,
-  Business as BusinessIcon, 
-  Engineering as EngineeringIcon, Build as BuildIcon
+  Business as BusinessIcon,
+  Engineering as EngineeringIcon, Build as BuildIcon,
+  EventNote as EventNoteIcon, CheckCircle as CheckCircleIcon,
+  Warning as WarningIcon,
 } from '@mui/icons-material';
 import { useAppDispatch, useAppSelector } from '../redux/hooks';
 import {
@@ -23,7 +25,7 @@ import {
   deleteTechnician, selectAllTechnicians, selectTechniciansLoading,
   selectTechniciansError, getAssignedMachinery, selectAssignedMachinery, assignMachineryToTechnician
 } from '../redux/slices/techniciansSlice';
-import { fetchMachinery, fetchMachineryById, selectAllMachinery } from '../redux/slices/machinerySlice';
+import { fetchMachinery, fetchMachineryById, fetchMaintenanceRecords, selectAllMachinery, selectMaintenanceRecords, updateMaintenanceRecord } from '../redux/slices/machinerySlice';
 import { supabase } from '../supabaseClient';
 
 // Interface for Technician data
@@ -75,6 +77,7 @@ const TechnicianProfile: React.FC = () => {
   const error = useAppSelector(selectTechniciansError);
   const assignedMachinery = useAppSelector(selectAssignedMachinery);
   const allMachinery = useAppSelector(selectAllMachinery);
+  const maintenanceRecords = useAppSelector(selectMaintenanceRecords);
 
   // Local state
   const [selectedTechnician, setSelectedTechnician] = useState<Technician | null>(null);
@@ -111,6 +114,44 @@ const TechnicianProfile: React.FC = () => {
     type: 'Company',
     company: ''
   });
+
+  const getMaintenanceTypeChip = (type: string | null) => {
+    let color: 'default' | 'success' | 'error' | 'warning' | 'info' = 'default';
+    let icon = null;
+
+    switch (type) {
+      case 'Scheduled':
+        color = 'info';
+        icon = <EventNoteIcon fontSize="small" />;
+        break;
+      case 'Repair':
+        color = 'warning';
+        icon = <BuildIcon fontSize="small" />;
+        break;
+      case 'Inspection':
+        color = 'success';
+        icon = <CheckCircleIcon fontSize="small" />;
+        break;
+      case 'Emergency':
+        color = 'error';
+        icon = <WarningIcon fontSize="small" />;
+        break;
+      default:
+        color = 'default';
+        icon = null;
+    }
+
+    return (
+      <Chip
+        label={type || 'No recent maintenance'}
+        color={color}
+        size="small"
+        {...(icon ? { icon } : {})}
+        variant="outlined"
+        sx={{ height: 20 }}
+      />
+    );
+  };
 
   // Fetch technicians and machinery data on component mount
   useEffect(() => {
@@ -165,6 +206,12 @@ const TechnicianProfile: React.FC = () => {
           const assignedIds = await dispatch(getAssignedMachinery(selectedTechnician.id)).unwrap();
           console.log('Assigned machinery IDs:', assignedIds);
           console.log('All machinery available:', allMachinery.map(m => m.id));
+
+          if (assignedIds.length > 0) {
+            for (const id of assignedIds) {
+              await dispatch(fetchMaintenanceRecords(id));
+            }
+          }
 
           // Step 3: If we have assigned machinery but still no machinery data, fetch machinery again
           if (assignedIds.length > 0 && (allMachinery.length === 0 || !assignedIds.some(id => allMachinery.find(m => Number(m.id) === Number(id))))) {
@@ -228,13 +275,26 @@ const TechnicianProfile: React.FC = () => {
       fetchData();
     }
   }, [dispatch, selectedTechnician, allMachinery.length]);
-  
+
+
+  const getDisplayMaintenanceType = (machineryId: number): string | null => {
+    const sorted = maintenanceRecords
+      .filter(r => r.machineryId === machineryId)
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    if (sorted.length === 0) return null;
+
+    const pending = sorted.find(r => !r.is_completed);
+    return pending ? pending.type : sorted[0].type;
+  };
+
+
   // Handle form input changes
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
   };
-  
+
   // Handle select input changes
   const handleSelectChange = (e: any) => {
     const { name, value } = e.target;
@@ -249,7 +309,7 @@ const TechnicianProfile: React.FC = () => {
       setFormData(prev => ({ ...prev, [name]: value }));
     }
   };
-  
+
   // Open dialog to add new technician
   const handleAddTechnician = () => {
     setIsEditing(false);
@@ -267,7 +327,7 @@ const TechnicianProfile: React.FC = () => {
     });
     setOpenDialog(true);
   };
-  
+
   // Open dialog to edit existing technician
   const handleEditTechnician = (technician: Technician) => {
     setIsEditing(true);
@@ -293,12 +353,12 @@ const TechnicianProfile: React.FC = () => {
     setSelectedTechnician(technician);
     setCurrentTab(1); // Switch to details tab
   };
-  
+
   // Handle dialog close
   const handleCloseDialog = () => {
     setOpenDialog(false);
   };
-  
+
   // Handle form submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -382,12 +442,12 @@ const TechnicianProfile: React.FC = () => {
       });
     }
   };
-  
+
   // Handle tab change
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setCurrentTab(newValue);
   };
-  
+
   // Close notification
   const handleCloseNotification = () => {
     setNotification(prev => ({ ...prev, show: false }));
@@ -401,6 +461,12 @@ const TechnicianProfile: React.FC = () => {
     setSelectedMachineryIds(assignedMachinery || []);
     setAssignMachineryDialogOpen(true);
   };
+
+  const activeAssignedMachinery = assignedMachinery.filter(machineryId => {
+    const records = maintenanceRecords.filter(r => r.machineryId === machineryId);
+    return records.some(r => !r.is_completed);
+  });
+
 
   // Handle machinery assignment
   const handleAssignMachinery = async () => {
@@ -435,7 +501,7 @@ const TechnicianProfile: React.FC = () => {
       setLoadingMachinery(false);
     }
   };
-  
+
   // Filter technicians based on search query
   const filteredTechnicians = technicians.filter(tech => {
     const searchLower = searchQuery.toLowerCase();
@@ -447,27 +513,27 @@ const TechnicianProfile: React.FC = () => {
       tech.type.toLowerCase().includes(searchLower)
     );
   });
-  
+
   // Function to get initials for avatar
   const getInitials = (firstNameOrFirstName: string, lastNameOrLastName: string) => {
     const first = firstNameOrFirstName[0] || '';
     const last = lastNameOrLastName[0] || '';
     return `${first}${last}`.toUpperCase();
   };
-  
+
   // Render list of technicians
   const renderTechniciansList = () => {
     if (loading) {
       return Array(5).fill(0).map((_, i) => (
         <ListItem key={i} sx={{ mb: 1, borderRadius: 2, bgcolor: 'background.paper' }}>
-          <ListItemText 
-            primary={<Skeleton width="60%" />} 
-            secondary={<Skeleton width="40%" />} 
+          <ListItemText
+            primary={<Skeleton width="60%" />}
+            secondary={<Skeleton width="40%" />}
           />
         </ListItem>
       ));
     }
-    
+
     if (filteredTechnicians.length === 0) {
       return (
         <Box sx={{ textAlign: 'center', py: 4 }}>
@@ -477,7 +543,7 @@ const TechnicianProfile: React.FC = () => {
         </Box>
       );
     }
-    
+
     return filteredTechnicians.map(technician => (
       <ListItem
         key={technician.id}
@@ -510,7 +576,7 @@ const TechnicianProfile: React.FC = () => {
             }}
           >
             {(technician.firstName?.[0] || technician.first_name?.[0] || '') +
-            (technician.lastName?.[0] || technician.last_name?.[0] || '')}
+              (technician.lastName?.[0] || technician.last_name?.[0] || '')}
           </Avatar>
 
           {/* Main content */}
@@ -542,8 +608,8 @@ const TechnicianProfile: React.FC = () => {
                 size="small"
                 color={
                   technician.status === 'Active' ? 'success' :
-                  technician.status === 'On Leave' ? 'warning' :
-                  technician.status === 'Unavailable' ? 'error' : 'default'
+                    technician.status === 'On Leave' ? 'warning' :
+                      technician.status === 'Unavailable' ? 'error' : 'default'
                 }
                 sx={{ height: 20 }}
               />
@@ -634,7 +700,7 @@ const TechnicianProfile: React.FC = () => {
       </ListItem>
     ));
   };
-  
+
   // Render technician details
   const renderTechnicianDetails = () => {
     if (!selectedTechnician) {
@@ -646,7 +712,7 @@ const TechnicianProfile: React.FC = () => {
         </Box>
       );
     }
-    
+
     return (
       <>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
@@ -660,7 +726,7 @@ const TechnicianProfile: React.FC = () => {
               }}
             >
               {(selectedTechnician.firstName?.[0] || selectedTechnician.first_name?.[0] || '') +
-              (selectedTechnician.lastName?.[0] || selectedTechnician.last_name?.[0] || '')}
+                (selectedTechnician.lastName?.[0] || selectedTechnician.last_name?.[0] || '')}
             </Avatar>
 
             <Box>
@@ -673,8 +739,8 @@ const TechnicianProfile: React.FC = () => {
                   size="small"
                   color={
                     selectedTechnician.status === 'Active' ? 'success' :
-                    selectedTechnician.status === 'On Leave' ? 'warning' :
-                    selectedTechnician.status === 'Unavailable' ? 'error' : 'default'
+                      selectedTechnician.status === 'On Leave' ? 'warning' :
+                        selectedTechnician.status === 'Unavailable' ? 'error' : 'default'
                   }
                 />
                 <Chip
@@ -896,16 +962,6 @@ const TechnicianProfile: React.FC = () => {
                       Assigned Equipment
                     </Typography>
                   </Box>
-
-                  <Button
-                    variant="outlined"
-                    color="success"
-                    size="small"
-                    startIcon={<AddIcon />}
-                    onClick={handleOpenAssignMachineryDialog}
-                  >
-                    Assign Equipment
-                  </Button>
                 </Box>
 
                 <Divider sx={{ my: 2 }} />
@@ -925,29 +981,26 @@ const TechnicianProfile: React.FC = () => {
                     </Box>
                   ) : assignedMachinery && assignedMachinery.length > 0 ? (
                     <Grid container spacing={2}>
-                      {assignedMachinery.map(machineryId => {
+                      {activeAssignedMachinery.map(machineryId => {
                         console.log(`Checking machinery ID: ${machineryId}`);
                         // Convert both IDs to numbers to ensure correct comparison
                         const machine = allMachinery.find(m => Number(m.id) === Number(machineryId));
+                        if (!machine) return null;
                         console.log(`Found machine: ${machine ? 'Yes' : 'No'}, machineryId: ${machineryId}, type: ${typeof machineryId}`);
                         console.log('Available machinery IDs:', allMachinery.map(m => `${m.id} (${typeof m.id})`));
 
                         // Log deleted machinery references but don't display them
                         if (!machine) {
                           console.warn(`No matching machinery found for ID: ${machineryId}`);
-                          console.warn(`All machinery IDs: ${JSON.stringify(allMachinery.map(m => ({id: m.id, typeofId: typeof m.id})))}`);
+                          console.warn(`All machinery IDs: ${JSON.stringify(allMachinery.map(m => ({ id: m.id, typeofId: typeof m.id })))}`);
 
-                          // Clean up the assignment asynchronously
                           (async () => {
                             try {
                               if (selectedTechnician) {
-                                // Get current assignments
                                 const currentAssignedIds = await dispatch(getAssignedMachinery(selectedTechnician.id)).unwrap();
 
-                                // Remove the invalid ID
                                 const newAssignments = currentAssignedIds.filter(id => Number(id) !== Number(machineryId));
 
-                                // Update directly in the database
                                 await supabase
                                   .from('technicians')
                                   .update({ assigned_machinery: newAssignments })
@@ -960,156 +1013,167 @@ const TechnicianProfile: React.FC = () => {
                             }
                           })();
 
-                          // Skip rendering the deleted machinery
                           return null;
                         }
 
-                      return (
-                        <Grid item xs={12} sm={6} md={4} key={machineryId}>
-                          <Box sx={{
-                            p: 2,
-                            border: '1px solid',
-                            borderColor: 'divider',
-                            borderRadius: 1,
-                            bgcolor: 'background.paper',
-                            height: '100%',
-                            display: 'flex',
-                            flexDirection: 'column'
-                          }}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                              <Avatar
-                                sx={{
-                                  bgcolor:
-                                    machine.status === 'Operational' ? 'success.main' :
-                                    machine.status === 'Maintenance' ? 'warning.main' :
-                                    machine.status === 'Repair' ? 'error.main' :
-                                    'grey.500',
-                                  width: 40,
-                                  height: 40,
-                                  mr: 1.5
-                                }}
-                              >
-                                <EngineeringIcon />
-                              </Avatar>
+                        return (
+                          <Grid item xs={12} sm={6} md={4} key={machineryId}>
+                            <Box
+                              sx={{
+                                p: 2,
+                                border: '1px solid',
+                                borderColor: 'divider',
+                                borderRadius: 1,
+                                bgcolor: 'background.paper',
+                                height: '100%',
+                                display: 'flex',
+                                flexDirection: 'column'
+                              }}
+                            >
+                              <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                                <Avatar
+                                  sx={{
+                                    bgcolor: (() => {
+                                      const status = getDisplayMaintenanceType(machine.id);
+                                      return status === 'Emergency' ? 'error.main' :
+                                        status === 'Repair' ? 'error.main' :
+                                          status === 'Maintenance' ? 'warning.main' :
+                                            status === 'Scheduled' ? 'info.main' :
+                                              'grey.500';
+                                    })()
+                                  }}
+                                >
+                                  <EngineeringIcon />
+                                </Avatar>
+                                <Box ml={2}>
+                                  <Typography variant="subtitle1" fontWeight="medium">
+                                    {machine.name}
+                                  </Typography>
+                                  <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mt: 0.5 }}>
+                                  {getMaintenanceTypeChip(getDisplayMaintenanceType(machine.id))}
+                                    {(() => {
+                                      const records = maintenanceRecords.filter(r => r.machineryId === machine.id);
+                                      const hasPending = records.some(r => !r.is_completed);
+                                      if (!hasPending && records.length > 0) {
+                                        return (
+                                          <Chip
+                                            label="Completed"
+                                            icon={<CheckCircleIcon />}
+                                            color="success"
+                                            size="small"
+                                            variant="outlined"
+                                          />
+                                        );
+                                      }
+                                      return null;
+                                    })()}
+                                  </Box>
+                                </Box>
+                              </Box>
+
+                              <Divider sx={{ my: 1 }} />
+
                               <Box>
-                                <Typography variant="subtitle1" fontWeight="medium">
-                                  {machine.name}
-                                </Typography>
-                                <Chip
-                                  label={machine.status}
-                                  size="small"
-                                  color={
-                                    machine.status === 'Operational' ? 'success' :
-                                    machine.status === 'Maintenance' ? 'warning' :
-                                    machine.status === 'Repair' ? 'error' :
-                                    'default'
-                                  }
-                                  sx={{ height: 20 }}
-                                />
+                                <Typography variant="caption" color="text.secondary">Model</Typography>
+                                <Typography variant="body2" gutterBottom>{machine.model}</Typography>
+
+                                <Typography variant="caption" color="text.secondary">Serial Number</Typography>
+                                <Typography variant="body2" gutterBottom>{machine.serialNumber}</Typography>
+
+                                <Typography variant="caption" color="text.secondary">Location</Typography>
+                                <Typography variant="body2">{machine.location || 'N/A'}</Typography>
+                              </Box>
+
+                              <Box sx={{ mt: 'auto' }}>
+                                <Divider sx={{ my: 1 }} />
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1 }}>
+                                  <Button
+                                    size="small"
+                                    variant="outlined"
+                                    color="primary"
+                                    onClick={async () => {
+                                      try {
+                                        setLoadingMachinery(true);
+                                        await dispatch(fetchMachinery({})).unwrap();
+                                        const response = await supabase
+                                          .from('machinery')
+                                          .select('*')
+                                          .eq('id', machine.id)
+                                          .single();
+
+                                        if (response.error) throw response.error;
+                                        if (response.data) {
+                                          setSelectedMachine(response.data);
+                                          setMachineDetailsOpen(true);
+                                        } else {
+                                          throw new Error('No data returned');
+                                        }
+                                      } catch {
+                                        try {
+                                          const fallback = await dispatch(fetchMachineryById(machine.id)).unwrap();
+                                          setSelectedMachine(fallback);
+                                          setMachineDetailsOpen(true);
+                                        } catch {
+                                          setSelectedMachine(machine);
+                                          setMachineDetailsOpen(true);
+                                        }
+                                      } finally {
+                                        setLoadingMachinery(false);
+                                      }
+                                    }}
+                                  >
+                                    View Details
+                                  </Button>
+                                  {(() => {
+                                    const fullName = `${selectedTechnician.first_name ?? selectedTechnician.firstName} ${selectedTechnician.last_name ?? selectedTechnician.lastName}`;
+                                    const records = maintenanceRecords
+                                      .filter(r => r.machineryId === machine.id && r.performedBy === fullName)
+                                      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+                                    const firstUncompleted = records.find(r => !r.is_completed);
+                                    if (!firstUncompleted) return null;
+
+                                    return (
+                                      <Button
+                                        size="small"
+                                        variant="contained"
+                                        color="success"
+                                        onClick={async () => {
+                                          try {
+                                            await dispatch(updateMaintenanceRecord({
+                                              id: firstUncompleted.id,
+                                              data: { is_completed: true }
+                                            })).unwrap();
+
+                                            await dispatch(getAssignedMachinery(selectedTechnician.id));
+                                            await dispatch(fetchMaintenanceRecords(machine.id));
+
+                                            setNotification({
+                                              show: true,
+                                              message: 'Maintenance marked as completed!',
+                                              type: 'success'
+                                            });
+                                          } catch (error) {
+                                            console.error('Error marking as completed:', error);
+                                            setNotification({
+                                              show: true,
+                                              message: 'Failed to mark as completed',
+                                              type: 'error'
+                                            });
+                                          }
+                                        }}
+                                      >
+                                        Mark as Completed
+                                      </Button>
+                                    );
+                                  })()}
+                                </Box>
                               </Box>
                             </Box>
-
-                            <Divider sx={{ my: 1 }} />
-
-                            <Box sx={{ mt: 1 }}>
-                              <Typography variant="caption" color="text.secondary">
-                                Model
-                              </Typography>
-                              <Typography variant="body2" gutterBottom>
-                                {machine.model}
-                              </Typography>
-
-                              <Typography variant="caption" color="text.secondary">
-                                Serial Number
-                              </Typography>
-                              <Typography variant="body2" gutterBottom>
-                                {machine.serialNumber}
-                              </Typography>
-
-                              <Typography variant="caption" color="text.secondary">
-                                Location
-                              </Typography>
-                              <Typography variant="body2">
-                                {machine.location || 'N/A'}
-                              </Typography>
-                            </Box>
-
-                            <Box sx={{ mt: 'auto', pt: 1 }}>
-                              <Button
-                                size="small"
-                                variant="outlined"
-                                color="primary"
-                                fullWidth
-                                sx={{ mt: 1 }}
-                                onClick={async () => {
-                                  // Fetch the latest machine data before showing the dialog
-                                  try {
-                                    setLoadingMachinery(true);
-
-                                    // Force a rebuild of the cache when fetching directly from Supabase
-                                    // by including the current timestamp to prevent using any cache
-                                    const timestamp = new Date().getTime();
-                                    console.log(`Fetching fresh data for machine ID ${machine.id} with timestamp ${timestamp}`);
-
-                                    // First refresh all machinery - this is critical to get the latest data
-                                    await dispatch(fetchMachinery({})).unwrap();
-
-                                    // 1. First try: Direct from Supabase with no caching
-                                    const response = await supabase
-                                      .from('machinery')
-                                      .select('*')
-                                      .eq('id', machine.id)
-                                      .single();
-
-                                    if (response.error) {
-                                      throw response.error;
-                                    }
-
-                                    if (response.data) {
-                                      console.log('Got fresh data directly from Supabase:', response.data);
-
-                                      // Use the fresh data
-                                      setSelectedMachine(response.data);
-                                      setMachineDetailsOpen(true);
-                                    } else {
-                                      throw new Error('No data returned from Supabase');
-                                    }
-                                  } catch (error) {
-                                    console.error('Error fetching directly from Supabase:', error);
-
-                                    // 2. Second try: Get data through Redux machineryService
-                                    try {
-                                      console.log('Trying to fetch via Redux machineryService...');
-
-                                      // Fetch the specific machinery with refreshed data
-                                      const refreshedMachine = await dispatch(
-                                        fetchMachineryById(machine.id)
-                                      ).unwrap();
-
-                                      console.log('Got fresh data via Redux:', refreshedMachine);
-                                      setSelectedMachine(refreshedMachine);
-                                      setMachineDetailsOpen(true);
-                                    } catch (secondError) {
-                                      console.error('Error fetching via Redux:', secondError);
-
-                                      // 3. Last resort: Use the machine data we already have
-                                      console.warn('Using cached machine data as fallback');
-                                      setSelectedMachine(machine);
-                                      setMachineDetailsOpen(true);
-                                    }
-                                  } finally {
-                                    setLoadingMachinery(false);
-                                  }
-                                }}
-                              >
-                                View Details
-                              </Button>
-                            </Box>
-                          </Box>
-                        </Grid>
-                      );
-                    })}
-                  </Grid>
+                          </Grid>
+                        );
+                      })}
+                    </Grid>
                   ) : (
                     <Box sx={{ p: 3, textAlign: 'center' }}>
                       <Typography variant="body1" color="text.secondary">
@@ -1128,7 +1192,7 @@ const TechnicianProfile: React.FC = () => {
       </>
     );
   };
-  
+
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
@@ -1210,7 +1274,7 @@ const TechnicianProfile: React.FC = () => {
           />
         </Tabs>
       </Paper>
-      
+
       <Box sx={{ flexGrow: 1, overflow: 'auto' }}>
         {currentTab === 0 && (
           <Paper
@@ -1250,7 +1314,8 @@ const TechnicianProfile: React.FC = () => {
               borderRadius: 2,
               border: '1px solid var(--border-color)',
               overflow: 'hidden',
-              p: 3
+              px: 0,
+              py: 3
             }}
           >
             {renderTechnicianDetails()}
@@ -1376,19 +1441,11 @@ const TechnicianProfile: React.FC = () => {
                           <Typography variant="caption" color="text.secondary">
                             Status
                           </Typography>
-                          <Box>
-                            <Chip
-                              label={selectedMachine.status}
-                              color={
-                                selectedMachine.status === 'Operational' ? 'success' :
-                                selectedMachine.status === 'Maintenance' ? 'warning' :
-                                selectedMachine.status === 'Repair' ? 'error' :
-                                'default'
-                              }
-                              size="small"
-                            />
+                          <Box display="flex" gap={1} alignItems="center" mt={0.5}>
+                          {getMaintenanceTypeChip(getDisplayMaintenanceType(selectedMachine.id))}
                           </Box>
                         </Grid>
+
                         <Grid item xs={12} sm={6}>
                           <Typography variant="caption" color="text.secondary">
                             Location
@@ -1518,11 +1575,11 @@ const TechnicianProfile: React.FC = () => {
             </IconButton>
           </Box>
         </DialogTitle>
-        
+
         <DialogContent dividers>
           <form onSubmit={handleSubmit}>
             <Grid container spacing={3}>
-              
+
               <Grid item xs={12} md={6}>
                 <TextField
                   fullWidth
@@ -1533,7 +1590,7 @@ const TechnicianProfile: React.FC = () => {
                   required
                 />
               </Grid>
-              
+
               <Grid item xs={12} md={6}>
                 <TextField
                   fullWidth
@@ -1544,7 +1601,7 @@ const TechnicianProfile: React.FC = () => {
                   required
                 />
               </Grid>
-              
+
               <Grid item xs={12} md={6}>
                 <TextField
                   fullWidth
@@ -1556,7 +1613,7 @@ const TechnicianProfile: React.FC = () => {
                   required
                 />
               </Grid>
-              
+
               <Grid item xs={12} md={6}>
                 <TextField
                   fullWidth
@@ -1567,7 +1624,7 @@ const TechnicianProfile: React.FC = () => {
                   required
                 />
               </Grid>
-              
+
               <Grid item xs={12} md={6}>
                 <TextField
                   fullWidth
@@ -1580,7 +1637,7 @@ const TechnicianProfile: React.FC = () => {
                   required
                 />
               </Grid>
-              
+
               <Grid item xs={12} md={6}>
                 <FormControl fullWidth>
                   <InputLabel>Status</InputLabel>
@@ -1598,7 +1655,7 @@ const TechnicianProfile: React.FC = () => {
                   </Select>
                 </FormControl>
               </Grid>
-              
+
               <Grid item xs={12} md={6}>
                 <FormControl fullWidth>
                   <InputLabel>Technician Type</InputLabel>
@@ -1614,7 +1671,7 @@ const TechnicianProfile: React.FC = () => {
                   </Select>
                 </FormControl>
               </Grid>
-              
+
               <Grid item xs={12} md={6}>
                 <TextField
                   fullWidth
@@ -1626,7 +1683,7 @@ const TechnicianProfile: React.FC = () => {
                   helperText={formData.type === 'External' ? "Enter contractor's company name" : "Company employee at Opzon's Printers"}
                 />
               </Grid>
-              
+
               <Grid item xs={12}>
                 <TextField
                   fullWidth
@@ -1641,7 +1698,7 @@ const TechnicianProfile: React.FC = () => {
             </Grid>
           </form>
         </DialogContent>
-        
+
         <DialogActions sx={{ px: 3, py: 2 }}>
           <Button onClick={handleCloseDialog} color="inherit">
             Cancel
@@ -1657,7 +1714,7 @@ const TechnicianProfile: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
-      
+
       <Snackbar
         open={notification.show}
         autoHideDuration={6000}
@@ -1757,16 +1814,7 @@ const TechnicianProfile: React.FC = () => {
                               </Box>
                             }
                           />
-                          <Chip
-                            label={machine.status}
-                            size="small"
-                            color={
-                              machine.status === 'Operational' ? 'success' :
-                              machine.status === 'Maintenance' ? 'warning' :
-                              machine.status === 'Repair' ? 'error' :
-                              'default'
-                            }
-                          />
+                          {getMaintenanceTypeChip(getDisplayMaintenanceType(machine.id))}
                         </ListItemButton>
                       </ListItem>
                     ))}

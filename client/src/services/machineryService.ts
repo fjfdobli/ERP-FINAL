@@ -52,6 +52,7 @@ export interface MaintenanceRecord {
   imageUrls?: string[] | null;
   createdAt?: string;
   updatedAt?: string;
+  is_completed?: boolean;
 }
 
 export interface InsertMaintenanceRecord {
@@ -63,6 +64,7 @@ export interface InsertMaintenanceRecord {
   performedBy: string;
   notes: string | null;
   imageUrls?: string[] | null;
+  is_completed?: boolean;
 }
 
 export interface StatusHistoryRecord {
@@ -125,14 +127,14 @@ export const machineryService = {
    */
   async uploadMachineryImage(file: File, machineryId: number): Promise<string> {
     console.log('Starting image upload for machinery:', machineryId, 'file:', file.name, file.type, file.size);
-    
+
     try {
       // Create a simple file name without paths
       const fileExt = file.name.split('.').pop();
       const fileName = `${Date.now()}_${Math.floor(Math.random() * 10000)}.${fileExt}`;
-      
+
       console.log('Using file name:', fileName);
-      
+
       // Convert the file to a base64 string to verify it's valid
       const reader = new FileReader();
       const fileDataPromise = new Promise<ArrayBuffer>((resolve, reject) => {
@@ -140,14 +142,14 @@ export const machineryService = {
         reader.onerror = reject;
         reader.readAsArrayBuffer(file);
       });
-      
+
       const fileData = await fileDataPromise;
       console.log('File data loaded, size:', fileData.byteLength);
-      
+
       // Now upload the file directly - set content type explicitly
       const contentType = file.type || 'application/octet-stream';
       console.log('Setting content type for upload:', contentType);
-      
+
       const { data, error } = await supabase.storage
         .from('machinery-images')
         .upload(fileName, file, {
@@ -155,36 +157,36 @@ export const machineryService = {
           upsert: true,
           contentType: contentType
         });
-      
+
       if (error) {
         console.error('Storage upload error details:', error);
         throw new Error(error.message || 'Failed to upload image');
       }
-      
+
       if (!data) {
         console.error('Upload succeeded but no data returned');
         throw new Error('Upload succeeded but no data returned');
       }
-      
+
       console.log('Upload successful, path:', data.path);
-      
+
       // Get the public URL
       try {
         console.log('Attempting to get public URL for:', fileName);
         const { data: urlData } = supabase.storage
           .from('machinery-images')
           .getPublicUrl(fileName);
-        
+
         if (!urlData?.publicUrl) {
           console.error('No public URL data returned:', urlData);
           throw new Error('Could not generate public URL');
         }
-        
+
         console.log('Generated public URL:', urlData.publicUrl);
         return urlData.publicUrl;
       } catch (urlError) {
         console.error('Error getting public URL:', urlError);
-        
+
         // Fallback to constructing URL manually if needed
         // Import the supabaseUrl directly from the config rather than trying to access it from the client
         const supabaseUrl = 'https://iyjfpkcxwljfkxbjagbd.supabase.co';
@@ -197,15 +199,15 @@ export const machineryService = {
       throw new Error(err instanceof Error ? err.message : 'Unknown upload error');
     }
   },
-  
+
   /**
    * Upload multiple machinery images and return array of URLs
    */
   async uploadMultipleMachineryImages(files: File[], machineryId: number): Promise<string[]> {
     console.log(`Starting upload of ${files.length} images for machinery:`, machineryId);
-    
+
     const uploadPromises = files.map(file => this.uploadMachineryImage(file, machineryId));
-    
+
     try {
       const urls = await Promise.all(uploadPromises);
       console.log(`Successfully uploaded ${urls.length} images:`, urls);
@@ -382,7 +384,10 @@ export const machineryService = {
   async updateMaintenanceRecord(id: number, record: Partial<InsertMaintenanceRecord>): Promise<MaintenanceRecord> {
     const { data, error } = await supabase
       .from(MAINTENANCE_RECORDS_TABLE)
-      .update(record)
+      .update({
+        ...record,
+        is_completed: record.is_completed,
+      })
       .eq('id', id)
       .select()
       .single();
@@ -392,8 +397,12 @@ export const machineryService = {
       throw new Error(error.message);
     }
 
-    return data as MaintenanceRecord;
-  },
+    return {
+      ...data,
+      is_completed: data.is_completed
+    } as MaintenanceRecord;
+  }
+  ,
 
   /**
    * Delete a maintenance record

@@ -1,16 +1,3 @@
-// Check your Supabase Storage settings to ensure:
-// 1. You have a bucket named "profiles" (not "profile")
-// 2. The bucket permissions are set correctly
-
-// Verify these settings in Supabase dashboard:
-// 1. Go to Storage in the Supabase dashboard
-// 2. Check that the bucket name is exactly "profiles"
-// 3. Click on the bucket and then click "Policies" tab
-// 4. Ensure RLS is enabled but also make sure the policies actually exist
-
-// Alternative approach - modify your code to handle the upload more directly:
-
-// In authSlice.ts around line 537, modify the upload function:
 const uploadAvatar = createAsyncThunk(
   'auth/uploadAvatar',
   async (file, { getState, dispatch, rejectWithValue }) => {

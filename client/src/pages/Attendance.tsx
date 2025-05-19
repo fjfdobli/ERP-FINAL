@@ -68,6 +68,30 @@ const formatDateMMDDYYYY = (date: Date | string): string => {
   return format(d, 'MM/dd/yyyy');
 };
 
+// Function to check if time is late based on cutoff hour
+const isLateEntry = (timeIn: Date | null, isMorning: boolean): boolean => {
+  if (!timeIn) return false;
+  
+  // For morning, anything after 7:00 AM is late
+  // For afternoon, anything after 1:00 PM is late
+  const cutoffHour = isMorning ? 7 : 13;
+  
+  const timeHour = timeIn.getHours();
+  const timeMinute = timeIn.getMinutes();
+  
+  // If past cutoff hour completely, it's late
+  if (timeHour > cutoffHour) {
+    return true;
+  }
+  
+  // If it's exactly cutoff hour but with minutes > 0, it's late
+  if (timeHour === cutoffHour && timeMinute > 0) {
+    return true;
+  }
+  
+  return false;
+};
+
 interface TabPanelProps {
   children?: React.ReactNode;
   index: number;
@@ -927,10 +951,44 @@ const AttendanceLists: React.FC = () => {
   };
 
   const handleTimeChange = (name: 'morningTimeIn' | 'morningTimeOut' | 'afternoonTimeIn' | 'afternoonTimeOut') => (time: Date | null) => {
-    setFormData(prev => ({
-      ...prev,
-      [name]: time
-    }));
+    setFormData(prev => {
+      const updatedForm = {
+        ...prev,
+        [name]: time
+      };
+      
+      // Check for late status
+      if (name === 'morningTimeIn' && time && updatedForm.isMorningPresent) {
+        // Morning time in check
+        if (isLateEntry(time, true)) {
+          console.log('Setting LATE status for morning: ', time);
+          updatedForm.status = 'Late';
+        } else if (updatedForm.isMorningPresent && updatedForm.isAfternoonPresent) {
+          // If both periods are present and morning time is not late
+          // Check if afternoon is already late before resetting to Present
+          const afternoonIsLate = updatedForm.afternoonTimeIn && isLateEntry(updatedForm.afternoonTimeIn, false);
+          if (!afternoonIsLate) {
+            updatedForm.status = 'Present';
+          }
+        }
+      } 
+      else if (name === 'afternoonTimeIn' && time && updatedForm.isAfternoonPresent) {
+        // Afternoon time in check
+        if (isLateEntry(time, false)) {
+          console.log('Setting LATE status for afternoon: ', time);
+          updatedForm.status = 'Late';
+        } else if (updatedForm.isMorningPresent && updatedForm.isAfternoonPresent) {
+          // If both periods are present and afternoon time is not late
+          // Check if morning is already late before resetting to Present
+          const morningIsLate = updatedForm.morningTimeIn && isLateEntry(updatedForm.morningTimeIn, true);
+          if (!morningIsLate) {
+            updatedForm.status = 'Present';
+          }
+        }
+      }
+      
+      return updatedForm;
+    });
   };
 
   const handleBulkInputChange = (index: number, field: keyof BulkAttendanceRow, value: any) => {
@@ -955,12 +1013,59 @@ const AttendanceLists: React.FC = () => {
         updatedData[index].overtime = 0;
       } else {
         // Set default times if changed to present
-        updatedData[index].morningTimeIn = new Date(new Date().setHours(7, 0, 0, 0));
+        const morningIn = new Date(new Date().setHours(7, 0, 0, 0));
+        const afternoonIn = new Date(new Date().setHours(13, 0, 0, 0));
+        
+        updatedData[index].morningTimeIn = morningIn;
         updatedData[index].morningTimeOut = new Date(new Date().setHours(12, 0, 0, 0));
-        updatedData[index].afternoonTimeIn = new Date(new Date().setHours(13, 0, 0, 0));
+        updatedData[index].afternoonTimeIn = afternoonIn;
         updatedData[index].afternoonTimeOut = new Date(new Date().setHours(18, 0, 0, 0));
         updatedData[index].isMorningPresent = true;
         updatedData[index].isAfternoonPresent = true;
+        
+        // When default times are set (initial setting)
+        const isMorningLate = isLateEntry(morningIn, true);
+        const isAfternoonLate = isLateEntry(afternoonIn, false);
+        
+        // Set status based on late detection
+        if (isMorningLate || isAfternoonLate) {
+          console.log('Default setting LATE status');
+          updatedData[index].status = 'Late';
+        } else {
+          updatedData[index].status = 'Present';
+        }
+      }
+    }
+    
+    // Check for late status when time values are changed directly
+    if (field === 'morningTimeIn' && value && updatedData[index].isMorningPresent) {
+      // Morning time in check
+      if (isLateEntry(value, true)) {
+        console.log('Bulk setting LATE status for morning: ', value);
+        updatedData[index].status = 'Late';
+      } else if (updatedData[index].isMorningPresent && updatedData[index].isAfternoonPresent) {
+        // If both periods are present and morning time is not late
+        // Check if afternoon is already late before resetting to Present
+        const afternoonIsLate = updatedData[index].afternoonTimeIn && 
+                                isLateEntry(updatedData[index].afternoonTimeIn, false);
+        if (!afternoonIsLate) {
+          updatedData[index].status = 'Present';
+        }
+      }
+    } 
+    else if (field === 'afternoonTimeIn' && value && updatedData[index].isAfternoonPresent) {
+      // Afternoon time in check
+      if (isLateEntry(value, false)) {
+        console.log('Bulk setting LATE status for afternoon: ', value);
+        updatedData[index].status = 'Late';
+      } else if (updatedData[index].isMorningPresent && updatedData[index].isAfternoonPresent) {
+        // If both periods are present and afternoon time is not late
+        // Check if morning is already late before resetting to Present
+        const morningIsLate = updatedData[index].morningTimeIn && 
+                              isLateEntry(updatedData[index].morningTimeIn, true);
+        if (!morningIsLate) {
+          updatedData[index].status = 'Present';
+        }
       }
     }
     
@@ -972,9 +1077,16 @@ const AttendanceLists: React.FC = () => {
       // Update morning time fields
       if (field === 'isMorningPresent') {
         if (value) {
-          // Set default morning times
-          updatedData[index].morningTimeIn = new Date(new Date().setHours(7, 0, 0, 0));
+          // Set default morning times to exactly 7:00 AM (on time)
+          const morningIn = new Date(new Date().setHours(7, 0, 0, 0));
+          updatedData[index].morningTimeIn = morningIn;
           updatedData[index].morningTimeOut = new Date(new Date().setHours(12, 0, 0, 0));
+          
+          // Default time shouldn't be late since it's exactly 7:00 AM
+          if (updatedData[index].isMorningPresent && updatedData[index].isAfternoonPresent && 
+              !isLateEntry(morningIn, true) && !isLateEntry(updatedData[index].afternoonTimeIn, false)) {
+            updatedData[index].status = 'Present';
+          }
         } else {
           // Clear morning times
           updatedData[index].morningTimeIn = null;
@@ -985,9 +1097,16 @@ const AttendanceLists: React.FC = () => {
       // Update afternoon time fields
       if (field === 'isAfternoonPresent') {
         if (value) {
-          // Set default afternoon times
-          updatedData[index].afternoonTimeIn = new Date(new Date().setHours(13, 0, 0, 0));
+          // Set default afternoon times to exactly 1:00 PM (on time)
+          const afternoonIn = new Date(new Date().setHours(13, 0, 0, 0));
+          updatedData[index].afternoonTimeIn = afternoonIn;
           updatedData[index].afternoonTimeOut = new Date(new Date().setHours(18, 0, 0, 0));
+          
+          // Default time shouldn't be late since it's exactly 1:00 PM
+          if (updatedData[index].isMorningPresent && updatedData[index].isAfternoonPresent && 
+              !isLateEntry(updatedData[index].morningTimeIn, true) && !isLateEntry(afternoonIn, false)) {
+            updatedData[index].status = 'Present';
+          }
         } else {
           // Clear afternoon times
           updatedData[index].afternoonTimeIn = null;
@@ -1125,7 +1244,7 @@ const AttendanceLists: React.FC = () => {
     try {
       if (isBulkMode) {
         // Handle bulk attendance submission
-        const attendanceRecords = bulkAttendanceData
+        const formattedAttendanceRecords = bulkAttendanceData
           .filter(row => row.present || row.status !== 'Present')
           .map(row => {
             // Determine morning and afternoon times based on presence
@@ -1165,8 +1284,48 @@ const AttendanceLists: React.FC = () => {
             };
           });
         
-        await dispatch(bulkCreateAttendance(attendanceRecords as any)).unwrap();
-        showSnackbar(`Successfully recorded attendance for ${attendanceRecords.length} employees`, 'success');
+        // Check for duplicate attendance records
+        const formattedDate = format(bulkDate, 'yyyy-MM-dd');
+        const duplicateEmployees: string[] = [];
+        
+        // Filter out employees who already have attendance records for this date
+        const newAttendanceRecords = formattedAttendanceRecords.filter(record => {
+          const existingRecord = attendanceRecords.find(
+            (existing: Attendance) => existing.employeeId === record.employeeId && 
+                       existing.date === formattedDate
+          );
+          
+          // If a record exists, add to duplicates list and filter it out
+          if (existingRecord) {
+            const employee = employees.find((emp: Employee) => emp.id === record.employeeId);
+            if (employee) {
+              duplicateEmployees.push(`${employee.firstName} ${employee.lastName}`);
+            } else {
+              duplicateEmployees.push(`Employee ID: ${record.employeeId}`);
+            }
+            return false;
+          }
+          
+          return true;
+        });
+        
+        // Show warning for duplicates if any found
+        if (duplicateEmployees.length > 0) {
+          showSnackbar(
+            `Skipped ${duplicateEmployees.length} duplicate records: ${duplicateEmployees.join(', ')}`, 
+            'error'
+          );
+          
+          // If all records were duplicates, stop here
+          if (newAttendanceRecords.length === 0) {
+            setLoading(false);
+            return;
+          }
+        }
+        
+        // Only submit non-duplicate records
+        await dispatch(bulkCreateAttendance(newAttendanceRecords as any)).unwrap();
+        showSnackbar(`Successfully recorded attendance for ${newAttendanceRecords.length} employees`, 'success');
       } else {
         // Handle single attendance record
         const { 
@@ -1236,6 +1395,18 @@ const AttendanceLists: React.FC = () => {
           await dispatch(updateAttendance({ id: selectedAttendance.id, data: attendanceData as any })).unwrap();
           showSnackbar('Attendance record updated successfully', 'success');
         } else {
+          // Check if this employee already has an attendance record for this date
+          const existingRecords = attendanceRecords.filter((record: Attendance) => 
+            record.employeeId === Number(employeeId) && 
+            record.date === format(date, 'yyyy-MM-dd')
+          );
+          
+          if (existingRecords.length > 0) {
+            showSnackbar('This employee already has an attendance record for this date', 'error');
+            setLoading(false);
+            return;
+          }
+          
           await dispatch(createAttendance(attendanceData as any)).unwrap();
           showSnackbar('Attendance record created successfully', 'success');
         }
@@ -2712,16 +2883,38 @@ const AttendanceLists: React.FC = () => {
                     value={formData.employeeId}
                     label="Employee"
                     onChange={handleSelectChange}
+                    disabled={!!selectedAttendance}
                     required
                   >
                     {employees && employees.length > 0 ? 
                       employees
                         .filter((emp: any) => emp.status !== 'Inactive')
-                        .map((employee: any) => (
-                          <MenuItem key={employee.id} value={employee.id}>
-                            {`${employee.firstName} ${employee.lastName}`}
-                          </MenuItem>
-                        )) : 
+                        .map((employee: any) => {
+                          // Check if this employee already has attendance for selected date
+                          const hasAttendance = attendanceRecords.some(
+                            (record: Attendance) => 
+                              record.employeeId === Number(employee.id) && 
+                              record.date === format(formData.date, 'yyyy-MM-dd') && 
+                              (!selectedAttendance || selectedAttendance.id !== record.id)
+                          );
+                          
+                          return (
+                            <MenuItem 
+                              key={employee.id} 
+                              value={employee.id}
+                              disabled={hasAttendance}
+                              sx={hasAttendance ? { 
+                                opacity: 0.6,
+                                '& .MuiListItemIcon-root': {
+                                  color: 'warning.main'
+                                }
+                              } : {}}
+                            >
+                              {`${employee.firstName} ${employee.lastName}`}
+                              {hasAttendance && " (Already has attendance)"}
+                            </MenuItem>
+                          );
+                        }) : 
                       <MenuItem disabled>No employees available</MenuItem>
                     }
                   </Select>

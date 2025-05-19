@@ -274,7 +274,6 @@ const EmployeesList: React.FC = () => {
     'Logistics',
     'Customer Service',
     'Operations',
-    'Other'
   ];
   
   // Position options by department
