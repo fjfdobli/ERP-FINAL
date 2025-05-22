@@ -147,18 +147,13 @@ const DashboardLayout: React.FC = () => {
       bgcolor: darkMode 
         ? 'rgba(24, 34, 51, 0.98)' 
         : 'rgba(255, 255, 255, 0.98)',
-      backgroundImage: darkMode
-        ? 'linear-gradient(to bottom, rgba(25, 118, 210, 0.05) 0%, rgba(13, 71, 161, 0.02) 100%)'
-        : 'linear-gradient(to bottom, rgba(240, 244, 249, 0.8) 0%, rgba(255, 255, 255, 0.9) 100%)',
     }}>
       <Toolbar sx={{ 
         display: 'flex', 
         alignItems: 'center', 
         justifyContent: 'center',
         py: { xs: 1.5, md: 2 },
-        background: darkMode 
-          ? `linear-gradient(135deg, #1a237e 0%, #283593 50%, #3949ab 100%)`
-          : `linear-gradient(135deg, #0d47a1 0%, #1565c0 50%, #1976d2 100%)`,
+        background: '#1565C0',
         color: 'white',
         position: 'relative',
         boxShadow: '0 4px 20px rgba(0, 0, 0, 0.1)',
@@ -174,8 +169,8 @@ const DashboardLayout: React.FC = () => {
         >
           <Avatar 
             sx={{ 
-              bgcolor: darkMode ? 'rgba(255,255,255,0.2)' : 'white',
-              color: darkMode ? 'white' : 'var(--primary-color)',
+              bgcolor: 'white',
+              color: '#1565C0',
               mr: 1.5,
               width: { xs: 34, md: 40 },
               height: { xs: 34, md: 40 }
@@ -274,7 +269,8 @@ const DashboardLayout: React.FC = () => {
               px: 1.5,
               py: 0.5,
               borderRadius: 4,
-              mt: 0.5
+              mt: 0.5,
+              textShadow: '0px 0px 1px rgba(0,0,0,0.7), 0px 0px 1px rgba(0,0,0,0.7)'
             }}
           >
             {user.role || 'Admin'}
@@ -343,7 +339,7 @@ const DashboardLayout: React.FC = () => {
                       <ListItemIcon sx={{ 
                         minWidth: { xs: 36, md: 42 },
                         color: isOrdersPathActive() 
-                          ? 'primary.main' 
+                          ? 'white' 
                           : darkMode ? 'rgba(255, 255, 255, 0.7)' : 'text.secondary',
                         '& .MuiSvgIcon-root': {
                           transition: 'transform 0.2s ease',
@@ -359,7 +355,7 @@ const DashboardLayout: React.FC = () => {
                           fontWeight: isOrdersPathActive() ? 600 : 500,
                           letterSpacing: '0.3px',
                           color: isOrdersPathActive() 
-                            ? darkMode ? 'white' : 'primary.main'
+                            ? 'white'
                             : 'inherit'
                         }}
                       />
@@ -393,8 +389,8 @@ const DashboardLayout: React.FC = () => {
                               transition: 'all 0.2s ease',
                               '&.Mui-selected': {
                                 background: darkMode
-                                  ? 'linear-gradient(90deg, rgba(25, 118, 210, 0.8), rgba(25, 118, 210, 0.6))'
-                                  : 'linear-gradient(90deg, rgba(25, 118, 210, 0.9), rgba(25, 118, 210, 0.7))',
+                                  ? 'rgba(40, 50, 70, 0.9)'
+                                  : 'rgba(230, 230, 230, 0.9)',
                                 color: 'white',
                                 boxShadow: '0 4px 10px rgba(0, 0, 0, 0.15)',
                                 '& .MuiListItemIcon-root': {
@@ -402,8 +398,8 @@ const DashboardLayout: React.FC = () => {
                                 },
                                 '&:hover': {
                                   background: darkMode
-                                    ? 'linear-gradient(90deg, rgba(21, 101, 192, 0.8), rgba(13, 71, 161, 0.6))'
-                                    : 'linear-gradient(90deg, rgba(21, 101, 192, 0.9), rgba(21, 101, 192, 0.7))',
+                                    ? 'rgba(50, 60, 80, 0.9)'
+                                    : 'rgba(220, 220, 220, 0.9)',
                                 },
                               },
                               '&:hover': {
@@ -425,7 +421,7 @@ const DashboardLayout: React.FC = () => {
                               minWidth: { xs: 32, md: 36 },
                               fontSize: '0.9rem',
                               color: location.pathname === child.path
-                                ? 'inherit'
+                                ? 'white'
                                 : darkMode ? 'rgba(255, 255, 255, 0.5)' : 'text.secondary'
                             }}>
                               {child.icon}
@@ -453,8 +449,8 @@ const DashboardLayout: React.FC = () => {
                       transition: 'all 0.2s ease',
                       '&.Mui-selected': {
                         background: darkMode
-                          ? 'linear-gradient(90deg, rgba(25, 118, 210, 0.8), rgba(25, 118, 210, 0.6))'
-                          : 'linear-gradient(90deg, rgba(25, 118, 210, 0.9), rgba(25, 118, 210, 0.7))',
+                          ? 'rgba(40, 50, 70, 0.9)'
+                          : 'rgba(230, 230, 230, 0.9)',
                         color: 'white',
                         boxShadow: '0 4px 10px rgba(0, 0, 0, 0.15)',
                         transform: 'translateX(4px)',
@@ -463,8 +459,8 @@ const DashboardLayout: React.FC = () => {
                         },
                         '&:hover': {
                           background: darkMode
-                            ? 'linear-gradient(90deg, rgba(21, 101, 192, 0.8), rgba(13, 71, 161, 0.6))'
-                            : 'linear-gradient(90deg, rgba(21, 101, 192, 0.9), rgba(21, 101, 192, 0.7))',
+                            ? 'rgba(50, 60, 80, 0.9)'
+                            : 'rgba(220, 220, 220, 0.9)',
                         },
                       },
                       '&:hover': {
@@ -485,7 +481,7 @@ const DashboardLayout: React.FC = () => {
                     <ListItemIcon sx={{ 
                       minWidth: { xs: 36, md: 42 },
                       color: location.pathname === item.path 
-                        ? 'inherit' 
+                        ? 'white' 
                         : darkMode ? 'rgba(255, 255, 255, 0.7)' : 'text.secondary',
                       '& .MuiSvgIcon-root': {
                         transition: 'transform 0.2s ease',
@@ -533,8 +529,8 @@ const DashboardLayout: React.FC = () => {
               ? '0 4px 12px rgba(0, 0, 0, 0.3)' 
               : '0 4px 12px rgba(25, 118, 210, 0.2)',
             background: darkMode
-              ? 'linear-gradient(135deg, #1565C0 0%, #0D47A1 100%)'
-              : 'linear-gradient(135deg, #1976D2 0%, #1565C0 100%)',
+              ? 'rgba(40, 50, 70, 0.9)'
+              : 'rgba(230, 230, 230, 0.9)',
             border: '1px solid',
             borderColor: darkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255, 255, 255, 0.2)',
             '&:hover': {
@@ -542,8 +538,8 @@ const DashboardLayout: React.FC = () => {
                 ? '0 6px 16px rgba(0, 0, 0, 0.4)' 
                 : '0 6px 16px rgba(25, 118, 210, 0.3)',
               background: darkMode
-                ? 'linear-gradient(135deg, #1976D2 0%, #1565C0 100%)'
-                : 'linear-gradient(135deg, #1E88E5 0%, #1976D2 100%)',
+                ? 'rgba(50, 60, 80, 0.9)'
+                : 'rgba(220, 220, 220, 0.9)',
               transform: 'translateY(-2px)'
             },
             transition: 'all 0.3s ease'
@@ -615,8 +611,8 @@ const DashboardLayout: React.FC = () => {
             px: { xs: 1.5, sm: 2.5 },
             borderRadius: 2,
             background: darkMode
-              ? 'linear-gradient(to right, rgba(25, 118, 210, 0.15), rgba(25, 118, 210, 0.05))'
-              : 'linear-gradient(to right, rgba(25, 118, 210, 0.1), rgba(25, 118, 210, 0.02))',
+              ? 'rgba(40, 50, 70, 0.2)'
+              : 'rgba(240, 240, 240, 0.5)',
             mr: 2,
             border: '1px solid',
             borderColor: darkMode 
@@ -761,8 +757,8 @@ const DashboardLayout: React.FC = () => {
               flexDirection: 'column', 
               alignItems: 'center',
               background: darkMode
-                ? 'linear-gradient(to bottom, rgba(25, 118, 210, 0.15), rgba(25, 118, 210, 0.05))'
-                : 'linear-gradient(to bottom, rgba(25, 118, 210, 0.08), rgba(25, 118, 210, 0.02))', 
+                ? 'rgba(40, 50, 70, 0.2)'
+                : 'rgba(240, 240, 240, 0.5)', 
               borderRadius: '16px',
               borderBottomLeftRadius: 0,
               borderBottomRightRadius: 0,
@@ -946,8 +942,8 @@ const DashboardLayout: React.FC = () => {
           p: { xs: 2, sm: 3 },
           width: { sm: `calc(100% - ${currentWidth}px)` },
           background: darkMode 
-            ? 'linear-gradient(135deg, rgba(18, 26, 42, 0.95) 0%, rgba(25, 32, 48, 0.95) 100%)' 
-            : 'linear-gradient(135deg, #f5f7fa 0%, #f8f9fc 100%)',
+            ? 'rgba(25, 32, 48, 0.95)' 
+            : 'rgba(250, 250, 250, 0.95)',
           height: '100vh',
           overflow: 'auto',
           display: 'flex',
@@ -1044,7 +1040,7 @@ const DashboardLayout: React.FC = () => {
               left: 0,
               right: 0,
               height: '4px',
-              background: 'linear-gradient(90deg, #1565C0, #1976D2, #1E88E5)',
+              background: darkMode ? 'rgba(40, 50, 70, 0.9)' : 'rgba(230, 230, 230, 0.9)',
               borderTopLeftRadius: { xs: '12px', sm: '16px' },
               borderTopRightRadius: { xs: '12px', sm: '16px' },
             }
