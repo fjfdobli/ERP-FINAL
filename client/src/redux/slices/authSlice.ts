@@ -32,10 +32,19 @@ interface AuthState {
   error: string | null;
 }
 
+// Helper to check if we have valid authentication data
+const checkInitialAuth = () => {
+  const token = localStorage.getItem('token');
+  const userData = localStorage.getItem('userData');
+  
+  // We're authenticated if we have either a token OR stored user data
+  return !!(token || userData);
+};
+
 const initialState: AuthState = {
   user: null,
   token: localStorage.getItem('token'),
-  isAuthenticated: !!localStorage.getItem('token'),
+  isAuthenticated: checkInitialAuth(),
   loading: false,
   error: null
 };
