@@ -7,15 +7,9 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { useDispatch, useSelector } from 'react-redux';
 import { 
-  fetchClients, 
-  searchClients, 
-  createClient, 
-  updateClient,
-  deleteClient,
-  selectAllClients,
-  selectClientsStatus,
-  selectClientsError 
-} from '../redux/slices/clientsSlice';
+  fetchClients, searchClients, createClient, 
+  updateClient, deleteClient, selectAllClients,
+  selectClientsStatus, selectClientsError } from '../redux/slices/clientsSlice';
 import { AppDispatch } from '../redux/store';
 
 interface TabPanelProps {

@@ -344,8 +344,13 @@ const AppContent: React.FC = () => {
           <Route path="attendance" element={<AttendanceList />} />
         </Route>
 
-        {/* 404 Route */}
-        <Route path="*" element={<NotFound />} />
+        {/* 404 Routes - only for truly invalid paths when authenticated */}
+        <Route path="/404" element={<NotFound />} />
+        <Route path="*" element={
+          <ProtectedRoute>
+            <NotFound />
+          </ProtectedRoute>
+        } />
       </Routes>
     </>
   );

@@ -131,19 +131,18 @@ const handleSubmit = (e: React.FormEvent<HTMLFormElement>): void => {
             <Grid item xs={12}
               sx={{
                 bgcolor: 'primary.main',
-                color: 'white',
                 py: 3,
                 px: 4,
                 textAlign: 'center'
               }}
             >
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 1 }}>
-                <PrintIcon sx={{ fontSize: 40, mr: 1 }} />
-                <Typography variant="h4" component="h1" fontWeight="bold">
+                <PrintIcon sx={{ fontSize: 40, mr: 1, color: 'white' }} />
+                <Typography variant="h4" component="h1" fontWeight="bold" sx={{ color: 'white !important' }}>
                   Opzon's Printing Press
                 </Typography>
               </Box>
-              <Typography variant="subtitle1">
+              <Typography variant="subtitle1" sx={{ color: 'white !important' }}>
                 Enterprise Resource Planning System
               </Typography>
             </Grid>
@@ -193,6 +192,10 @@ const handleSubmit = (e: React.FormEvent<HTMLFormElement>): void => {
                           </InputAdornment>
                         ),
                       }}
+                      sx={{
+                        '& .MuiInputBase-input': { color: 'black !important' },
+                        '& .MuiInputLabel-root': { color: 'rgba(0, 0, 0, 0.6) !important' }
+                      }}
                     />
                   </Grid>
                   <Grid item xs={12} sm={6}>
@@ -210,6 +213,10 @@ const handleSubmit = (e: React.FormEvent<HTMLFormElement>): void => {
                             <Person color="primary" />
                           </InputAdornment>
                         ),
+                      }}
+                      sx={{
+                        '& .MuiInputBase-input': { color: 'black !important' },
+                        '& .MuiInputLabel-root': { color: 'rgba(0, 0, 0, 0.6) !important' }
                       }}
                     />
                   </Grid>
@@ -232,7 +239,12 @@ const handleSubmit = (e: React.FormEvent<HTMLFormElement>): void => {
                       </InputAdornment>
                     ),
                   }}
-                  sx={{ mb: 2, mt: 2 }}
+                  sx={{ 
+                    mb: 2, 
+                    mt: 2,
+                    '& .MuiInputBase-input': { color: 'black !important' },
+                    '& .MuiInputLabel-root': { color: 'rgba(0, 0, 0, 0.6) !important' }
+                  }}
                 />
                 
                 <TextField
@@ -264,7 +276,11 @@ const handleSubmit = (e: React.FormEvent<HTMLFormElement>): void => {
                       </InputAdornment>
                     )
                   }}
-                  sx={{ mb: 2 }}
+                  sx={{ 
+                    mb: 2,
+                    '& .MuiInputBase-input': { color: 'black !important' },
+                    '& .MuiInputLabel-root': { color: 'rgba(0, 0, 0, 0.6) !important' }
+                  }}
                 />
                 
                 <TextField
@@ -296,7 +312,11 @@ const handleSubmit = (e: React.FormEvent<HTMLFormElement>): void => {
                       </InputAdornment>
                     )
                   }}
-                  sx={{ mb: 3 }}
+                  sx={{ 
+                    mb: 3,
+                    '& .MuiInputBase-input': { color: 'black !important' },
+                    '& .MuiInputLabel-root': { color: 'rgba(0, 0, 0, 0.6) !important' }
+                  }}
                 />
                 
                 <Button

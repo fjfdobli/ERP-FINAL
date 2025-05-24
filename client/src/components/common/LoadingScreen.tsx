@@ -5,12 +5,8 @@ const LoadingScreen: React.FC = () => {
   return (
     <Box
       sx={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        height: '100vh',
-        bgcolor: 'background.default'
+        display: 'flex', flexDirection: 'column', alignItems: 'center',
+        justifyContent: 'center', height: '100vh', bgcolor: 'background.default'
       }}
     >
       <CircularProgress size={60} thickness={4} />

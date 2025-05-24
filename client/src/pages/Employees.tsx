@@ -276,22 +276,6 @@ const EmployeesList: React.FC = () => {
     'Operations',
   ];
   
-  // Position options by department
-  const positionsByDepartment: {[key: string]: string[]} = {
-    'Management': ['CEO', 'COO', 'CFO', 'CTO', 'General Manager', 'Operations Manager', 'Department Manager'],
-    'HR': ['HR Manager', 'HR Officer', 'Recruitment Specialist', 'Training Coordinator', 'Payroll Officer'],
-    'Sales': ['Sales Manager', 'Sales Representative', 'Account Manager', 'Business Development', 'Sales Assistant'],
-    'Marketing': ['Marketing Manager', 'Marketing Coordinator', 'Graphic Designer', 'Social Media Specialist', 'Content Writer'],
-    'Finance': ['Finance Manager', 'Accountant', 'Bookkeeper', 'Financial Analyst', 'Cashier'],
-    'IT': ['IT Manager', 'Systems Administrator', 'Software Developer', 'Network Engineer', 'IT Support'],
-    'Production': ['Production Manager', 'Press Operator', 'Bindery Operator', 'Production Assistant', 'Machine Operator'],
-    'Quality Control': ['QC Manager', 'QC Inspector', 'QC Analyst'],
-    'Logistics': ['Logistics Manager', 'Warehouse Supervisor', 'Delivery Driver', 'Inventory Clerk'],
-    'Customer Service': ['Customer Service Manager', 'Customer Service Representative', 'Order Processing'],
-    'Operations': ['Operations Manager', 'Shift Supervisor', 'Process Improvement Specialist'],
-    'Other': ['Intern', 'Consultant', 'Contractor', 'Trainee', 'Other']
-  };
-  
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
     message: string;

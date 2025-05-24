@@ -78,16 +78,19 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
     return <LoadingScreen />;
   }
   
-  // Only redirect to login if not authenticated AND we've tried multiple times
-  if (!isAuthenticated && authAttempts >= 3) {
-    console.log("Max auth attempts reached, redirecting to login");
+  // Redirect to login for any unauthorized access attempts
+  if (!isAuthenticated && initialChecked) {
+    console.log("Not authenticated, redirecting to login");
     return <Navigate to="/login" replace />;
   }
   
-  // Important: Even if not fully authenticated, render the children
-  // This prevents redirects when reloading the page
-  // The app will try to reauthenticate in the background
-  return <>{children}</>;
+  // Only render children if authenticated
+  if (isAuthenticated) {
+    return <>{children}</>;
+  }
+  
+  // Still loading/checking authentication
+  return <LoadingScreen />;
 };
 
 export default ProtectedRoute;

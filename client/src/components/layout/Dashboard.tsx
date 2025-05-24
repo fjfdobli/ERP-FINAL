@@ -7,8 +7,7 @@ import {
   AppBar, Box, CssBaseline, Divider, Drawer, IconButton, List, ListItem, 
   ListItemButton, ListItemIcon, ListItemText, Toolbar, Typography, Button, 
   Avatar, Menu, MenuItem, useMediaQuery, Collapse, Fade, Paper, useTheme,
-  Tooltip
-} from '@mui/material';
+  Tooltip } from '@mui/material';
 import { 
   Menu as MenuIcon, Dashboard as DashboardIcon, People as ClientsIcon, 
   ShoppingCart as OrdersIcon, Inventory as InventoryIcon, Group as EmployeesIcon, 
@@ -17,8 +16,7 @@ import {
   ExpandLess, ExpandMore, RequestQuote as RequestIcon, ImportContacts as ClientRequestIcon, 
   Source as SupplierRequestIcon, Payments as PayrollIcon, KeyboardArrowDown,
   Engineering as EngineeringIcon, BuildCircle as BuildIcon, DarkMode as DarkModeIcon,
-  LightMode as LightModeIcon
-} from '@mui/icons-material';
+  LightMode as LightModeIcon } from '@mui/icons-material';
 import PrintIcon from '@mui/icons-material/Print';
 
 const getDrawerWidth = () => {

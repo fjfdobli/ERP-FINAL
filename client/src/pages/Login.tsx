@@ -1,43 +1,13 @@
 import React, { useState, useEffect, CSSProperties } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '../redux/hooks';
+import { login, clearError, getCurrentUser } from '../redux/slices/authSlice';
+import { Box, Container, Paper, Typography, TextField, Button, 
+  Alert, InputAdornment, IconButton, Grid, Divider, Tabs, Tab,
+  Dialog, DialogTitle, DialogContent, DialogActions, FormControl,
+  InputLabel, OutlinedInput, FormHelperText, CircularProgress, Snackbar } from '@mui/material';
 import { 
-  login, 
-  clearError, 
-  getCurrentUser
-} from '../redux/slices/authSlice';
-import { 
-  Box, 
-  Container, 
-  Paper, 
-  Typography, 
-  TextField, 
-  Button, 
-  Alert, 
-  InputAdornment, 
-  IconButton, 
-  Grid, 
-  Divider,
-  Tabs,
-  Tab,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  FormControl,
-  InputLabel,
-  OutlinedInput,
-  FormHelperText,
-  CircularProgress,
-  Snackbar
-} from '@mui/material';
-import { 
-  Visibility, 
-  VisibilityOff, 
-  Email, 
-  Lock,
-  Phone
-} from '@mui/icons-material';
+  Visibility, VisibilityOff, Email, Lock } from '@mui/icons-material';
 import PrintIcon from '@mui/icons-material/Print';
 import { supabase } from '../supabaseClient';
 
@@ -369,19 +339,18 @@ const Login = () => {
             <Grid item xs={12}
               sx={{
                 bgcolor: 'primary.main',
-                color: 'white',
                 py: 3,
                 px: 4,
                 textAlign: 'center'
               }}
             >
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 1 }}>
-                <PrintIcon sx={{ fontSize: 40, mr: 1 }} />
-                <Typography variant="h4" component="h1" fontWeight="bold">
+                <PrintIcon sx={{ fontSize: 40, mr: 1, color: 'white' }} />
+                <Typography variant="h4" component="h1" fontWeight="bold" sx={{ color: 'white !important' }}>
                  Opzon's Printing Press
                 </Typography>
               </Box>
-              <Typography variant="subtitle1">Enterprise Resource Planning System
+              <Typography variant="subtitle1" sx={{ color: 'white !important' }}>Enterprise Resource Planning System
               </Typography>
             </Grid>
             
@@ -419,7 +388,11 @@ const Login = () => {
                           </InputAdornment>
                         ),
                       }}
-                      sx={{ mb: 3 }}
+                      sx={{ 
+                        mb: 3,
+                        '& .MuiInputBase-input': { color: 'black !important' },
+                        '& .MuiInputLabel-root': { color: 'rgba(0, 0, 0, 0.6) !important' }
+                      }}
                     />
                     
                     <TextField
@@ -450,7 +423,11 @@ const Login = () => {
                           </InputAdornment>
                         )
                       }}
-                      sx={{ mb: 1 }}
+                      sx={{ 
+                        mb: 1,
+                        '& .MuiInputBase-input': { color: 'black !important' },
+                        '& .MuiInputLabel-root': { color: 'rgba(0, 0, 0, 0.6) !important' }
+                      }}
                     />
                     
                     {/* Forgot Password Link */}
